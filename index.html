@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Live PSX Stock Screener — real-time data from Pakistan Stock Exchange. Filter, analyze, and score stocks by P/E, dividend yield, market cap, and more.">
+    <title>PSX Stock Screener — Live Pakistan Stock Exchange Data</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Animated background -->
+    <div class="bg-grid"></div>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    <div class="bg-glow bg-glow-3"></div>
+
+    <!-- Header -->
+    <header id="app-header">
+        <div class="header-content">
+            <div class="logo-group">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 40 40" fill="none">
+                        <rect x="2" y="2" width="36" height="36" rx="8" stroke="url(#logoGrad)" stroke-width="2.5"/>
+                        <path d="M12 28L12 18L16 14L20 20L24 12L28 16L28 28" stroke="url(#logoGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <defs>
+                            <linearGradient id="logoGrad" x1="0" y1="0" x2="40" y2="40">
+                                <stop stop-color="#22d3ee"/>
+                                <stop offset="1" stop-color="#a78bfa"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <div>
+                    <h1>PSX Screener</h1>
+                    <span class="header-subtitle">Live Pakistan Stock Exchange Data</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <div class="live-indicator" id="live-indicator">
+                    <span class="live-dot"></span>
+                    <span class="live-text">LIVE</span>
+                </div>
+                <div class="market-status" id="market-status">
+                    <span class="status-dot"></span>
+                    <span>Market Closed</span>
+                </div>
+                <div class="last-updated" id="last-updated" title="Last data refresh time">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span id="last-updated-time">--:--</span>
+                </div>
+                <button class="btn btn-refresh" id="btn-refresh" title="Refresh Data">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="refresh-icon">
+                        <path d="M1 4v6h6M23 20v-6h-6"/>
+                        <path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/>
+                    </svg>
+                    Refresh
+                </button>
+                <button class="btn btn-ghost" id="btn-watchlist-toggle" title="View Watchlist">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                    <span class="watchlist-count" id="watchlist-count">0</span>
+                </button>
+                <button class="btn btn-primary" id="btn-export" title="Export Results">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                    Export CSV
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner">
+                <svg viewBox="0 0 50 50">
+                    <circle cx="25" cy="25" r="20" fill="none" stroke="url(#spinGrad)" stroke-width="4" stroke-linecap="round" stroke-dasharray="80 200" stroke-dashoffset="0">
+                        <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/>
+                    </circle>
+                    <defs>
+                        <linearGradient id="spinGrad" x1="0" y1="0" x2="50" y2="50">
+                            <stop stop-color="#22d3ee"/>
+                            <stop offset="1" stop-color="#a78bfa"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+            </div>
+            <div class="loading-text">Fetching live data from PSX...</div>
+            <div class="loading-subtext" id="loading-subtext">Connecting to Pakistan Stock Exchange</div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main id="app-main">
+        <!-- Market Overview Cards -->
+        <section class="market-overview" id="market-overview">
+            <div class="overview-card" id="card-kse100">
+                <div class="overview-label">KSE-100 Index</div>
+                <div class="overview-value" id="kse100-value">--</div>
+                <div class="overview-change" id="kse100-change">Loading...</div>
+                <div class="overview-sparkline" id="sparkline-kse100"></div>
+            </div>
+            <div class="overview-card" id="card-volume">
+                <div class="overview-label">Market Volume</div>
+                <div class="overview-value" id="market-volume">--</div>
+                <div class="overview-change" id="market-volume-detail">Loading...</div>
+            </div>
+            <div class="overview-card" id="card-advance">
+                <div class="overview-label">Advance / Decline</div>
+                <div class="overview-value adv-dec" id="adv-dec-value">
+                    <span class="positive" id="adv-count">--</span>
+                    <span class="separator">/</span>
+                    <span class="negative" id="dec-count">--</span>
+                </div>
+                <div class="adv-dec-bar">
+                    <div class="adv-bar" id="adv-bar" style="width: 50%"></div>
+                </div>
+            </div>
+            <div class="overview-card" id="card-total">
+                <div class="overview-label">Total Stocks Loaded</div>
+                <div class="overview-value" id="total-stocks-value">--</div>
+                <div class="overview-change" id="total-stocks-detail">From PSX Data Portal</div>
+            </div>
+        </section>
+
+        <!-- Search Bar -->
+        <div class="search-container" id="search-container">
+            <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="search-input" class="search-input" placeholder="Search by symbol or company name..." autocomplete="off">
+            <kbd class="search-kbd">Ctrl+K</kbd>
+        </div>
+
+        <!-- Screener Controls -->
+        <section class="screener-controls" id="screener-controls">
+            <div class="controls-header">
+                <h2>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+                    Stock Screener
+                </h2>
+                <div class="controls-actions">
+                    <button class="btn btn-ghost btn-sm" id="btn-reset-filters">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+                        Reset
+                    </button>
+                    <span class="results-count" id="results-count">-- stocks</span>
+                </div>
+            </div>
+
+            <div class="filters-grid">
+                <!-- Sector Filter -->
+                <div class="filter-group">
+                    <label for="filter-sector">Sector</label>
+                    <select id="filter-sector" class="filter-select">
+                        <option value="all">All Sectors</option>
+                        <!-- Populated dynamically from live data -->
+                    </select>
+                </div>
+
+                <!-- Index Filter -->
+                <div class="filter-group">
+                    <label for="filter-index">Index</label>
+                    <select id="filter-index" class="filter-select">
+                        <option value="all">All Indices</option>
+                        <option value="KSE100">KSE-100</option>
+                        <option value="KSE30">KSE-30</option>
+                        <option value="KMI30">KMI-30</option>
+                    </select>
+                </div>
+
+                <!-- Market Cap Filter -->
+                <div class="filter-group">
+                    <label for="filter-mcap">Market Cap</label>
+                    <select id="filter-mcap" class="filter-select">
+                        <option value="all">Any</option>
+                        <option value="mega">Mega (>200B)</option>
+                        <option value="large">Large (50-200B)</option>
+                        <option value="mid">Mid (10-50B)</option>
+                        <option value="small">Small (<10B)</option>
+                    </select>
+                </div>
+
+                <!-- P/E Ratio -->
+                <div class="filter-group">
+                    <label for="filter-pe">P/E Ratio (max)</label>
+                    <input type="range" id="filter-pe" class="filter-range" min="0" max="50" value="50" step="1">
+                    <span class="range-value" id="pe-value">Any</span>
+                </div>
+
+                <!-- Dividend Yield -->
+                <div class="filter-group">
+                    <label for="filter-div">Dividend Yield (min %)</label>
+                    <input type="range" id="filter-div" class="filter-range" min="0" max="20" value="0" step="0.5">
+                    <span class="range-value" id="div-value">Any</span>
+                </div>
+
+                <!-- Change % -->
+                <div class="filter-group">
+                    <label for="filter-change">Today's Change (min %)</label>
+                    <input type="range" id="filter-change" class="filter-range" min="-10" max="10" value="-10" step="0.5">
+                    <span class="range-value" id="change-value">Any</span>
+                </div>
+
+                <!-- 1-Year Change -->
+                <div class="filter-group">
+                    <label for="filter-year-change">1-Year Change (min %)</label>
+                    <input type="range" id="filter-year-change" class="filter-range" min="-100" max="200" value="-100" step="5">
+                    <span class="range-value" id="year-change-value">Any</span>
+                </div>
+
+                <!-- Volume -->
+                <div class="filter-group">
+                    <label for="filter-volume">30-Day Avg Volume (min)</label>
+                    <select id="filter-volume" class="filter-select">
+                        <option value="0">Any</option>
+                        <option value="10000">10K+</option>
+                        <option value="50000">50K+</option>
+                        <option value="100000">100K+</option>
+                        <option value="500000">500K+</option>
+                        <option value="1000000">1M+</option>
+                        <option value="5000000">5M+</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Quick Presets -->
+            <div class="filter-presets">
+                <span class="presets-label">Quick Presets:</span>
+                <button class="preset-chip" data-preset="bluechip">💎 Blue Chips (KSE-100)</button>
+                <button class="preset-chip" data-preset="dividend">💰 High Dividend</button>
+                <button class="preset-chip" data-preset="growth">🚀 Growth Stocks</button>
+                <button class="preset-chip" data-preset="value">🏷️ Value Picks</button>
+                <button class="preset-chip" data-preset="momentum">📈 Momentum (Today's Gainers)</button>
+            </div>
+        </section>
+
+        <!-- View Tabs -->
+        <div class="view-tabs">
+            <button class="view-tab active" data-view="table" id="tab-table">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                Table View
+            </button>
+            <button class="view-tab" data-view="cards" id="tab-cards">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="8" height="8" rx="1"/><rect x="14" y="3" width="8" height="8" rx="1"/><rect x="2" y="13" width="8" height="8" rx="1"/><rect x="14" y="13" width="8" height="8" rx="1"/></svg>
+                Card View
+            </button>
+            <button class="view-tab" data-view="scorecard" id="tab-scorecard">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Scorecard
+            </button>
+        </div>
+
+        <!-- Table View -->
+        <section class="stock-table-wrapper" id="view-table">
+            <div class="table-scroll">
+                <table class="stock-table" id="stock-table">
+                    <thead>
+                        <tr>
+                            <th class="th-sticky"></th>
+                            <th class="sortable" data-sort="symbol">Symbol <span class="sort-icon">⇅</span></th>
+                            <th>Sector</th>
+                            <th class="sortable" data-sort="price">Price <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort="change">Change % <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort="yearChange">1Y Ch. % <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort="mcap">Market Cap <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort="pe">P/E <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort="divYield">Div Yield <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort="volume">30D Vol <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort="score">Score <span class="sort-icon">⇅</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <tr><td colspan="11" style="text-align:center; padding:48px; color:var(--text-tertiary);">Loading live data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Card View -->
+        <section class="stock-cards-grid" id="view-cards" style="display:none;">
+            <!-- Populated by JS -->
+        </section>
+
+        <!-- Scorecard View -->
+        <section class="scorecard-view" id="view-scorecard" style="display:none;">
+            <div class="scorecard-intro">
+                <h3>Investment Scorecard</h3>
+                <p>Each stock is scored (0–100) based on a weighted composite of P/E, dividend yield, 1-year growth, and liquidity. Click any stock for details.</p>
+                <div class="score-legend">
+                    <span class="legend-item"><span class="dot excellent"></span>Excellent (80–100)</span>
+                    <span class="legend-item"><span class="dot good"></span>Good (60–79)</span>
+                    <span class="legend-item"><span class="dot average"></span>Average (40–59)</span>
+                    <span class="legend-item"><span class="dot weak"></span>Weak (0–39)</span>
+                </div>
+            </div>
+            <div class="scorecard-grid" id="scorecard-grid">
+                <!-- Populated by JS -->
+            </div>
+        </section>
+
+        <!-- Watchlist Modal -->
+        <div class="modal-overlay" id="watchlist-modal" style="display:none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        My Watchlist
+                    </h3>
+                    <button class="btn btn-ghost btn-sm" id="btn-close-watchlist">&times;</button>
+                </div>
+                <div class="modal-body" id="watchlist-body">
+                    <p class="empty-state">No stocks in watchlist yet. Click the ★ icon to add stocks.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stock Detail Modal -->
+        <div class="modal-overlay" id="detail-modal" style="display:none;">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h3 id="detail-title">Stock Detail</h3>
+                    <button class="btn btn-ghost btn-sm" id="btn-close-detail">&times;</button>
+                </div>
+                <div class="modal-body" id="detail-body">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer id="app-footer">
+        <p>PSX Screener — Live data sourced from <a href="https://dps.psx.com.pk" target="_blank" rel="noopener">dps.psx.com.pk</a>. For educational purposes only. Not financial advice.</p>
+        <p class="footer-sub">Built for Pakistan Stock Exchange (KSE-100) analysis • Data refreshes on demand</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
