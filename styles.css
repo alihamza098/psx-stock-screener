@@ -1551,6 +1551,7 @@ body {
     .header-actions {
         width: 100%;
         justify-content: center;
+        flex-wrap: wrap;
     }
 
     #app-main {
@@ -1598,4 +1599,114 @@ body {
     .overview-value {
         font-size: 1.3rem;
     }
+    
+    .company-meta {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* --- Company Detail Modal Additions --- */
+.company-bio {
+    background: var(--bg-card);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md);
+    margin-top: var(--space-md);
+}
+
+.company-bio h4 {
+    color: var(--accent-cyan);
+    margin-bottom: var(--space-sm);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.company-bio p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.company-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-md);
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-subtle);
+}
+
+.meta-item label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+.meta-item span, .meta-item a {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.meta-item a:hover {
+    color: var(--accent-cyan);
+    text-decoration: underline;
+}
+
+/* News Timeline */
+.news-timeline {
+    margin-top: var(--space-lg);
+}
+
+.news-timeline h4 {
+    margin-bottom: var(--space-md);
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.news-item {
+    padding: var(--space-md);
+    background: rgba(15, 23, 42, 0.4);
+    border-left: 2px solid var(--accent-violet);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    margin-bottom: var(--space-sm);
+    transition: background 0.2s;
+}
+
+.news-item:hover {
+    background: rgba(15, 23, 42, 0.8);
+}
+
+.news-date {
+    font-size: 0.75rem;
+    color: var(--accent-cyan);
+    font-family: var(--font-mono);
+    margin-bottom: 4px;
+}
+
+.news-title {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    line-height: 1.4;
+    margin-bottom: 8px;
+}
+
+.news-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: var(--accent-violet);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.news-link:hover {
+    color: var(--accent-cyan);
+    text-decoration: underline;
 }

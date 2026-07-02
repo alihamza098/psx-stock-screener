@@ -553,7 +553,7 @@ function renderWatchlistModal() {
 }
 
 // ─── Detail Modal ───
-function showDetail(symbol) {
+async function showDetail(symbol) {
     const stock = STOCKS.find(s => s.symbol === symbol);
     if (!stock) return;
 
@@ -650,6 +650,19 @@ function showDetail(symbol) {
             </div>
         </div>
 
+        <div id="company-profile-container">
+            <div style="text-align:center; padding:32px 0;">
+                <div class="loading-spinner" style="width:30px;height:30px;margin:0 auto 12px;">
+                    <svg viewBox="0 0 50 50">
+                        <circle cx="25" cy="25" r="20" fill="none" stroke="var(--accent-cyan)" stroke-width="4" stroke-linecap="round" stroke-dasharray="80 200">
+                            <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/>
+                        </circle>
+                    </svg>
+                </div>
+                <div style="color:var(--text-tertiary);font-size:0.85rem;">Loading company profile & news...</div>
+            </div>
+        </div>
+
         <div class="detail-section" style="text-align:center;padding-top:12px;">
             <a href="https://dps.psx.com.pk/company/${stock.symbol}" target="_blank" rel="noopener" class="btn btn-primary" style="text-decoration:none;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
@@ -659,6 +672,72 @@ function showDetail(symbol) {
     `;
 
     document.getElementById("detail-modal").style.display = "flex";
+
+    // Fetch live company data
+    try {
+        const res = await fetch(`/api/company?symbol=${symbol}`);
+        const result = await res.json();
+        
+        const container = document.getElementById("company-profile-container");
+        if (!container) return; // Modal might have been closed
+        
+        if (result.success && result.data) {
+            const data = result.data;
+            
+            let html = `<div class="company-bio">`;
+            if (data.description) {
+                html += `<h4>Business Description</h4><p>${data.description}</p>`;
+            }
+            
+            html += `<div class="company-meta">`;
+            if (data.address) {
+                html += `<div class="meta-item"><label>Address</label><span>${data.address}</span></div>`;
+            }
+            if (data.website) {
+                html += `<div class="meta-item"><label>Website</label><a href="${data.website}" target="_blank" rel="noopener">${data.website}</a></div>`;
+            }
+            if (data.people && data.people.length > 0) {
+                const ceos = data.people.filter(p => p.role.includes("CEO") || p.role.includes("Chief")).map(p => p.name).join(", ");
+                if (ceos) {
+                    html += `<div class="meta-item"><label>Key People</label><span>${ceos}</span></div>`;
+                }
+            }
+            html += `</div></div>`;
+            
+            if (data.announcements && data.announcements.length > 0) {
+                html += `<div class="news-timeline">
+                    <h4>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        Live News & Announcements
+                    </h4>`;
+                
+                data.announcements.slice(0, 5).forEach(news => {
+                    html += `
+                        <div class="news-item">
+                            <div class="news-date">${news.date}</div>
+                            <div class="news-title">${news.title}</div>
+                            ${news.link ? `<a href="${news.link}" target="_blank" rel="noopener" class="news-link">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                                View PDF
+                            </a>` : ''}
+                        </div>
+                    `;
+                });
+                
+                html += `</div>`;
+            }
+            
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = `<div style="text-align:center;color:var(--text-tertiary);padding:16px;">Detailed profile not available.</div>`;
+        }
+    } catch (err) {
+        console.error("Error fetching company data:", err);
+        const container = document.getElementById("company-profile-container");
+        if (container) {
+            container.innerHTML = `<div style="text-align:center;color:var(--negative);padding:16px;">Failed to load company profile.</div>`;
+        }
+    }
 }
 
 // ─── Export CSV ───

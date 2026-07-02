@@ -317,6 +317,68 @@ def fetch_index_data():
     return result
 
 
+# ─── Fetch helpers ───
+def fetch_company_data(symbol):
+    """Fetch and parse company profile and announcements from PSX."""
+    print(f"[PSX] Fetching company data for {symbol}...")
+    try:
+        html = fetch_url(f"https://dps.psx.com.pk/company/{symbol}")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+        
+    data = {
+        "symbol": symbol,
+        "description": "",
+        "address": "",
+        "website": "",
+        "people": [],
+        "announcements": []
+    }
+    
+    # Extract description
+    desc_match = re.search(r'<div class="item__head">BUSINESS DESCRIPTION</div>\s*<p>(.*?)</p>', html, re.DOTALL | re.IGNORECASE)
+    if desc_match:
+        data['description'] = desc_match.group(1).strip()
+        
+    # Extract Address
+    addr_match = re.search(r'<div class="item__head">ADDRESS</div>\s*<p>(.*?)</p>', html, re.DOTALL | re.IGNORECASE)
+    if addr_match:
+        data['address'] = addr_match.group(1).strip()
+        
+    # Extract Website
+    web_match = re.search(r'<div class="item__head">WEBSITE</div>.*?href="(.*?)".*?>(.*?)</a>', html, re.DOTALL | re.IGNORECASE)
+    if web_match:
+        data['website'] = web_match.group(1).strip()
+        
+    # Extract People
+    people_section = re.search(r'<div class="item__head">KEY PEOPLE</div>.*?<tbody class="tbl__body">(.*?)</tbody>', html, re.DOTALL | re.IGNORECASE)
+    if people_section:
+        rows = re.findall(r'<tr>\s*<td><strong>(.*?)</strong></td>\s*<td>(.*?)</td>\s*</tr>', people_section.group(1), re.IGNORECASE)
+        for name, role in rows:
+            data['people'].append({"name": name.strip(), "role": role.strip()})
+            
+    # Extract Announcements
+    announce_section_match = re.search(r'<div class="company__payouts">\s*<h1 class="section__title">Announcements</h1>(.*?)</div>\s*</div>\s*</div>\s*<div class="section', html, re.DOTALL | re.IGNORECASE)
+    
+    if announce_section_match:
+        announce_section = announce_section_match.group(1)
+        rows = re.findall(r'<tr>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*</tr>', announce_section, re.IGNORECASE | re.DOTALL)
+        for d, t, links_html in rows:
+            date = d.strip()
+            title = t.strip()
+            pdf_match = re.search(r'href="(/download/document/.*?|/download/attachment/.*?)"', links_html, re.IGNORECASE)
+            link = "https://dps.psx.com.pk" + pdf_match.group(1) if pdf_match else ""
+            data['announcements'].append({
+                "date": date,
+                "title": title,
+                "link": link
+            })
+            
+    return data
+
+
 # ─── HTTP Request Handler ───
 class PSXHandler(http.server.SimpleHTTPRequestHandler):
     """Custom handler for API routes + static file serving."""
@@ -326,10 +388,17 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(Path(__file__).parent), **kwargs)
 
     def do_GET(self):
-        if self.path == "/api/stocks":
+        from urllib.parse import urlparse, parse_qs
+        parsed_path = urlparse(self.path)
+        
+        if parsed_path.path == "/api/stocks":
             self._handle_stocks()
-        elif self.path == "/api/indices":
+        elif parsed_path.path == "/api/indices":
             self._handle_indices()
+        elif parsed_path.path == "/api/company":
+            query = parse_qs(parsed_path.query)
+            symbol = query.get("symbol", [""])[0]
+            self._handle_company(symbol)
         else:
             # Serve static files
             super().do_GET()
@@ -381,6 +450,21 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json({"success": True, "stale": True, **index_cache["data"]})
             else:
                 self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_company(self, symbol):
+        if not symbol:
+            self._send_json({"success": False, "error": "Missing symbol parameter"}, 400)
+            return
+            
+        try:
+            data = fetch_company_data(symbol)
+            if data is None:
+                self._send_json({"success": False, "error": "Company not found"}, 404)
+            else:
+                self._send_json({"success": True, "data": data})
+        except Exception as e:
+            print(f"[PSX] Error fetching company profile for {symbol}: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
 
     def _handle_refresh(self):
         global stock_cache, index_cache
