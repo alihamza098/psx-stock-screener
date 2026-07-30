@@ -180,6 +180,17 @@
                     </select>
                 </div>
 
+                <!-- Revenue Range Filter -->
+                <div class="filter-group">
+                    <label for="filter-revenue">Revenue (Annual)</label>
+                    <select id="filter-revenue" class="filter-select">
+                        <option value="all">Any</option>
+                        <option value="high">High (>50B)</option>
+                        <option value="med">Mid (10-50B)</option>
+                        <option value="low">Low (<10B)</option>
+                    </select>
+                </div>
+
                 <!-- P/E Ratio -->
                 <div class="filter-group">
                     <label for="filter-pe">P/E Ratio (max)</label>
@@ -226,6 +237,7 @@
             <!-- Quick Presets -->
             <div class="filter-presets">
                 <span class="presets-label">Quick Presets:</span>
+                <button class="preset-chip" data-preset="topvolume">🔥 Most Traded Today</button>
                 <button class="preset-chip" data-preset="bluechip">💎 Blue Chips (KSE-100)</button>
                 <button class="preset-chip" data-preset="dividend">💰 High Dividend</button>
                 <button class="preset-chip" data-preset="growth">🚀 Growth Stocks</button>
@@ -259,6 +271,7 @@
                             <th class="th-sticky"></th>
                             <th class="sortable" data-sort="symbol">Symbol <span class="sort-icon">⇅</span></th>
                             <th>Sector</th>
+                            <th>Revenue (PKR)</th>
                             <th class="sortable" data-sort="price">Price <span class="sort-icon">⇅</span></th>
                             <th class="sortable" data-sort="change">Change % <span class="sort-icon">⇅</span></th>
                             <th class="sortable" data-sort="yearChange">1Y Ch. % <span class="sort-icon">⇅</span></th>
@@ -270,7 +283,7 @@
                         </tr>
                     </thead>
                     <tbody id="table-body">
-                        <tr><td colspan="11" style="text-align:center; padding:48px; color:var(--text-tertiary);">Loading live data...</td></tr>
+                        <tr><td colspan="12" style="text-align:center; padding:48px; color:var(--text-tertiary);">Loading live data...</td></tr>
                     </tbody>
                 </table>
             </div>

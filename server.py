@@ -10,17 +10,72 @@ import json
 import os
 import re
 import time
+import threading
 import urllib.request
 import urllib.error
 from html.parser import HTMLParser
 from pathlib import Path
 
 PORT = int(os.environ.get('PORT', 3000))
-CACHE_DURATION = 60  # seconds
+CACHE_DURATION = 120  # seconds (2 min to reduce PSX load)
+FETCH_TIMEOUT = 15    # seconds (increased for Render cold starts)
+FETCH_RETRIES = 3     # retry attempts
+
+# ─── Persistent file cache paths ───
+DATA_DIR = Path(__file__).parent / "cache"
+DATA_DIR.mkdir(exist_ok=True)
+STOCK_CACHE_FILE = DATA_DIR / "stocks_cache.json"
+INDEX_CACHE_FILE = DATA_DIR / "index_cache.json"
 
 # ─── Simple in-memory cache ───
 stock_cache = {"data": None, "timestamp": 0}
 index_cache = {"data": None, "timestamp": 0}
+
+
+def load_file_cache(filepath):
+    """Load cached data from a JSON file."""
+    try:
+        if filepath.exists():
+            with open(filepath, "r") as f:
+                cached = json.load(f)
+                print(f"[PSX] Loaded file cache from {filepath.name} ({len(cached.get('data', []))} items)")
+                return cached
+    except Exception as e:
+        print(f"[PSX] Could not load file cache {filepath.name}: {e}")
+    return None
+
+
+def save_file_cache(filepath, data, timestamp):
+    """Save data to a JSON file cache."""
+    try:
+        with open(filepath, "w") as f:
+            json.dump({"data": data, "timestamp": timestamp}, f)
+        print(f"[PSX] Saved file cache to {filepath.name}")
+    except Exception as e:
+        print(f"[PSX] Could not save file cache {filepath.name}: {e}")
+
+
+# Load file caches on startup (survives Render sleep/wake within same deploy)
+_stock_file = load_file_cache(STOCK_CACHE_FILE)
+if _stock_file:
+    stock_cache = {"data": _stock_file["data"], "timestamp": _stock_file.get("timestamp", 0)}
+
+_index_file = load_file_cache(INDEX_CACHE_FILE)
+if _index_file:
+    index_cache = {"data": _index_file["data"], "timestamp": _index_file.get("timestamp", 0)}
+
+# ─── Financials Cache ───
+FINANCIALS_FILE = Path(__file__).parent / "financials.json"
+financials_cache = {}
+try:
+    if FINANCIALS_FILE.exists():
+        with open(FINANCIALS_FILE, "r") as f:
+            financials_cache = json.load(f)
+            print(f"[PSX] Loaded financials for {len(financials_cache)} companies.")
+except Exception as e:
+    print(f"[PSX] Could not load financials.json: {e}")
+
+# Start background thread removed to prevent rate limiting from PSX
 
 # ─── PSX Sector Code Mapping ───
 SECTOR_MAP = {
@@ -174,6 +229,17 @@ class PSXScreenerParser(HTMLParser):
 
         if price <= 0:
             return
+            
+        # Get latest annual revenue from cache
+        rev_history = financials_cache.get(symbol, {})
+        latest_rev = 0.0
+        if rev_history:
+            # Sort years descending and pick the latest valid one
+            years = sorted(rev_history.keys(), reverse=True)
+            for y in years:
+                if rev_history[y] > 0:
+                    latest_rev = rev_history[y]
+                    break
 
         self.stocks.append({
             "symbol": symbol,
@@ -185,6 +251,7 @@ class PSXScreenerParser(HTMLParser):
             "change": change_pct,
             "yearChange": year_change,
             "mcap": market_cap,
+            "revenue": latest_rev, # Added Revenue
             "pe": pe_ratio,
             "divYield": div_yield,
             "freeFloat": free_float,
@@ -262,59 +329,90 @@ def parse_index_data(html):
 
 # ─── Fetch helpers ───
 def fetch_url(url):
-    """Fetch URL content with proper headers."""
+    """Fetch URL content with proper headers and retry logic."""
     req = urllib.request.Request(url, headers={
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        "Accept": "text/html,application/xhtml+xml",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity",
+        "Connection": "keep-alive",
     })
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return resp.read().decode("utf-8", errors="replace")
+    last_error = None
+    for attempt in range(1, FETCH_RETRIES + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT) as resp:
+                return resp.read().decode("utf-8", errors="replace")
+        except Exception as e:
+            last_error = e
+            print(f"[PSX] Fetch attempt {attempt}/{FETCH_RETRIES} failed for {url}: {e}")
+            if attempt < FETCH_RETRIES:
+                time.sleep(2 * attempt)  # exponential backoff
+    raise last_error
 
 
 def fetch_stock_data():
-    """Fetch and parse stock data from PSX screener page."""
+    """Fetch and parse stock data from PSX screener page.
+    Falls back to file-cached data if PSX is unreachable."""
     global stock_cache
     now = time.time()
     if stock_cache["data"] and (now - stock_cache["timestamp"]) < CACHE_DURATION:
-        return stock_cache["data"]
+        return stock_cache["data"], False  # data, is_stale
 
-    print("[PSX] Fetching live stock data from dps.psx.com.pk/screener...")
-    html = fetch_url("https://dps.psx.com.pk/screener")
+    try:
+        print("[PSX] Fetching live stock data from dps.psx.com.pk/screener...")
+        html = fetch_url("https://dps.psx.com.pk/screener")
 
-    parser = PSXScreenerParser()
-    parser.feed(html)
+        parser = PSXScreenerParser()
+        parser.feed(html)
 
-    print(f"[PSX] Parsed {len(parser.stocks)} stocks from PSX screener.")
-    stock_cache = {"data": parser.stocks, "timestamp": now}
-    return parser.stocks
+        if parser.stocks:
+            print(f"[PSX] Parsed {len(parser.stocks)} stocks from PSX screener.")
+            stock_cache = {"data": parser.stocks, "timestamp": now}
+            save_file_cache(STOCK_CACHE_FILE, parser.stocks, now)
+            return parser.stocks, False
+        else:
+            print("[PSX] WARNING: Parsed 0 stocks from PSX. Using cached data.")
+            raise ValueError("Empty response from PSX")
+    except Exception as e:
+        print(f"[PSX] Live fetch failed: {e}. Falling back to cache.")
+        if stock_cache["data"]:
+            return stock_cache["data"], True  # stale
+        raise  # no cache at all, propagate error
 
 
 def fetch_index_data():
-    """Fetch and parse index data from PSX homepage."""
+    """Fetch and parse index data from PSX homepage.
+    Falls back to file-cached data if PSX is unreachable."""
     global index_cache
     now = time.time()
     if index_cache["data"] and (now - index_cache["timestamp"]) < CACHE_DURATION:
-        return index_cache["data"]
+        return index_cache["data"], False
 
-    print("[PSX] Fetching index data from dps.psx.com.pk...")
-    html = fetch_url("https://dps.psx.com.pk/")
+    try:
+        print("[PSX] Fetching index data from dps.psx.com.pk...")
+        html = fetch_url("https://dps.psx.com.pk/")
 
-    indices, market_state, market_volume, market_value = parse_index_data(html)
+        indices, market_state, market_volume, market_value = parse_index_data(html)
 
-    result = {
-        "indices": indices,
-        "market": {
-            "state": market_state,
-            "volume": market_volume,
-            "value": market_value,
-        },
-        "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    }
+        result = {
+            "indices": indices,
+            "market": {
+                "state": market_state,
+                "volume": market_volume,
+                "value": market_value,
+            },
+            "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
 
-    print(f"[PSX] Parsed {len(indices)} indices. Market: {market_state}")
-    index_cache = {"data": result, "timestamp": now}
-    return result
+        print(f"[PSX] Parsed {len(indices)} indices. Market: {market_state}")
+        index_cache = {"data": result, "timestamp": now}
+        save_file_cache(INDEX_CACHE_FILE, result, now)
+        return result, False
+    except Exception as e:
+        print(f"[PSX] Index fetch failed: {e}. Falling back to cache.")
+        if index_cache["data"]:
+            return index_cache["data"], True
+        raise
 
 
 # ─── Fetch helpers ───
@@ -376,6 +474,10 @@ def fetch_company_data(symbol):
                 "link": link
             })
             
+    # Also attach the revenue history from cache if available
+    if symbol in financials_cache:
+        data["revenueHistory"] = financials_cache[symbol]
+            
     return data
 
 
@@ -420,36 +522,26 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
 
     def _handle_stocks(self):
         try:
-            stocks = fetch_stock_data()
+            stocks, is_stale = fetch_stock_data()
+            cache_ts = stock_cache["timestamp"] or time.time()
             self._send_json({
                 "success": True,
                 "count": len(stocks),
-                "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stock_cache["timestamp"])),
+                "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(cache_ts)),
+                "stale": is_stale,
                 "data": stocks,
             })
         except Exception as e:
             print(f"[PSX] Error fetching stocks: {e}")
-            if stock_cache["data"]:
-                self._send_json({
-                    "success": True,
-                    "count": len(stock_cache["data"]),
-                    "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stock_cache["timestamp"])),
-                    "stale": True,
-                    "data": stock_cache["data"],
-                })
-            else:
-                self._send_json({"success": False, "error": str(e)}, 500)
+            self._send_json({"success": False, "error": str(e)}, 500)
 
     def _handle_indices(self):
         try:
-            data = fetch_index_data()
-            self._send_json({"success": True, **data})
+            data, is_stale = fetch_index_data()
+            self._send_json({"success": True, "stale": is_stale, **data})
         except Exception as e:
             print(f"[PSX] Error fetching indices: {e}")
-            if index_cache["data"]:
-                self._send_json({"success": True, "stale": True, **index_cache["data"]})
-            else:
-                self._send_json({"success": False, "error": str(e)}, 500)
+            self._send_json({"success": False, "error": str(e)}, 500)
 
     def _handle_company(self, symbol):
         if not symbol:
@@ -474,13 +566,21 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
 
     def log_message(self, format, *args):
         # Only log API requests, not static files
-        if "/api/" in (args[0] if args else ""):
+        try:
+            req_line = self.requestline if hasattr(self, 'requestline') else ""
+            if "/api/" in req_line:
+                super().log_message(format, *args)
+        except Exception:
             super().log_message(format, *args)
 
 
 # ─── Main ───
 if __name__ == "__main__":
-    server = http.server.HTTPServer(("", PORT), PSXHandler)
+    # Use ThreadingHTTPServer so that multiple requests don't block each other
+    if hasattr(http.server, 'ThreadingHTTPServer'):
+        server = http.server.ThreadingHTTPServer(("", PORT), PSXHandler)
+    else:
+        server = http.server.HTTPServer(("", PORT), PSXHandler)
     print(f"\n  🚀 PSX Stock Screener is running!")
     print(f"  📊 Open http://localhost:{PORT} in your browser")
     print(f"  📡 Live data from dps.psx.com.pk")

@@ -109,6 +109,19 @@ function formatMcap(mcap) {
     return mcap.toFixed(0);
 }
 
+function formatCurrency(val) {
+    if (val === undefined || val === null || val === 0) return "-";
+    if (Math.abs(val) >= 1e9) return (val / 1e9).toFixed(2) + "B";
+    if (Math.abs(val) >= 1e6) return (val / 1e6).toFixed(2) + "M";
+    if (Math.abs(val) >= 1e3) return (val / 1e3).toFixed(2) + "K";
+    return val.toFixed(2);
+}
+
+function formatRevenue(val) {
+    if (!val) return `<span class="muted">N/A</span>`;
+    return formatCurrency(val);
+}
+
 function formatVolume(vol) {
     if (!vol || vol <= 0) return "0";
     if (vol >= 1e6) return (vol / 1e6).toFixed(1) + "M";
@@ -151,6 +164,13 @@ async function fetchLiveData() {
             updateMarketOverview(indexData, stockData);
             updateLastUpdated(stockData.fetchedAt);
             renderAll();
+
+            // Show stale data banner if serving cached data
+            if (stockData.stale) {
+                showStaleBanner(stockData.fetchedAt);
+            } else {
+                hideStaleBanner();
+            }
         } else {
             showError('Failed to load stock data. Please try again.');
         }
@@ -188,8 +208,43 @@ function setRefreshBtnSpinning(spinning) {
 function showError(message) {
     const tbody = document.getElementById('table-body');
     if (tbody && STOCKS.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:48px; color:var(--accent-rose);">${message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:48px; color:var(--accent-rose);">${message}</td></tr>`;
     }
+}
+
+function timeAgo(dateStr) {
+    if (!dateStr) return '';
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ${mins % 60}m ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ${hrs % 24}h ago`;
+}
+
+function showStaleBanner(fetchedAt) {
+    let banner = document.getElementById('stale-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'stale-banner';
+        banner.style.cssText = 'background:linear-gradient(135deg,#f59e0b22,#f59e0b11);border:1px solid #f59e0b44;color:#f59e0b;padding:10px 20px;border-radius:10px;margin:0 auto 16px;max-width:900px;text-align:center;font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px;';
+        const main = document.querySelector('.main-content') || document.querySelector('.container') || document.body;
+        const firstChild = main.querySelector('.filters-section, .table-container, table');
+        if (firstChild) {
+            main.insertBefore(banner, firstChild);
+        } else {
+            main.appendChild(banner);
+        }
+    }
+    banner.innerHTML = `⚠️ Showing cached data from <strong>${timeAgo(fetchedAt)}</strong> — PSX source temporarily unavailable. Data will refresh automatically when available.`;
+    banner.style.display = 'flex';
+}
+
+function hideStaleBanner() {
+    const banner = document.getElementById('stale-banner');
+    if (banner) banner.style.display = 'none';
 }
 
 // ─── Update UI from live data ───
@@ -296,6 +351,7 @@ function getFilteredStocks() {
     const changeMin = parseFloat(document.getElementById("filter-change").value);
     const yearChangeMin = parseFloat(document.getElementById("filter-year-change").value);
     const volumeMin = parseFloat(document.getElementById("filter-volume").value);
+    const rev = document.getElementById("filter-revenue") ? document.getElementById("filter-revenue").value : "all";
 
     return STOCKS.filter(stock => {
         // Search filter
@@ -325,6 +381,13 @@ function getFilteredStocks() {
         if (changeMin > -10 && stock.change < changeMin) return false;
         if (yearChangeMin > -100 && stock.yearChange < yearChangeMin) return false;
         if (volumeMin > 0 && stock.volume < volumeMin) return false;
+
+        if (rev !== "all") {
+            const r = stock.revenue || 0;
+            if (rev === "high" && r < 50e9) return false;
+            if (rev === "med" && (r < 10e9 || r >= 50e9)) return false;
+            if (rev === "low" && r >= 10e9) return false;
+        }
 
         return true;
     }).map(stock => ({
@@ -362,9 +425,10 @@ function renderTable(stocks) {
         return `
         <tr class="row-animate" style="animation-delay:${Math.min(i * 0.02, 1)}s" data-symbol="${stock.symbol}">
             <td><button class="star-btn ${isWatched ? "active" : ""}" data-star="${stock.symbol}" title="Toggle Watchlist">${isWatched ? "★" : "☆"}</button></td>
-            <td><span class="cell-symbol">${stock.symbol}<span class="cell-name">${stock.name}</span></span></td>
-            <td><span class="cell-sector">${stock.sector}</span></td>
-            <td class="cell-price">${formatPrice(stock.price)}</td>
+            <td onclick="showDetail('${stock.symbol}')">${stock.symbol} ${stock.isNC ? '<span class="nc-tag">NC</span>' : ''}</td>
+            <td><span class="sector-pill">${stock.sector}</span></td>
+            <td>${formatRevenue(stock.revenue)}</td>
+            <td style="font-weight:600;">Rs ${stock.price.toFixed(2)}</td>
             <td class="cell-change ${changeClass}">${formatChange(stock.change)}</td>
             <td class="cell-change ${yearChangeClass}">${formatChange(stock.yearChange)}</td>
             <td class="cell-mcap">${formatMcap(stock.mcap)}</td>
@@ -704,6 +768,22 @@ async function showDetail(symbol) {
             }
             html += `</div></div>`;
             
+            if (data.revenueHistory && Object.keys(data.revenueHistory).length > 0) {
+                const years = Object.keys(data.revenueHistory).sort();
+                html += `<div class="company-financials" style="margin-top: 16px;">
+                    <h4>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        Annual Revenue History
+                    </h4>
+                    <table class="data-table" style="margin-top:8px;">
+                        <thead><tr><th>Year</th><th style="text-align:right">Revenue (PKR)</th></tr></thead>
+                        <tbody>`;
+                years.reverse().slice(0, 5).forEach(year => {
+                    html += `<tr><td>${year}</td><td style="text-align:right">${formatCurrency(data.revenueHistory[year])}</td></tr>`;
+                });
+                html += `</tbody></table></div>`;
+            }
+
             if (data.announcements && data.announcements.length > 0) {
                 html += `<div class="news-timeline">
                     <h4>
@@ -766,6 +846,7 @@ function exportCSV() {
 
 // ─── Presets ───
 const PRESETS = {
+    topvolume: { sector: "all", index: "all", mcap: "all", pe: 50, div: 0, change: -10, yearChange: -100, volume: 0 },
     bluechip: { sector: "all", index: "KSE100", mcap: "all", pe: 50, div: 0, change: -10, yearChange: -100, volume: 100000 },
     dividend: { sector: "all", index: "all", mcap: "all", pe: 50, div: 5, change: -10, yearChange: -100, volume: 0 },
     growth: { sector: "all", index: "all", mcap: "all", pe: 50, div: 0, change: -10, yearChange: 20, volume: 50000 },
@@ -785,8 +866,17 @@ function applyPreset(name) {
     document.getElementById("filter-change").value = preset.change;
     document.getElementById("filter-year-change").value = preset.yearChange;
     document.getElementById("filter-volume").value = preset.volume;
+    if (document.getElementById("filter-revenue")) document.getElementById("filter-revenue").value = "all";
 
     updateRangeLabels();
+
+    if (name === "topvolume") {
+        currentSort = { key: "volume", direction: "desc" };
+        document.querySelectorAll(".sortable").forEach(h => h.classList.remove("sorted-asc", "sorted-desc"));
+        const th = document.querySelector('[data-sort="volume"]');
+        if (th) th.classList.add("sorted-desc");
+    }
+
     renderAll();
 
     document.querySelectorAll(".preset-chip").forEach(c => c.classList.remove("active"));
@@ -805,6 +895,7 @@ function resetFilters() {
     document.getElementById("filter-volume").value = 0;
     searchQuery = "";
     document.getElementById("search-input").value = "";
+    if (document.getElementById("filter-revenue")) document.getElementById("filter-revenue").value = "all";
 
     updateRangeLabels();
     renderAll();
@@ -839,14 +930,17 @@ function switchView(view) {
 // ─── Event Listeners ───
 function initEventListeners() {
     // Filters
-    const filterElements = ["filter-sector", "filter-index", "filter-mcap", "filter-pe", "filter-div", "filter-change", "filter-year-change", "filter-volume"];
+    const filterElements = ["filter-sector", "filter-index", "filter-mcap", "filter-pe", "filter-div", "filter-change", "filter-year-change", "filter-volume", "filter-revenue"];
     filterElements.forEach(id => {
-        document.getElementById(id).addEventListener("input", () => {
-            updateRangeLabels();
-            renderAll();
-            document.querySelectorAll(".preset-chip").forEach(c => c.classList.remove("active"));
-            activePreset = null;
-        });
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener("input", () => {
+                updateRangeLabels();
+                renderAll();
+                document.querySelectorAll(".preset-chip").forEach(c => c.classList.remove("active"));
+                activePreset = null;
+            });
+        }
     });
 
     // Search
