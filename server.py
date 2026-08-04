@@ -18,14 +18,15 @@ from pathlib import Path
 
 PORT = int(os.environ.get('PORT', 3000))
 CACHE_DURATION = 120  # seconds (2 min to reduce PSX load)
-FETCH_TIMEOUT = 15    # seconds (increased for Render cold starts)
-FETCH_RETRIES = 3     # retry attempts
+FETCH_TIMEOUT = 8     # seconds (balanced for Render)
+FETCH_RETRIES = 2     # retry attempts (faster fallback to cache)
 
 # ─── Persistent file cache paths ───
 DATA_DIR = Path(__file__).parent / "cache"
 DATA_DIR.mkdir(exist_ok=True)
 STOCK_CACHE_FILE = DATA_DIR / "stocks_cache.json"
 INDEX_CACHE_FILE = DATA_DIR / "index_cache.json"
+SNAPSHOT_FILE = Path(__file__).parent / "data_snapshot.json"
 
 # ─── Simple in-memory cache ───
 stock_cache = {"data": None, "timestamp": 0}
@@ -55,7 +56,7 @@ def save_file_cache(filepath, data, timestamp):
         print(f"[PSX] Could not save file cache {filepath.name}: {e}")
 
 
-# Load file caches on startup (survives Render sleep/wake within same deploy)
+# Load caches on startup — try file cache first, then bundled snapshot as fallback
 _stock_file = load_file_cache(STOCK_CACHE_FILE)
 if _stock_file:
     stock_cache = {"data": _stock_file["data"], "timestamp": _stock_file.get("timestamp", 0)}
@@ -63,6 +64,17 @@ if _stock_file:
 _index_file = load_file_cache(INDEX_CACHE_FILE)
 if _index_file:
     index_cache = {"data": _index_file["data"], "timestamp": _index_file.get("timestamp", 0)}
+
+# Ultimate fallback: bundled snapshot (committed to repo, survives all restarts)
+if not stock_cache["data"] and SNAPSHOT_FILE.exists():
+    try:
+        with open(SNAPSHOT_FILE, "r") as f:
+            snapshot = json.load(f)
+            if snapshot.get("data"):
+                stock_cache = {"data": snapshot["data"], "timestamp": snapshot.get("timestamp", 0)}
+                print(f"[PSX] Loaded bundled snapshot: {len(snapshot['data'])} stocks")
+    except Exception as e:
+        print(f"[PSX] Could not load snapshot: {e}")
 
 # ─── Financials Cache ───
 FINANCIALS_FILE = Path(__file__).parent / "financials.json"
