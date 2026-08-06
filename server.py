@@ -546,6 +546,191 @@ def fetch_company_data(symbol):
     return data
 
 
+def calculate_upper_lock_analysis(stocks):
+    locked = []
+    predicted = []
+    
+    # Pre-calculate sector averages
+    sector_sums = {}
+    sector_counts = {}
+    for s in stocks:
+        sec = s.get("sector")
+        change = s.get("change", 0.0)
+        if sec:
+            sector_sums[sec] = sector_sums.get(sec, 0.0) + change
+            sector_counts[sec] = sector_counts.get(sec, 0) + 1
+            
+    sector_avgs = {sec: sector_sums[sec] / sector_counts[sec] for sec in sector_sums}
+
+    for s in stocks:
+        change = s.get("change", 0.0)
+        volume = s.get("volume", 0)
+        free_float = s.get("freeFloat", 0)
+        year_change = s.get("yearChange", 0.0)
+        mcap = s.get("mcap", 0)
+        sector = s.get("sector", "Other")
+        
+        # Check if locked
+        is_locked = False
+        lock_level = None
+        
+        if (4.7 <= change <= 5.3):
+            is_locked = True
+            lock_level = 5.0
+        elif (7.2 <= change <= 7.8):
+            is_locked = True
+            lock_level = 7.5
+        elif (change >= 9.7):
+            is_locked = True
+            lock_level = 10.0
+            
+        if is_locked:
+            locked.append({
+                "symbol": s.get("symbol"),
+                "name": s.get("name"),
+                "sector": sector,
+                "price": s.get("price", 0.0),
+                "change": change,
+                "volume": volume,
+                "mcap": mcap,
+                "lockLevel": lock_level
+            })
+            continue
+            
+        # Predict
+        reasons = []
+        
+        # a) Daily Change Score (30%)
+        dc_score = 0
+        if change >= 4.0:
+            dc_score = 100
+        elif change >= 3.0:
+            dc_score = 85
+        elif change >= 2.0:
+            dc_score = 70
+        elif change >= 1.0:
+            dc_score = 50
+        elif change >= 0.0:
+            dc_score = 25
+        else:
+            dc_score = 0
+            
+        if dc_score > 50:
+            reasons.append(f"Strong daily momentum (+{change}%)")
+            
+        # b) Volume Score (25%)
+        vol_score = 0
+        if volume >= 5_000_000:
+            vol_score = 100
+        elif volume >= 1_000_000:
+            vol_score = 85
+        elif volume >= 500_000:
+            vol_score = 70
+        elif volume >= 100_000:
+            vol_score = 50
+        elif volume >= 50_000:
+            vol_score = 25
+        else:
+            vol_score = 5
+            
+        if vol_score > 50:
+            formatted_vol = f"{volume/1_000_000:.1f}M" if volume >= 1_000_000 else f"{volume/1000:.0f}K"
+            reasons.append(f"High volume surge ({formatted_vol} shares)")
+            
+        # c) Free Float Score (15%)
+        ff_score = 0
+        if free_float <= 1_000_000:
+            ff_score = 100
+        elif free_float <= 5_000_000:
+            ff_score = 80
+        elif free_float <= 20_000_000:
+            ff_score = 60
+        elif free_float <= 50_000_000:
+            ff_score = 40
+        elif free_float <= 100_000_000:
+            ff_score = 20
+        else:
+            ff_score = 5
+            
+        if ff_score > 50:
+            formatted_ff = f"{free_float/1_000_000:.1f}M" if free_float >= 1_000_000 else f"{free_float/1000:.0f}K"
+            reasons.append(f"Low free float ({formatted_ff} shares)")
+            
+        # d) Year Change Score (10%)
+        yc_score = 0
+        if year_change >= 100.0:
+            yc_score = 100
+        elif year_change >= 50.0:
+            yc_score = 80
+        elif year_change >= 25.0:
+            yc_score = 60
+        elif year_change >= 10.0:
+            yc_score = 40
+        elif year_change >= 0.0:
+            yc_score = 20
+        else:
+            yc_score = 0
+            
+        if yc_score > 50:
+            reasons.append(f"Strong yearly momentum (+{year_change}%)")
+            
+        # e) Market Cap Score (10%)
+        mc_score = 0
+        if mcap <= 500_000_000:
+            mc_score = 100
+        elif mcap <= 2_000_000_000:
+            mc_score = 80
+        elif mcap <= 10_000_000_000:
+            mc_score = 60
+        elif mcap <= 50_000_000_000:
+            mc_score = 40
+        elif mcap <= 200_000_000_000:
+            mc_score = 20
+        else:
+            mc_score = 5
+            
+        if mc_score > 50:
+            formatted_mcap = f"{mcap/1_000_000_000:.1f}B" if mcap >= 1_000_000_000 else f"{mcap/1_000_000:.0f}M"
+            reasons.append(f"Small cap stock (MCap: {formatted_mcap})")
+            
+        # f) Sector Momentum Score (10%)
+        sm_score = 0
+        sec_avg = sector_avgs.get(sector, 0.0)
+        if sec_avg >= 3.0:
+            sm_score = 100
+        elif sec_avg >= 2.0:
+            sm_score = 80
+        elif sec_avg >= 1.0:
+            sm_score = 60
+        elif sec_avg >= 0.0:
+            sm_score = 30
+        else:
+            sm_score = 0
+            
+        if sm_score > 50:
+            reasons.append(f"Sector rally ({sector} avg +{sec_avg:.1f}%)")
+            
+        probability = (dc_score * 0.30) + (vol_score * 0.25) + (ff_score * 0.15) + (yc_score * 0.10) + (mc_score * 0.10) + (sm_score * 0.10)
+        probability = min(99, int(probability))
+        
+        predicted.append({
+            "symbol": s.get("symbol"),
+            "name": s.get("name"),
+            "sector": sector,
+            "price": s.get("price", 0.0),
+            "change": change,
+            "volume": volume,
+            "mcap": mcap,
+            "freeFloat": free_float,
+            "yearChange": year_change,
+            "probability": probability,
+            "reasons": reasons
+        })
+        
+    predicted.sort(key=lambda x: x["probability"], reverse=True)
+    return locked, predicted[:50]
+
+
 # ─── HTTP Request Handler ───
 class PSXHandler(http.server.SimpleHTTPRequestHandler):
     """Custom handler for API routes + static file serving."""
@@ -566,6 +751,8 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             query = parse_qs(parsed_path.query)
             symbol = query.get("symbol", [""])[0]
             self._handle_company(symbol)
+        elif parsed_path.path == "/api/upper-lock-analysis":
+            self._handle_upper_lock_analysis()
         else:
             # Serve static files
             super().do_GET()
@@ -624,6 +811,21 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json({"success": True, "data": data})
         except Exception as e:
             print(f"[PSX] Error fetching company profile for {symbol}: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_upper_lock_analysis(self):
+        try:
+            stocks, is_stale = fetch_stock_data()
+            locked, predicted = calculate_upper_lock_analysis(stocks)
+            self._send_json({
+                "success": True,
+                "locked": locked,
+                "predicted": predicted,
+                "totalAnalyzed": len(stocks),
+                "disclaimer": "This analysis is based on historical price patterns and technical indicators. It is a probability-based forecast and should not be considered financial advice or a guarantee of future performance."
+            })
+        except Exception as e:
+            print(f"[PSX] Error in upper lock analysis: {e}")
             self._send_json({"success": False, "error": str(e)}, 500)
 
     def _handle_refresh(self):

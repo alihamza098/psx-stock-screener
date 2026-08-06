@@ -58,6 +58,10 @@
                     </svg>
                     Refresh
                 </button>
+                <button class="btn btn-upper-lock" id="btn-upper-lock" title="Upper Lock Analysis">
+                    <svg class="lock-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                    Upper Lock
+                </button>
                 <button class="btn btn-ghost" id="btn-watchlist-toggle" title="View Watchlist">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
                     <span class="watchlist-count" id="watchlist-count">0</span>
@@ -340,6 +344,52 @@
             </div>
         </div>
     </main>
+
+    <!-- Upper Lock Analysis Modal -->
+    <div class="upper-lock-modal" id="upper-lock-modal">
+        <div class="upper-lock-content">
+            <div class="upper-lock-header">
+                <h2 class="upper-lock-title">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                    Upper Lock Analysis
+                </h2>
+                <div class="upper-lock-controls">
+                    <select class="filter-select upper-lock-sort" id="upper-lock-sort">
+                        <option value="probability">Sort by Probability</option>
+                        <option value="change">Sort by Change %</option>
+                        <option value="volume">Sort by Volume</option>
+                        <option value="mcap">Sort by Market Cap</option>
+                    </select>
+                    <button class="upper-lock-close" id="upper-lock-close" title="Close">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="upper-lock-disclaimer">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span>This analysis is a <strong>probability-based forecast</strong> based on technical indicators and price patterns. It is <strong>not financial advice</strong> and does not guarantee future performance.</span>
+            </div>
+
+            <div class="upper-lock-body" id="upper-lock-body">
+                <!-- Loading state -->
+                <div class="upper-lock-loading" id="upper-lock-loading">
+                    <div class="loading-spinner">
+                        <svg viewBox="0 0 50 50">
+                            <circle cx="25" cy="25" r="20" fill="none" stroke="url(#spinGrad)" stroke-width="4" stroke-linecap="round" stroke-dasharray="80 200" stroke-dashoffset="0">
+                                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/>
+                            </circle>
+                        </svg>
+                    </div>
+                    <div class="loading-text">Analyzing 700+ stocks...</div>
+                    <div class="loading-subtext">Computing upper lock probabilities</div>
+                </div>
+
+                <!-- Results (populated by JS) -->
+                <div id="upper-lock-results" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- Footer -->
     <footer id="app-footer">

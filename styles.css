@@ -1710,3 +1710,507 @@ body {
     color: var(--accent-cyan);
     text-decoration: underline;
 }
+
+/* ========================================================================
+   Upper Lock Analysis Feature
+   ======================================================================== */
+
+/* --- Upper Lock Button (Header) --- */
+.btn-upper-lock {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #fff;
+    border: none;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+}
+
+.btn-upper-lock:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+}
+
+.btn-upper-lock .lock-icon {
+    animation: lockPulse 2s infinite;
+}
+
+/* --- Upper Lock Modal --- */
+.upper-lock-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-md);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.upper-lock-modal.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.upper-lock-modal.active .upper-lock-content {
+    animation: modalFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* --- Modal Content --- */
+.upper-lock-content {
+    width: 100%;
+    max-width: 1200px;
+    max-height: 90vh;
+    background: var(--gradient-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg), 0 0 40px rgba(245, 158, 11, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: scale(0.95);
+    opacity: 0;
+}
+
+.upper-lock-content-scroll {
+    overflow-y: auto;
+    padding: var(--space-xl);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
+}
+
+.upper-lock-content-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.upper-lock-content-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.upper-lock-content-scroll::-webkit-scrollbar-thumb {
+    background: var(--border-medium);
+    border-radius: var(--radius-full);
+}
+
+/* --- Modal Header --- */
+.upper-lock-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-lg) var(--space-xl);
+    border-bottom: 1px solid var(--border-subtle);
+    background: rgba(10, 14, 26, 0.6);
+}
+
+.upper-lock-header h2 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 1.5rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.upper-lock-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: var(--space-xs);
+    border-radius: var(--radius-md);
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.upper-lock-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+/* --- Disclaimer Banner --- */
+.upper-lock-disclaimer {
+    background: rgba(245, 158, 11, 0.1);
+    border-left: 3px solid #f59e0b;
+    padding: var(--space-md);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    margin-bottom: var(--space-xl);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-md);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.upper-lock-disclaimer svg {
+    color: #f59e0b;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+/* --- Section Headers --- */
+.upper-lock-section-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.upper-lock-section-title .count-badge {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+}
+
+.section-locked {
+    color: var(--positive);
+    border-bottom-color: rgba(34, 197, 94, 0.2);
+}
+
+.section-predicted {
+    color: var(--accent-amber);
+    border-bottom-color: rgba(245, 158, 11, 0.2);
+    margin-top: var(--space-xl);
+}
+
+/* --- Locked Stock Cards --- */
+.locked-stocks-container {
+    display: flex;
+    gap: var(--space-md);
+    overflow-x: auto;
+    padding-bottom: var(--space-md);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
+}
+
+.locked-stocks-container::-webkit-scrollbar {
+    height: 6px;
+}
+
+.locked-stocks-container::-webkit-scrollbar-thumb {
+    background: var(--border-medium);
+    border-radius: var(--radius-full);
+}
+
+.locked-stock-card {
+    min-width: 240px;
+    background: rgba(17, 24, 39, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md);
+    box-shadow: 0 0 15px rgba(34, 197, 94, 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.locked-stock-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(34, 197, 94, 0.2);
+}
+
+.locked-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.locked-symbol {
+    font-size: 1.2rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.locked-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: var(--radius-full);
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--positive);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    animation: lockPulse 2s infinite;
+}
+
+.locked-price-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+    margin-top: var(--space-xs);
+}
+
+.locked-price {
+    font-size: 1.1rem;
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+.locked-change {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--positive);
+}
+
+/* --- Predicted Stock Cards --- */
+.predicted-stocks-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.predicted-stock-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md) var(--space-lg);
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    transition: all 0.2s ease;
+}
+
+.predicted-stock-card:hover {
+    background: var(--bg-card-hover);
+    border-color: rgba(245, 158, 11, 0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2), 0 0 10px rgba(245, 158, 11, 0.05);
+}
+
+.predicted-rank {
+    font-size: 1.5rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    color: var(--border-medium);
+    min-width: 40px;
+}
+
+.predicted-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.predicted-symbol {
+    font-size: 1.1rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.predicted-name {
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+}
+
+.predicted-metrics {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    min-width: 200px;
+}
+
+.metric-col {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.metric-label {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+}
+
+.metric-value {
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+.predicted-probability {
+    min-width: 150px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.probability-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.probability-label {
+    color: var(--text-secondary);
+}
+
+.probability-value {
+    color: var(--accent-amber);
+    font-family: var(--font-mono);
+}
+
+/* --- Probability Bar --- */
+.probability-bar-container {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+.probability-bar {
+    height: 100%;
+    border-radius: var(--radius-full);
+    background: linear-gradient(90deg, #f59e0b, #22c55e);
+    transition: width 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* --- Reason Chips --- */
+.predicted-reasons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    flex: 1.5;
+}
+
+.reason-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.reason-chip.bullish {
+    border-color: rgba(34, 197, 94, 0.2);
+    color: var(--positive);
+}
+
+.reason-chip.volume {
+    border-color: rgba(96, 165, 250, 0.2);
+    color: var(--accent-blue);
+}
+
+.reason-chip.technical {
+    border-color: rgba(167, 139, 250, 0.2);
+    color: var(--accent-violet);
+}
+
+/* --- Loading / Empty States --- */
+.upper-lock-loading,
+.upper-lock-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-2xl) 0;
+    color: var(--text-tertiary);
+    gap: var(--space-md);
+}
+
+.upper-lock-empty svg {
+    width: 48px;
+    height: 48px;
+    opacity: 0.5;
+}
+
+/* --- Sort Dropdown --- */
+.upper-lock-sort {
+    margin-left: auto;
+    margin-right: var(--space-md);
+    background-color: var(--bg-input);
+}
+
+/* --- Animations --- */
+@keyframes lockPulse {
+    0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+    70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* --- Responsive Design --- */
+@media (max-width: 768px) {
+    .upper-lock-modal {
+        padding: 0;
+    }
+    
+    .upper-lock-content {
+        max-height: 100vh;
+        height: 100vh;
+        border-radius: 0;
+        border: none;
+    }
+    
+    .upper-lock-header {
+        padding: var(--space-md);
+        flex-wrap: wrap;
+        gap: var(--space-md);
+    }
+    
+    .upper-lock-sort {
+        margin: 0;
+        width: 100%;
+        order: 3;
+    }
+    
+    .upper-lock-content-scroll {
+        padding: var(--space-md);
+    }
+    
+    .predicted-stock-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-md);
+        padding: var(--space-md);
+    }
+    
+    .predicted-metrics {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .predicted-probability {
+        width: 100%;
+    }
+    
+    .predicted-reasons {
+        width: 100%;
+    }
+    
+    .locked-stock-card {
+        min-width: 200px;
+    }
+}

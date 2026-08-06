@@ -1054,11 +1054,221 @@ function initEventListeners() {
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
             document.querySelectorAll(".modal-overlay").forEach(m => m.style.display = "none");
+            closeUpperLockModal();
         }
     });
 
     // Export
     document.getElementById("btn-export").addEventListener("click", exportCSV);
+
+    // Upper Lock Analysis
+    document.getElementById("btn-upper-lock").addEventListener("click", openUpperLockAnalysis);
+    document.getElementById("upper-lock-close").addEventListener("click", closeUpperLockModal);
+    document.getElementById("upper-lock-modal").addEventListener("click", (e) => {
+        if (e.target.id === "upper-lock-modal") closeUpperLockModal();
+    });
+    document.getElementById("upper-lock-sort").addEventListener("change", (e) => {
+        if (upperLockData) renderUpperLockResults(upperLockData, e.target.value);
+    });
+}
+
+// ─── Upper Lock Analysis ───
+let upperLockData = null;
+
+function openUpperLockAnalysis() {
+    const modal = document.getElementById("upper-lock-modal");
+    modal.classList.add("active");
+    document.body.style.overflow = "hidden";
+
+    // Show loading, hide results
+    document.getElementById("upper-lock-loading").style.display = "flex";
+    document.getElementById("upper-lock-results").style.display = "none";
+    document.getElementById("upper-lock-sort").value = "probability";
+
+    // Fetch analysis
+    fetch("/api/upper-lock-analysis")
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                upperLockData = data;
+                renderUpperLockResults(data, "probability");
+            } else {
+                showUpperLockError(data.error || "Failed to analyze stocks");
+            }
+        })
+        .catch(err => {
+            showUpperLockError("Network error: " + err.message);
+        });
+}
+
+function closeUpperLockModal() {
+    const modal = document.getElementById("upper-lock-modal");
+    modal.classList.remove("active");
+    document.body.style.overflow = "";
+}
+
+function showUpperLockError(message) {
+    document.getElementById("upper-lock-loading").style.display = "none";
+    const results = document.getElementById("upper-lock-results");
+    results.style.display = "block";
+    results.innerHTML = `
+        <div class="upper-lock-empty">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <p>${message}</p>
+        </div>`;
+}
+
+function renderUpperLockResults(data, sortBy) {
+    document.getElementById("upper-lock-loading").style.display = "none";
+    const results = document.getElementById("upper-lock-results");
+    results.style.display = "block";
+
+    // Sort predicted stocks
+    let predicted = [...data.predicted];
+    switch (sortBy) {
+        case "change": predicted.sort((a, b) => b.change - a.change); break;
+        case "volume": predicted.sort((a, b) => b.volume - a.volume); break;
+        case "mcap": predicted.sort((a, b) => b.mcap - a.mcap); break;
+        default: predicted.sort((a, b) => b.probability - a.probability);
+    }
+
+    let html = "";
+
+    // ─── Currently Locked Section ───
+    html += `<div class="upper-lock-section">
+        <h3 class="upper-lock-section-title locked-section">
+            <span class="section-icon">🟢</span>
+            Currently at Upper Lock
+            <span class="section-badge">${data.locked.length}</span>
+        </h3>`;
+
+    if (data.locked.length === 0) {
+        html += `<div class="upper-lock-empty">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+            </svg>
+            <p>No stocks currently at upper lock</p>
+        </div>`;
+    } else {
+        html += `<div class="locked-stocks-row">`;
+        data.locked.forEach(s => {
+            html += `<div class="locked-stock-card">
+                <div class="locked-card-header">
+                    <span class="locked-symbol">${s.symbol}</span>
+                    <span class="locked-badge">🔒 LOCKED</span>
+                </div>
+                <div class="locked-card-name">${s.name}</div>
+                <div class="locked-card-sector">${s.sector}</div>
+                <div class="locked-card-metrics">
+                    <div class="locked-metric">
+                        <span class="metric-label">Price</span>
+                        <span class="metric-value">₨${s.price.toLocaleString("en-PK", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div class="locked-metric">
+                        <span class="metric-label">Change</span>
+                        <span class="metric-value positive">+${s.change.toFixed(2)}%</span>
+                    </div>
+                    <div class="locked-metric">
+                        <span class="metric-label">Volume</span>
+                        <span class="metric-value">${formatVolume(s.volume)}</span>
+                    </div>
+                    <div class="locked-metric">
+                        <span class="metric-label">Lock Level</span>
+                        <span class="metric-value">${s.lockLevel}%</span>
+                    </div>
+                </div>
+            </div>`;
+        });
+        html += `</div>`;
+    }
+    html += `</div>`;
+
+    // ─── Predicted Section ───
+    html += `<div class="upper-lock-section">
+        <h3 class="upper-lock-section-title predicted-section">
+            <span class="section-icon">🔮</span>
+            Predicted Next Session
+            <span class="section-badge">${predicted.length}</span>
+        </h3>`;
+
+    if (predicted.length === 0) {
+        html += `<div class="upper-lock-empty">
+            <p>No stocks predicted for upper lock</p>
+        </div>`;
+    } else {
+        html += `<div class="predicted-stocks-list">`;
+        predicted.forEach((s, i) => {
+            const probColor = s.probability >= 70 ? "#22c55e" : s.probability >= 40 ? "#f59e0b" : "#ef4444";
+            html += `<div class="predicted-stock-card">
+                <div class="predicted-rank" style="color: ${probColor}">#${i + 1}</div>
+                <div class="predicted-info">
+                    <div class="predicted-symbol-row">
+                        <span class="predicted-symbol">${s.symbol}</span>
+                        <span class="predicted-sector-badge">${s.sector}</span>
+                    </div>
+                    <div class="predicted-name">${s.name}</div>
+                </div>
+                <div class="predicted-metrics">
+                    <div class="predicted-metric">
+                        <span class="pm-label">Price</span>
+                        <span class="pm-value">₨${s.price.toLocaleString("en-PK", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div class="predicted-metric">
+                        <span class="pm-label">Change</span>
+                        <span class="pm-value ${s.change >= 0 ? "positive" : "negative"}">${s.change >= 0 ? "+" : ""}${s.change.toFixed(2)}%</span>
+                    </div>
+                    <div class="predicted-metric">
+                        <span class="pm-label">Volume</span>
+                        <span class="pm-value">${formatVolume(s.volume)}</span>
+                    </div>
+                </div>
+                <div class="predicted-probability">
+                    <div class="probability-header">
+                        <span class="probability-label">Probability</span>
+                        <span class="probability-value" style="color: ${probColor}">${s.probability}%</span>
+                    </div>
+                    <div class="probability-bar-container">
+                        <div class="probability-bar" style="width: ${s.probability}%; background: linear-gradient(90deg, #f59e0b, ${probColor})"></div>
+                    </div>
+                </div>
+                <div class="predicted-reasons">
+                    ${s.reasons.map(r => `<span class="reason-chip">${getReasonIcon(r)} ${r}</span>`).join("")}
+                </div>
+            </div>`;
+        });
+        html += `</div>`;
+    }
+    html += `</div>`;
+
+    // Analysis summary
+    html += `<div class="upper-lock-summary">
+        <span>📊 Analyzed <strong>${data.totalAnalyzed}</strong> stocks</span>
+        <span>•</span>
+        <span>🟢 <strong>${data.locked.length}</strong> currently locked</span>
+        <span>•</span>
+        <span>🔮 <strong>${predicted.length}</strong> predicted candidates</span>
+    </div>`;
+
+    results.innerHTML = html;
+}
+
+function getReasonIcon(reason) {
+    if (reason.includes("momentum") || reason.includes("Momentum")) return "📈";
+    if (reason.includes("volume") || reason.includes("Volume")) return "📊";
+    if (reason.includes("free float") || reason.includes("Free float")) return "🔄";
+    if (reason.includes("Sector") || reason.includes("sector")) return "🏭";
+    if (reason.includes("cap") || reason.includes("Cap")) return "💎";
+    if (reason.includes("yearly") || reason.includes("Yearly") || reason.includes("year")) return "🚀";
+    return "⚡";
+}
+
+function formatVolume(vol) {
+    if (vol >= 1e9) return (vol / 1e9).toFixed(1) + "B";
+    if (vol >= 1e6) return (vol / 1e6).toFixed(1) + "M";
+    if (vol >= 1e3) return (vol / 1e3).toFixed(1) + "K";
+    return vol.toFixed(0);
 }
 
 // ─── Initialize ───
