@@ -362,50 +362,32 @@ def fetch_url(url):
     raise last_error
 
 
-def fetch_stock_data():
-    """Fetch and parse stock data from PSX screener page.
-    Falls back to file-cached data if PSX is unreachable."""
+def _do_fetch_stocks():
+    """Background worker: fetch fresh stock data from PSX."""
     global stock_cache
-    now = time.time()
-    if stock_cache["data"] and (now - stock_cache["timestamp"]) < CACHE_DURATION:
-        return stock_cache["data"], False  # data, is_stale
-
     try:
-        print("[PSX] Fetching live stock data from dps.psx.com.pk/screener...")
+        print("[PSX] Background: Fetching live stock data from dps.psx.com.pk/screener...")
         html = fetch_url("https://dps.psx.com.pk/screener")
-
         parser = PSXScreenerParser()
         parser.feed(html)
-
         if parser.stocks:
-            print(f"[PSX] Parsed {len(parser.stocks)} stocks from PSX screener.")
+            now = time.time()
             stock_cache = {"data": parser.stocks, "timestamp": now}
             save_file_cache(STOCK_CACHE_FILE, parser.stocks, now)
-            return parser.stocks, False
+            print(f"[PSX] Background: Updated {len(parser.stocks)} stocks.")
         else:
-            print("[PSX] WARNING: Parsed 0 stocks from PSX. Using cached data.")
-            raise ValueError("Empty response from PSX")
+            print("[PSX] Background: Parsed 0 stocks, keeping cached data.")
     except Exception as e:
-        print(f"[PSX] Live fetch failed: {e}. Falling back to cache.")
-        if stock_cache["data"]:
-            return stock_cache["data"], True  # stale
-        raise  # no cache at all, propagate error
+        print(f"[PSX] Background: Stock fetch failed: {e}")
 
 
-def fetch_index_data():
-    """Fetch and parse index data from PSX homepage.
-    Falls back to file-cached data if PSX is unreachable."""
+def _do_fetch_indices():
+    """Background worker: fetch fresh index data from PSX."""
     global index_cache
-    now = time.time()
-    if index_cache["data"] and (now - index_cache["timestamp"]) < CACHE_DURATION:
-        return index_cache["data"], False
-
     try:
-        print("[PSX] Fetching index data from dps.psx.com.pk...")
+        print("[PSX] Background: Fetching index data from dps.psx.com.pk...")
         html = fetch_url("https://dps.psx.com.pk/")
-
         indices, market_state, market_volume, market_value = parse_index_data(html)
-
         result = {
             "indices": indices,
             "market": {
@@ -415,16 +397,87 @@ def fetch_index_data():
             },
             "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
-
-        print(f"[PSX] Parsed {len(indices)} indices. Market: {market_state}")
+        now = time.time()
         index_cache = {"data": result, "timestamp": now}
         save_file_cache(INDEX_CACHE_FILE, result, now)
-        return result, False
+        print(f"[PSX] Background: Updated {len(indices)} indices. Market: {market_state}")
     except Exception as e:
-        print(f"[PSX] Index fetch failed: {e}. Falling back to cache.")
+        print(f"[PSX] Background: Index fetch failed: {e}")
+
+
+# Track if a background refresh is already running
+_refresh_lock = threading.Lock()
+_refresh_running = False
+
+
+def _trigger_background_refresh():
+    """Kick off a background thread to refresh data from PSX (non-blocking)."""
+    global _refresh_running
+    with _refresh_lock:
+        if _refresh_running:
+            return  # already refreshing
+        _refresh_running = True
+
+    def worker():
+        global _refresh_running
+        try:
+            _do_fetch_stocks()
+            _do_fetch_indices()
+        finally:
+            with _refresh_lock:
+                _refresh_running = False
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    print("[PSX] Background refresh triggered.")
+
+
+def fetch_stock_data():
+    """Return cached stock data IMMEDIATELY. Trigger background refresh if stale."""
+    is_stale = False
+    now = time.time()
+
+    if stock_cache["data"]:
+        # Check if data is stale (older than cache duration)
+        if (now - stock_cache["timestamp"]) > CACHE_DURATION:
+            is_stale = True
+            _trigger_background_refresh()
+        return stock_cache["data"], is_stale
+
+    # No data at all — must do a synchronous fetch (first ever request)
+    try:
+        _do_fetch_stocks()
+        if stock_cache["data"]:
+            return stock_cache["data"], False
+    except Exception:
+        pass
+    raise ValueError("No stock data available")
+
+
+def fetch_index_data():
+    """Return cached index data IMMEDIATELY. Trigger background refresh if stale."""
+    is_stale = False
+    now = time.time()
+
+    if index_cache["data"]:
+        if (now - index_cache["timestamp"]) > CACHE_DURATION:
+            is_stale = True
+            _trigger_background_refresh()
+        return index_cache["data"], is_stale
+
+    # No data at all
+    try:
+        _do_fetch_indices()
         if index_cache["data"]:
-            return index_cache["data"], True
-        raise
+            return index_cache["data"], False
+    except Exception:
+        pass
+    # Return empty but valid response rather than crashing
+    return {
+        "indices": [],
+        "market": {"state": "Closed", "volume": 0, "value": 0},
+        "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }, True
 
 
 # ─── Fetch helpers ───
