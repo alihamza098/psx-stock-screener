@@ -1070,6 +1070,17 @@ function initEventListeners() {
     document.getElementById("upper-lock-sort").addEventListener("change", (e) => {
         if (upperLockData) renderUpperLockResults(upperLockData, e.target.value);
     });
+
+    // Stock History modal
+    document.getElementById('btn-stock-history')?.addEventListener('click', openStockHistory);
+    document.getElementById('stock-history-close')?.addEventListener('click', closeStockHistory);
+    document.getElementById('stock-history-modal')?.addEventListener('click', e => {
+        if (e.target.id === 'stock-history-modal') closeStockHistory();
+    });
+    document.getElementById('history-search-btn')?.addEventListener('click', searchStockHistory);
+    document.getElementById('history-search-input')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') searchStockHistory();
+    });
 }
 
 // ─── Upper Lock Analysis ───
@@ -1311,6 +1322,175 @@ function formatVolume(vol) {
     if (vol >= 1e6) return (vol / 1e6).toFixed(1) + "M";
     if (vol >= 1e3) return (vol / 1e3).toFixed(1) + "K";
     return vol.toFixed(0);
+}
+
+// ─── Stock History / Trend Analysis ───
+let historyModalOpen = false;
+
+function openStockHistory() {
+    const modal = document.getElementById('stock-history-modal');
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    historyModalOpen = true;
+    // Focus search input
+    setTimeout(() => document.getElementById('history-search-input').focus(), 300);
+}
+
+function closeStockHistory() {
+    const modal = document.getElementById('stock-history-modal');
+    modal.classList.remove('active');
+    document.body.style.overflow = '';
+    historyModalOpen = false;
+}
+
+function searchStockHistory() {
+    const input = document.getElementById('history-search-input');
+    const symbol = input.value.trim().toUpperCase();
+    if (!symbol) return;
+    
+    const resultsDiv = document.getElementById('history-results');
+    const loadingDiv = document.getElementById('history-loading');
+    
+    // Show loading
+    loadingDiv.style.display = 'flex';
+    resultsDiv.style.display = 'none';
+    
+    fetch(`/api/stock-history/${symbol}`)
+        .then(r => r.json())
+        .then(data => {
+            loadingDiv.style.display = 'none';
+            resultsDiv.style.display = 'block';
+            if (data.success) {
+                renderStockHistory(data);
+            } else {
+                resultsDiv.innerHTML = `<div class="upper-lock-empty">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <p>${data.error || 'Stock not found'}</p>
+                    <p style="font-size: 0.8rem; color: var(--text-tertiary)">Try symbols like OGDC, HBL, ENGRO, UNITY, LUCK</p>
+                </div>`;
+            }
+        })
+        .catch(err => {
+            loadingDiv.style.display = 'none';
+            resultsDiv.style.display = 'block';
+            resultsDiv.innerHTML = `<div class="upper-lock-empty"><p>Network error: ${err.message}</p></div>`;
+        });
+}
+
+function renderStockHistory(data) {
+    const resultsDiv = document.getElementById('history-results');
+    const days = data.days;
+    
+    // Find the stock name from our cache
+    const stockInfo = STOCKS.find(s => s.symbol === data.symbol);
+    const stockName = stockInfo ? stockInfo.name : data.symbol;
+    const stockSector = stockInfo ? stockInfo.sector : '';
+    
+    // Calculate summary stats
+    const avgVolume = days.reduce((sum, d) => sum + d.volume, 0) / days.length;
+    const highestClose = Math.max(...days.map(d => d.close));
+    const lowestClose = Math.min(...days.map(d => d.close));
+    const latestClose = days[0] ? days[0].close : 0;
+    const oldestClose = days[days.length - 1] ? days[days.length - 1].close : 0;
+    const periodChange = oldestClose > 0 ? ((latestClose - oldestClose) / oldestClose * 100) : 0;
+    
+    let html = '';
+    
+    // Stock header card
+    html += `<div class="history-stock-header">
+        <div class="history-stock-info">
+            <div class="history-stock-symbol">${data.symbol}</div>
+            <div class="history-stock-name">${stockName}</div>
+            ${stockSector ? `<div class="history-stock-sector">${stockSector}</div>` : ''}
+        </div>
+        <div class="history-summary-stats">
+            <div class="history-stat">
+                <span class="history-stat-label">Period Change</span>
+                <span class="history-stat-value ${periodChange >= 0 ? 'positive' : 'negative'}">${periodChange >= 0 ? '+' : ''}${periodChange.toFixed(2)}%</span>
+            </div>
+            <div class="history-stat">
+                <span class="history-stat-label">Highest</span>
+                <span class="history-stat-value">₨${highestClose.toLocaleString('en-PK', {minimumFractionDigits: 2})}</span>
+            </div>
+            <div class="history-stat">
+                <span class="history-stat-label">Lowest</span>
+                <span class="history-stat-value">₨${lowestClose.toLocaleString('en-PK', {minimumFractionDigits: 2})}</span>
+            </div>
+            <div class="history-stat">
+                <span class="history-stat-label">Avg Volume</span>
+                <span class="history-stat-value">${formatVolume(avgVolume)}</span>
+            </div>
+        </div>
+    </div>`;
+    
+    // Mini price chart (visual bars)
+    const maxClose = Math.max(...days.map(d => d.close));
+    const minClose = Math.min(...days.map(d => d.close));
+    const range = maxClose - minClose || 1;
+    
+    html += `<div class="history-chart">
+        <div class="history-chart-title">Price Trend (Last ${days.length} Trading Days)</div>
+        <div class="history-chart-bars">`;
+    
+    // Reverse so oldest is on left
+    const reversedDays = [...days].reverse();
+    reversedDays.forEach(d => {
+        const height = 20 + ((d.close - minClose) / range) * 80;
+        const barColor = d.change >= 0 ? 'var(--positive)' : 'var(--negative)';
+        const shortDate = d.date.slice(5); // MM-DD
+        html += `<div class="history-bar-col">
+            <div class="history-bar-value">₨${d.close}</div>
+            <div class="history-bar" style="height: ${height}%; background: ${barColor}" title="${d.day} ${d.date}: Open ₨${d.open} → Close ₨${d.close}"></div>
+            <div class="history-bar-label">${d.day.slice(0, 3)}</div>
+            <div class="history-bar-date">${shortDate}</div>
+        </div>`;
+    });
+    
+    html += `</div></div>`;
+    
+    // Daily table
+    html += `<div class="history-table-wrapper">
+        <table class="history-table">
+            <thead>
+                <tr>
+                    <th>Day</th>
+                    <th>Date</th>
+                    <th>Open</th>
+                    <th>Close</th>
+                    <th>Change</th>
+                    <th>Change %</th>
+                    <th>Volume</th>
+                </tr>
+            </thead>
+            <tbody>`;
+    
+    days.forEach(d => {
+        const changeClass = d.change >= 0 ? 'positive' : 'negative';
+        const changeSign = d.change >= 0 ? '+' : '';
+        html += `<tr>
+            <td><strong>${d.day}</strong></td>
+            <td>${d.date}</td>
+            <td>₨${d.open.toFixed(2)}</td>
+            <td>₨${d.close.toFixed(2)}</td>
+            <td class="${changeClass}">${changeSign}${d.change.toFixed(2)}</td>
+            <td class="${changeClass}">${changeSign}${d.changePct.toFixed(2)}%</td>
+            <td>${formatVolume(d.volume)}</td>
+        </tr>`;
+    });
+    
+    html += `</tbody></table></div>`;
+    
+    resultsDiv.innerHTML = html;
+}
+
+// Quick history from stock table — allow clicking a trend button
+function quickStockHistory(symbol) {
+    openStockHistory();
+    const input = document.getElementById('history-search-input');
+    input.value = symbol;
+    searchStockHistory();
 }
 
 // ─── Initialize ───

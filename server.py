@@ -788,6 +788,46 @@ def calculate_upper_lock_analysis(stocks):
     return today_locked, predicted[:50], history
 
 
+def fetch_stock_history(symbol):
+    """Fetch historical end-of-day data from PSX timeseries API."""
+    url = f"https://dps.psx.com.pk/timeseries/eod/{symbol}"
+    try:
+        html = fetch_url(url)
+        raw = json.loads(html)
+        if raw.get('status') != 1 or not raw.get('data'):
+            return None
+        
+        # Data format: [timestamp, close, volume, open]
+        # Return last 10 trading days (sorted newest first)
+        days = []
+        for entry in raw['data'][:10]:
+            ts, close, volume, open_price = entry
+            # Convert timestamp to date string
+            date_str = time.strftime('%Y-%m-%d', time.localtime(ts))
+            day_name = time.strftime('%A', time.localtime(ts))  # Monday, Tuesday, etc.
+            
+            # Calculate change and change %
+            change = close - open_price
+            change_pct = (change / open_price * 100) if open_price > 0 else 0
+            
+            days.append({
+                'date': date_str,
+                'day': day_name,
+                'open': round(open_price, 2),
+                'close': round(close, 2),
+                'high': round(max(open_price, close), 2),  # Approximate
+                'low': round(min(open_price, close), 2),   # Approximate  
+                'volume': volume,
+                'change': round(change, 2),
+                'changePct': round(change_pct, 2)
+            })
+        
+        return days
+    except Exception as e:
+        print(f"[PSX] Error fetching history for {symbol}: {e}")
+        return None
+
+
 # ─── HTTP Request Handler ───
 class PSXHandler(http.server.SimpleHTTPRequestHandler):
     """Custom handler for API routes + static file serving."""
@@ -810,6 +850,9 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._handle_company(symbol)
         elif parsed_path.path == "/api/upper-lock-analysis":
             self._handle_upper_lock_analysis()
+        elif parsed_path.path.startswith('/api/stock-history/'):
+            symbol = parsed_path.path.split('/')[-1]
+            self._handle_stock_history(symbol)
         else:
             # Serve static files
             super().do_GET()
@@ -900,6 +943,25 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             })
         except Exception as e:
             print(f"[PSX] Error in upper lock analysis: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_stock_history(self, symbol):
+        if not symbol:
+            self._send_json({"success": False, "error": "Missing symbol"}, 400)
+            return
+        try:
+            history = fetch_stock_history(symbol.upper())
+            if history is None:
+                self._send_json({"success": False, "error": f"No history found for {symbol}"}, 404)
+            else:
+                self._send_json({
+                    "success": True,
+                    "symbol": symbol.upper(),
+                    "days": history,
+                    "totalDays": len(history)
+                })
+        except Exception as e:
+            print(f"[PSX] Error in stock history handler: {e}")
             self._send_json({"success": False, "error": str(e)}, 500)
 
     def _handle_refresh(self):
