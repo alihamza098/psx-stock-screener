@@ -1136,50 +1136,49 @@ function renderUpperLockResults(data, sortBy) {
 
     let html = "";
 
-    // ─── Currently Locked Section ───
+    // ─── Yesterday's Upper Lock Section ───
+    const yesterdayLocked = data.yesterdayLocked || [];
+    const yesterdayDate = data.yesterdayDate || "N/A";
+    html += `<div class="upper-lock-section">
+        <h3 class="upper-lock-section-title yesterday-section">
+            <span class="section-icon">📅</span>
+            Yesterday's Upper Lock ${yesterdayDate ? `<span class="section-date">(${yesterdayDate})</span>` : ""}
+            <span class="section-badge">${yesterdayLocked.length}</span>
+        </h3>`;
+
+    if (yesterdayLocked.length === 0) {
+        html += `<div class="upper-lock-empty">
+            <p>No historical data yet — will populate after the first trading session</p>
+        </div>`;
+    } else {
+        html += `<div class="locked-stocks-row">`;
+        yesterdayLocked.forEach(s => {
+            html += renderLockedCard(s, "yesterday");
+        });
+        html += `</div>`;
+    }
+    html += `</div>`;
+
+    // ─── Today's Upper Lock Section ───
+    const todayLocked = data.todayLocked || [];
     html += `<div class="upper-lock-section">
         <h3 class="upper-lock-section-title locked-section">
             <span class="section-icon">🟢</span>
-            Currently at Upper Lock
-            <span class="section-badge">${data.locked.length}</span>
+            Today's Upper Lock
+            <span class="section-badge">${todayLocked.length}</span>
         </h3>`;
 
-    if (data.locked.length === 0) {
+    if (todayLocked.length === 0) {
         html += `<div class="upper-lock-empty">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
             </svg>
-            <p>No stocks currently at upper lock</p>
+            <p>No stocks at upper lock right now</p>
         </div>`;
     } else {
         html += `<div class="locked-stocks-row">`;
-        data.locked.forEach(s => {
-            html += `<div class="locked-stock-card">
-                <div class="locked-card-header">
-                    <span class="locked-symbol">${s.symbol}</span>
-                    <span class="locked-badge">🔒 LOCKED</span>
-                </div>
-                <div class="locked-card-name">${s.name}</div>
-                <div class="locked-card-sector">${s.sector}</div>
-                <div class="locked-card-metrics">
-                    <div class="locked-metric">
-                        <span class="metric-label">Price</span>
-                        <span class="metric-value">₨${s.price.toLocaleString("en-PK", { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div class="locked-metric">
-                        <span class="metric-label">Change</span>
-                        <span class="metric-value positive">+${s.change.toFixed(2)}%</span>
-                    </div>
-                    <div class="locked-metric">
-                        <span class="metric-label">Volume</span>
-                        <span class="metric-value">${formatVolume(s.volume)}</span>
-                    </div>
-                    <div class="locked-metric">
-                        <span class="metric-label">Lock Level</span>
-                        <span class="metric-value">${s.lockLevel}%</span>
-                    </div>
-                </div>
-            </div>`;
+        todayLocked.forEach(s => {
+            html += renderLockedCard(s, "today");
         });
         html += `</div>`;
     }
@@ -1189,7 +1188,7 @@ function renderUpperLockResults(data, sortBy) {
     html += `<div class="upper-lock-section">
         <h3 class="upper-lock-section-title predicted-section">
             <span class="section-icon">🔮</span>
-            Predicted Next Session
+            Predicted to Hit Upper Lock Today
             <span class="section-badge">${predicted.length}</span>
         </h3>`;
 
@@ -1201,7 +1200,7 @@ function renderUpperLockResults(data, sortBy) {
         html += `<div class="predicted-stocks-list">`;
         predicted.forEach((s, i) => {
             const probColor = s.probability >= 70 ? "#22c55e" : s.probability >= 40 ? "#f59e0b" : "#ef4444";
-            html += `<div class="predicted-stock-card">
+            html += `<div class="predicted-stock-card" onclick="closeUpperLockModal(); showStockDetail('${s.symbol}')" style="cursor:pointer" title="Click to view ${s.symbol} details">
                 <div class="predicted-rank" style="color: ${probColor}">#${i + 1}</div>
                 <div class="predicted-info">
                     <div class="predicted-symbol-row">
@@ -1246,12 +1245,55 @@ function renderUpperLockResults(data, sortBy) {
     html += `<div class="upper-lock-summary">
         <span>📊 Analyzed <strong>${data.totalAnalyzed}</strong> stocks</span>
         <span>•</span>
-        <span>🟢 <strong>${data.locked.length}</strong> currently locked</span>
+        <span>📅 <strong>${yesterdayLocked.length}</strong> locked yesterday</span>
         <span>•</span>
-        <span>🔮 <strong>${predicted.length}</strong> predicted candidates</span>
+        <span>🟢 <strong>${todayLocked.length}</strong> locked today</span>
+        <span>•</span>
+        <span>🔮 <strong>${predicted.length}</strong> predicted</span>
     </div>`;
 
     results.innerHTML = html;
+}
+
+function renderLockedCard(s, type) {
+    const typeLabel = type === "yesterday" ? "WAS LOCKED" : "🔒 LOCKED";
+    const typeClass = type === "yesterday" ? "yesterday" : "today";
+    return `<div class="locked-stock-card ${typeClass}" onclick="closeUpperLockModal(); showStockDetail('${s.symbol}')" style="cursor:pointer" title="Click to view ${s.symbol} details">
+        <div class="locked-card-header">
+            <span class="locked-symbol">${s.symbol}</span>
+            <span class="locked-badge ${typeClass}">${typeLabel}</span>
+        </div>
+        <div class="locked-card-name">${s.name}</div>
+        <div class="locked-card-sector">${s.sector}</div>
+        <div class="locked-card-metrics">
+            <div class="locked-metric">
+                <span class="metric-label">Price</span>
+                <span class="metric-value">₨${s.price.toLocaleString("en-PK", { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div class="locked-metric">
+                <span class="metric-label">Change</span>
+                <span class="metric-value positive">+${s.change.toFixed(2)}%</span>
+            </div>
+            <div class="locked-metric">
+                <span class="metric-label">Volume</span>
+                <span class="metric-value">${formatVolume(s.volume)}</span>
+            </div>
+            <div class="locked-metric">
+                <span class="metric-label">Lock Level</span>
+                <span class="metric-value">${s.lockLevel}%</span>
+            </div>
+        </div>
+    </div>`;
+}
+
+// Helper: show stock detail (delegates to existing detail modal)
+function showStockDetail(symbol) {
+    const stock = STOCKS.find(s => s.symbol === symbol);
+    if (stock) {
+        // Trigger existing detail view
+        const row = document.querySelector(`tr[data-symbol="${symbol}"]`);
+        if (row) row.click();
+    }
 }
 
 function getReasonIcon(reason) {

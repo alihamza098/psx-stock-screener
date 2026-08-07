@@ -546,20 +546,61 @@ def fetch_company_data(symbol):
     return data
 
 
+UPPER_LOCK_HISTORY_FILE = Path(__file__).parent / "cache" / "upper_lock_history.json"
+
+
+def _load_upper_lock_history():
+    """Load upper lock history from file."""
+    try:
+        if UPPER_LOCK_HISTORY_FILE.exists():
+            with open(UPPER_LOCK_HISTORY_FILE, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"[PSX] Could not load upper lock history: {e}")
+    return {}
+
+
+def _save_upper_lock_history(history):
+    """Save upper lock history to file."""
+    try:
+        with open(UPPER_LOCK_HISTORY_FILE, "w") as f:
+            json.dump(history, f)
+    except Exception as e:
+        print(f"[PSX] Could not save upper lock history: {e}")
+
+
+def _detect_upper_lock(change):
+    """Check if a stock's daily change% indicates it hit upper lock.
+    PSX circuit breaker limits are typically 5%, 7.5%, or 10%.
+    A stock is at upper lock when its change is at or very near these limits."""
+    if change >= 9.5:
+        return True, 10.0
+    elif 7.2 <= change <= 7.8:
+        return True, 7.5
+    elif 4.7 <= change <= 5.3:
+        return True, 5.0
+    return False, None
+
+
 def calculate_upper_lock_analysis(stocks):
-    locked = []
-    predicted = []
+    """Analyze stocks for upper lock status and predict next session candidates.
     
-    # Pre-calculate sector averages
+    Upper Lock = stock reached its daily maximum allowed price (circuit limit).
+    For PSX, this is typically +5%, +7.5%, or +10% from previous close.
+    """
+    today_locked = []
+    predicted = []
+    today_str = time.strftime("%Y-%m-%d")
+
+    # Pre-calculate sector averages for sector momentum scoring
     sector_sums = {}
     sector_counts = {}
     for s in stocks:
         sec = s.get("sector")
-        change = s.get("change", 0.0)
+        ch = s.get("change", 0.0)
         if sec:
-            sector_sums[sec] = sector_sums.get(sec, 0.0) + change
+            sector_sums[sec] = sector_sums.get(sec, 0.0) + ch
             sector_counts[sec] = sector_counts.get(sec, 0) + 1
-            
     sector_avgs = {sec: sector_sums[sec] / sector_counts[sec] for sec in sector_sums}
 
     for s in stocks:
@@ -568,81 +609,84 @@ def calculate_upper_lock_analysis(stocks):
         free_float = s.get("freeFloat", 0)
         year_change = s.get("yearChange", 0.0)
         mcap = s.get("mcap", 0)
+        price = s.get("price", 0.0)
         sector = s.get("sector", "Other")
-        
-        # Check if locked
-        is_locked = False
-        lock_level = None
-        
-        if (4.7 <= change <= 5.3):
-            is_locked = True
-            lock_level = 5.0
-        elif (7.2 <= change <= 7.8):
-            is_locked = True
-            lock_level = 7.5
-        elif (change >= 9.7):
-            is_locked = True
-            lock_level = 10.0
-            
+        symbol = s.get("symbol", "")
+        name = s.get("name", "")
+
+        # Detect if stock is at upper lock today
+        is_locked, lock_level = _detect_upper_lock(change)
+
         if is_locked:
-            locked.append({
-                "symbol": s.get("symbol"),
-                "name": s.get("name"),
+            # Calculate upper lock price = price is already at lock
+            # Previous close = price / (1 + change/100)
+            prev_close = price / (1 + change / 100) if change != 0 else price
+            today_locked.append({
+                "symbol": symbol,
+                "name": name,
                 "sector": sector,
-                "price": s.get("price", 0.0),
+                "price": price,
+                "prevClose": round(prev_close, 2),
                 "change": change,
                 "volume": volume,
                 "mcap": mcap,
-                "lockLevel": lock_level
+                "lockLevel": lock_level,
+                "lockPrice": price,  # Current price IS the lock price
             })
             continue
-            
-        # Predict
+
+        # Skip negative stocks for prediction (unlikely to hit upper lock)
+        if change < 0:
+            continue
+
+        # ─── Predict probability of hitting upper lock today/next session ───
         reasons = []
-        
-        # a) Daily Change Score (30%)
+
+        # a) Daily Change Score (35% weight) — closer to limit = higher chance
         dc_score = 0
         if change >= 4.0:
             dc_score = 100
+            reasons.append(f"Near upper limit (+{change:.1f}%)")
         elif change >= 3.0:
             dc_score = 85
+            reasons.append(f"Strong momentum (+{change:.1f}%)")
         elif change >= 2.0:
             dc_score = 70
+            reasons.append(f"Good momentum (+{change:.1f}%)")
         elif change >= 1.0:
             dc_score = 50
-        elif change >= 0.0:
-            dc_score = 25
-        else:
-            dc_score = 0
-            
-        if dc_score > 50:
-            reasons.append(f"Strong daily momentum (+{change}%)")
-            
-        # b) Volume Score (25%)
+        elif change >= 0:
+            dc_score = 20
+
+        # b) Volume Score (25% weight) — high volume = buying pressure
         vol_score = 0
         if volume >= 5_000_000:
             vol_score = 100
+            vol_fmt = f"{volume/1_000_000:.1f}M"
+            reasons.append(f"Very high volume ({vol_fmt})")
         elif volume >= 1_000_000:
             vol_score = 85
+            vol_fmt = f"{volume/1_000_000:.1f}M"
+            reasons.append(f"High volume ({vol_fmt})")
         elif volume >= 500_000:
             vol_score = 70
+            vol_fmt = f"{volume/1000:.0f}K"
+            reasons.append(f"Active trading ({vol_fmt})")
         elif volume >= 100_000:
             vol_score = 50
         elif volume >= 50_000:
             vol_score = 25
         else:
             vol_score = 5
-            
-        if vol_score > 50:
-            formatted_vol = f"{volume/1_000_000:.1f}M" if volume >= 1_000_000 else f"{volume/1000:.0f}K"
-            reasons.append(f"High volume surge ({formatted_vol} shares)")
-            
-        # c) Free Float Score (15%)
+
+        # c) Free Float Score (15% weight) — lower = easier to lock
         ff_score = 0
         if free_float <= 1_000_000:
             ff_score = 100
+            reasons.append("Very low free float")
         elif free_float <= 5_000_000:
             ff_score = 80
+            reasons.append("Low free float")
         elif free_float <= 20_000_000:
             ff_score = 60
         elif free_float <= 50_000_000:
@@ -651,15 +695,12 @@ def calculate_upper_lock_analysis(stocks):
             ff_score = 20
         else:
             ff_score = 5
-            
-        if ff_score > 50:
-            formatted_ff = f"{free_float/1_000_000:.1f}M" if free_float >= 1_000_000 else f"{free_float/1000:.0f}K"
-            reasons.append(f"Low free float ({formatted_ff} shares)")
-            
-        # d) Year Change Score (10%)
+
+        # d) Year Change Score (10% weight) — sustained momentum
         yc_score = 0
         if year_change >= 100.0:
             yc_score = 100
+            reasons.append(f"Strong yearly trend (+{year_change:.0f}%)")
         elif year_change >= 50.0:
             yc_score = 80
         elif year_change >= 25.0:
@@ -670,11 +711,8 @@ def calculate_upper_lock_analysis(stocks):
             yc_score = 20
         else:
             yc_score = 0
-            
-        if yc_score > 50:
-            reasons.append(f"Strong yearly momentum (+{year_change}%)")
-            
-        # e) Market Cap Score (10%)
+
+        # e) Market Cap Score (5% weight) — smaller = more volatile
         mc_score = 0
         if mcap <= 500_000_000:
             mc_score = 100
@@ -684,51 +722,70 @@ def calculate_upper_lock_analysis(stocks):
             mc_score = 60
         elif mcap <= 50_000_000_000:
             mc_score = 40
-        elif mcap <= 200_000_000_000:
-            mc_score = 20
         else:
-            mc_score = 5
-            
-        if mc_score > 50:
-            formatted_mcap = f"{mcap/1_000_000_000:.1f}B" if mcap >= 1_000_000_000 else f"{mcap/1_000_000:.0f}M"
-            reasons.append(f"Small cap stock (MCap: {formatted_mcap})")
-            
-        # f) Sector Momentum Score (10%)
+            mc_score = 10
+
+        # f) Sector Momentum Score (10% weight)
         sm_score = 0
         sec_avg = sector_avgs.get(sector, 0.0)
         if sec_avg >= 3.0:
             sm_score = 100
+            reasons.append(f"Sector rallying ({sector} avg +{sec_avg:.1f}%)")
         elif sec_avg >= 2.0:
             sm_score = 80
+            reasons.append(f"Sector positive ({sector} avg +{sec_avg:.1f}%)")
         elif sec_avg >= 1.0:
             sm_score = 60
         elif sec_avg >= 0.0:
             sm_score = 30
         else:
             sm_score = 0
-            
-        if sm_score > 50:
-            reasons.append(f"Sector rally ({sector} avg +{sec_avg:.1f}%)")
-            
-        probability = (dc_score * 0.30) + (vol_score * 0.25) + (ff_score * 0.15) + (yc_score * 0.10) + (mc_score * 0.10) + (sm_score * 0.10)
-        probability = min(99, int(probability))
-        
-        predicted.append({
-            "symbol": s.get("symbol"),
-            "name": s.get("name"),
-            "sector": sector,
-            "price": s.get("price", 0.0),
-            "change": change,
-            "volume": volume,
-            "mcap": mcap,
-            "freeFloat": free_float,
-            "yearChange": year_change,
-            "probability": probability,
-            "reasons": reasons
-        })
-        
+
+        probability = int(
+            dc_score * 0.35 +
+            vol_score * 0.25 +
+            ff_score * 0.15 +
+            yc_score * 0.10 +
+            mc_score * 0.05 +
+            sm_score * 0.10
+        )
+        probability = min(99, probability)
+
+        # Only include stocks with meaningful probability
+        if probability >= 15:
+            predicted.append({
+                "symbol": symbol,
+                "name": name,
+                "sector": sector,
+                "price": price,
+                "change": change,
+                "volume": volume,
+                "mcap": mcap,
+                "freeFloat": free_float,
+                "yearChange": year_change,
+                "probability": probability,
+                "reasons": reasons if reasons else ["Moderate positive momentum"],
+            })
+
     predicted.sort(key=lambda x: x["probability"], reverse=True)
-    return locked, predicted[:50]
+
+    # Save today's locked stocks to history
+    history = _load_upper_lock_history()
+    history[today_str] = [{
+        "symbol": s["symbol"],
+        "name": s["name"],
+        "sector": s["sector"],
+        "price": s["price"],
+        "change": s["change"],
+        "volume": s["volume"],
+        "lockLevel": s["lockLevel"],
+    } for s in today_locked]
+    # Keep only last 7 days of history
+    sorted_dates = sorted(history.keys(), reverse=True)[:7]
+    history = {d: history[d] for d in sorted_dates}
+    _save_upper_lock_history(history)
+
+    return today_locked, predicted[:50], history
 
 
 # ─── HTTP Request Handler ───
@@ -758,8 +815,16 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
 
     def do_POST(self):
-        if self.path == "/api/refresh":
-            self._handle_refresh()
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length)
+        
+        if self.path == "/api/company":
+            try:
+                body = json.loads(post_data.decode('utf-8'))
+                symbol = body.get('symbol', '')
+                self._handle_company(symbol)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
         else:
             self.send_error(404)
 
@@ -816,13 +881,22 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
     def _handle_upper_lock_analysis(self):
         try:
             stocks, is_stale = fetch_stock_data()
-            locked, predicted = calculate_upper_lock_analysis(stocks)
+            today_locked, predicted, history = calculate_upper_lock_analysis(stocks)
+
+            # Get yesterday's locked stocks from history
+            today_str = time.strftime("%Y-%m-%d")
+            dates = sorted([d for d in history.keys() if d != today_str], reverse=True)
+            yesterday_locked = history.get(dates[0], []) if dates else []
+            yesterday_date = dates[0] if dates else None
+
             self._send_json({
                 "success": True,
-                "locked": locked,
+                "todayLocked": today_locked,
+                "yesterdayLocked": yesterday_locked,
+                "yesterdayDate": yesterday_date,
                 "predicted": predicted,
                 "totalAnalyzed": len(stocks),
-                "disclaimer": "This analysis is based on historical price patterns and technical indicators. It is a probability-based forecast and should not be considered financial advice or a guarantee of future performance."
+                "disclaimer": "This analysis is based on price patterns and technical indicators. It is a probability-based forecast — not financial advice or a guarantee of future performance."
             })
         except Exception as e:
             print(f"[PSX] Error in upper lock analysis: {e}")

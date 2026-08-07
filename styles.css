@@ -2214,3 +2214,252 @@ body {
         min-width: 200px;
     }
 }
+
+/* --- Missing class mappings (JS uses these names) --- */
+
+/* Scrollable body area — this is the key fix for scrolling */
+.upper-lock-body {
+    overflow-y: auto;
+    flex: 1;
+    padding: var(--space-lg) var(--space-xl);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
+}
+
+.upper-lock-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.upper-lock-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.upper-lock-body::-webkit-scrollbar-thumb {
+    background: var(--border-medium);
+    border-radius: var(--radius-full);
+}
+
+/* Locked stocks horizontal scroll row */
+.locked-stocks-row {
+    display: flex;
+    gap: var(--space-md);
+    overflow-x: auto;
+    padding-bottom: var(--space-md);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
+}
+
+.locked-stocks-row::-webkit-scrollbar {
+    height: 6px;
+}
+
+.locked-stocks-row::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.locked-stocks-row::-webkit-scrollbar-thumb {
+    background: var(--border-medium);
+    border-radius: var(--radius-full);
+}
+
+/* Section container */
+.upper-lock-section {
+    margin-bottom: var(--space-xl);
+}
+
+/* Section badge (count) */
+.section-badge {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    margin-left: auto;
+}
+
+.section-date {
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--text-tertiary);
+}
+
+.section-icon {
+    font-size: 1.1rem;
+}
+
+/* Section title variants */
+.locked-section {
+    color: var(--positive);
+    border-bottom-color: rgba(34, 197, 94, 0.2);
+}
+
+.predicted-section {
+    color: #f59e0b;
+    border-bottom-color: rgba(245, 158, 11, 0.2);
+}
+
+.yesterday-section {
+    color: var(--accent-blue);
+    border-bottom-color: rgba(96, 165, 250, 0.2);
+}
+
+/* Locked card inner elements */
+.locked-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.locked-card-name {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.locked-card-sector {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    margin-bottom: var(--space-xs);
+}
+
+.locked-card-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
+}
+
+.locked-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* Yesterday badge style */
+.locked-badge.yesterday {
+    background: rgba(96, 165, 250, 0.15);
+    color: var(--accent-blue);
+    border-color: rgba(96, 165, 250, 0.3);
+    animation: none;
+}
+
+.locked-stock-card.yesterday {
+    border-color: rgba(96, 165, 250, 0.3);
+    box-shadow: 0 0 15px rgba(96, 165, 250, 0.1);
+}
+
+.locked-stock-card.yesterday:hover {
+    box-shadow: 0 4px 20px rgba(96, 165, 250, 0.2);
+}
+
+/* Predicted card inner elements */
+.predicted-symbol-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.predicted-sector-badge {
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+
+.predicted-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.pm-label {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+}
+
+.pm-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+/* Upper Lock Controls */
+.upper-lock-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+/* Analysis summary bar */
+.upper-lock-summary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+    background: rgba(255, 255, 255, 0.03);
+    border-top: 1px solid var(--border-subtle);
+    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+}
+
+.upper-lock-summary span {
+    white-space: nowrap;
+}
+
+/* Upper Lock Title */
+.upper-lock-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 1.3rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #f59e0b, #fbbf24);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.upper-lock-title svg {
+    stroke: #f59e0b;
+    -webkit-text-fill-color: initial;
+}
+
+/* Disclaimer in modal body (not header) */
+.upper-lock-body .upper-lock-disclaimer {
+    margin-top: 0;
+}
+
+/* Mobile fixes for upper lock */
+@media (max-width: 768px) {
+    .upper-lock-body {
+        padding: var(--space-md);
+    }
+
+    .upper-lock-controls {
+        flex-wrap: wrap;
+    }
+
+    .upper-lock-summary {
+        font-size: 0.75rem;
+        gap: var(--space-sm);
+    }
+
+    .predicted-stock-card {
+        flex-wrap: wrap;
+    }
+
+    .predicted-metrics {
+        min-width: unset;
+    }
+}
