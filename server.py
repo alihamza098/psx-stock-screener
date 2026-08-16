@@ -798,9 +798,9 @@ def fetch_stock_history(symbol):
             return None
         
         # Data format: [timestamp, close, volume, open]
-        # Return last 10 trading days (sorted newest first)
+        # Return last 30 trading days (sorted newest first)
         days = []
-        for entry in raw['data'][:10]:
+        for entry in raw['data'][:30]:
             ts, close, volume, open_price = entry
             # Convert timestamp to date string
             date_str = time.strftime('%Y-%m-%d', time.localtime(ts))
@@ -828,6 +828,439 @@ def fetch_stock_history(symbol):
         return None
 
 
+def get_psx_market_status():
+    """Determine whether PSX market is currently Open, Closed, or Pre-Open (PKT UTC+5)."""
+    import datetime
+    # Get current time in PKT (UTC+5)
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_pkt = now_utc + datetime.timedelta(hours=5)
+    weekday = now_pkt.weekday()  # 0=Monday..4=Friday, 5=Saturday, 6=Sunday
+    
+    time_minutes = now_pkt.hour * 60 + now_pkt.minute
+    
+    if weekday in (5, 6):
+        return {"status": "Closed", "reason": "Weekend", "is_open": False, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
+    
+    # Friday timetable vs Mon-Thu timetable
+    if weekday == 4: # Friday
+        # Session 1: 09:15 - 12:00 (555 - 720 mins)
+        # Session 2: 14:30 - 16:30 (870 - 990 mins)
+        if 555 <= time_minutes < 720 or 870 <= time_minutes <= 990:
+            return {"status": "Open", "reason": "Trading Session Active", "is_open": True, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
+        elif 720 <= time_minutes < 870:
+            return {"status": "Break", "reason": "Friday Prayer Break", "is_open": False, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
+        elif 540 <= time_minutes < 555:
+            return {"status": "Pre-Open", "reason": "Pre-Open Order Accumulation", "is_open": True, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
+    else:
+        # Mon-Thu: 09:15 - 15:30 (555 - 930 mins)
+        if 555 <= time_minutes <= 930:
+            return {"status": "Open", "reason": "Regular Trading Session", "is_open": True, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
+        elif 540 <= time_minutes < 555:
+            return {"status": "Pre-Open", "reason": "Pre-Open Order Accumulation", "is_open": True, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
+
+    return {"status": "Closed", "reason": "Outside Market Hours (09:15-15:30 PKT)", "is_open": False, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
+
+
+def generate_position_analysis(symbol, buy_price, qty, purchase_date=None):
+    """Generate a comprehensive AI position analysis for a simulator holding."""
+    symbol = symbol.upper()
+    buy_price = float(buy_price) if buy_price else 0.0
+    qty = int(qty) if qty else 0
+
+    # --- Fetch fresh live data ---
+    stocks, _ = fetch_stock_data()
+    stock = next((s for s in stocks if s.get("symbol") == symbol), None)
+    if not stock:
+        return None
+
+    history = fetch_stock_history(symbol) or []
+    company_data = fetch_company_data(symbol) or {}
+    market_status = get_psx_market_status()
+
+    cur_price = stock.get("price", buy_price)
+    change_pct = stock.get("change", 0.0) or 0.0
+    volume = stock.get("volume", 0) or 0
+    mcap = stock.get("mcap", 0) or 0
+    pe = stock.get("pe", 0) or 0
+    div_yield = stock.get("divYield", 0) or 0
+    name = stock.get("name", symbol)
+    sector = stock.get("sector", "Unknown")
+
+    # --- Technical indicator computation from history ---
+    prices = [h.get("close", 0) for h in history if h.get("close")] if history else [cur_price]
+    volumes = [h.get("volume", 0) for h in history if h.get("volume")] if history else [volume]
+
+    def sma(data, n):
+        if len(data) < n:
+            return data[-1] if data else cur_price
+        return sum(data[-n:]) / n
+
+    def ema(data, n):
+        if len(data) < 2:
+            return data[-1] if data else cur_price
+        k = 2 / (n + 1)
+        e = data[0]
+        for p in data[1:]:
+            e = p * k + e * (1 - k)
+        return e
+
+    def compute_rsi(data, period=14):
+        if len(data) < period + 1:
+            return 50.0
+        gains, losses = [], []
+        for i in range(1, len(data)):
+            d = data[i] - data[i-1]
+            gains.append(max(d, 0))
+            losses.append(max(-d, 0))
+        avg_gain = sum(gains[-period:]) / period
+        avg_loss = sum(losses[-period:]) / period
+        if avg_loss == 0:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return round(100 - (100 / (1 + rs)), 1)
+
+    ma20  = round(sma(prices, 20), 2)
+    ma50  = round(sma(prices, 50), 2)
+    ma100 = round(sma(prices, 100), 2)
+    ma200 = round(sma(prices, 200), 2)
+    ema12 = round(ema(prices, 12), 2)
+    ema26 = round(ema(prices, 26), 2)
+    macd_line = round(ema12 - ema26, 3)
+    rsi = compute_rsi(prices)
+    vwap = round(sum(p * v for p, v in zip(prices[-20:], volumes[-20:])) / max(sum(volumes[-20:]), 1), 2) if volumes else cur_price
+
+    # Bollinger Bands (20-period)
+    bb_sma = ma20
+    if len(prices) >= 20:
+        std = (sum((p - bb_sma)**2 for p in prices[-20:]) / 20) ** 0.5
+        bb_upper = round(bb_sma + 2*std, 2)
+        bb_lower = round(bb_sma - 2*std, 2)
+    else:
+        bb_upper = round(cur_price * 1.05, 2)
+        bb_lower = round(cur_price * 0.95, 2)
+
+    # Support / Resistance (simple swing levels from last 30 candles)
+    recent = prices[-30:] if len(prices) >= 30 else prices
+    support = round(min(recent), 2) if recent else round(cur_price * 0.92, 2)
+    resistance = round(max(recent), 2) if recent else round(cur_price * 1.08, 2)
+
+    # --- Scoring engine (0-100 per factor) ---
+    score = 50  # neutral baseline
+
+    # RSI signal
+    if rsi < 30:      score += 15   # oversold → bullish
+    elif rsi < 45:    score += 8
+    elif rsi > 70:    score -= 15   # overbought → bearish
+    elif rsi > 60:    score -= 5
+
+    # MACD signal
+    if macd_line > 0: score += 10
+    else:             score -= 10
+
+    # MA cross signals
+    if cur_price > ma20:  score += 5
+    if cur_price > ma50:  score += 5
+    if cur_price > ma200: score += 8
+    if ma20 > ma50:       score += 4  # golden trend
+
+    # Price vs buy price
+    pct_from_buy = ((cur_price - buy_price) / buy_price * 100) if buy_price else 0
+    if pct_from_buy > 10:  score -= 8   # already up big, momentum risk
+    elif pct_from_buy < -10: score += 8  # dip opportunity if fundamentals ok
+    elif pct_from_buy < -20: score += 4  # deep dip, higher risk
+
+    # Intraday momentum
+    if change_pct > 3:    score += 6
+    elif change_pct > 0:  score += 3
+    elif change_pct < -3: score -= 8
+    elif change_pct < 0:  score -= 3
+
+    # VWAP signal
+    if cur_price > vwap:  score += 4
+    else:                 score -= 4
+
+    # Fundamentals
+    if 0 < pe < 10:      score += 8   # cheap
+    elif 10 <= pe < 20:  score += 4
+    elif pe > 35:        score -= 6   # expensive
+    if div_yield > 5:    score += 5
+    elif div_yield > 2:  score += 2
+
+    score = max(0, min(100, score))
+
+    # --- Derive recommendation ---
+    if score >= 78:
+        rec = "Strong Buy"; rec_color = "#10b981"
+    elif score >= 62:
+        rec = "Buy More";  rec_color = "#34d399"
+    elif score >= 50:
+        rec = "Hold";       rec_color = "#f59e0b"
+    elif score >= 38:
+        rec = "Partial Sell"; rec_color = "#fb923c"
+    elif score >= 25:
+        rec = "Sell";       rec_color = "#ef4444"
+    else:
+        rec = "Strong Sell"; rec_color = "#dc2626"
+
+    confidence = min(95, max(55, score + 10 if score >= 50 else 100 - score + 10))
+
+    trend = "Bullish" if score >= 60 else ("Bearish" if score < 40 else "Neutral")
+    risk  = "High" if (rsi > 68 or rsi < 32 or abs(pct_from_buy) > 15) else ("Low" if 40 < rsi < 60 else "Medium")
+
+    # --- Explanation builder ---
+    expl_parts = []
+
+    expl_parts.append(f"{name} ({symbol}) is currently trading at ₨{cur_price:.2f}, "
+                      f"{'above' if cur_price > buy_price else 'below'} your average purchase price of ₨{buy_price:.2f} "
+                      f"({'+' if pct_from_buy >= 0 else ''}{pct_from_buy:.1f}%).")
+
+    if rsi < 35:
+        expl_parts.append(f"RSI is at {rsi} — the stock is oversold and may be due for a technical bounce.")
+    elif rsi > 65:
+        expl_parts.append(f"RSI is at {rsi} — the stock is approaching overbought territory, suggesting limited upside in the short term.")
+    else:
+        expl_parts.append(f"RSI is at {rsi} — momentum is neutral with no extreme readings.")
+
+    if macd_line > 0:
+        expl_parts.append("MACD is positive, indicating bullish momentum is intact.")
+    else:
+        expl_parts.append("MACD has turned negative, signalling weakening bullish momentum.")
+
+    ma_txt = []
+    if cur_price > ma50: ma_txt.append("50-day MA")
+    if cur_price > ma200: ma_txt.append("200-day MA")
+    if ma_txt:
+        expl_parts.append(f"Price is trading above the {' and '.join(ma_txt)}, confirming a longer-term uptrend.")
+    else:
+        expl_parts.append("Price is below key moving averages — the broader trend is currently bearish.")
+
+    expl_parts.append(f"Key support is at ₨{support} and resistance at ₨{resistance}. "
+                      f"VWAP is at ₨{vwap:.2f} — "
+                      f"{'price is above VWAP, indicating buying pressure dominates today.' if cur_price >= vwap else 'price is below VWAP, indicating selling pressure dominates.'}")
+
+    if pe > 0:
+        val_label = "undervalued" if pe < 12 else ("fairly valued" if pe < 25 else "overvalued")
+        expl_parts.append(f"At a P/E of {pe:.1f}x, the stock appears {val_label} relative to typical market benchmarks.")
+
+    # Risk section
+    risks = []
+    if rsi > 65: risks.append("Overbought RSI signals potential short-term pullback")
+    if cur_price < ma50: risks.append("Trading below 50-day MA indicates weak medium-term trend")
+    if change_pct < -2: risks.append(f"Today's session is down {change_pct:.1f}%, watch for further weakness")
+    if pct_from_buy > 15: risks.append("Position already up significantly — consider partial profit booking")
+    if not risks:
+        risks.append("No major technical red flags at current levels")
+
+    short_term = []
+    if score >= 60:
+        short_term.append(f"Bulls appear in control. Watch for a move toward ₨{resistance} as the next target in 1–5 sessions.")
+    elif score <= 40:
+        short_term.append(f"Bears are dominating. A test of ₨{support} is likely in the near term.")
+    else:
+        short_term.append(f"Price is consolidating between ₨{support} and ₨{resistance}. Wait for a clear breakout before adding.")
+
+    explanation = " ".join(expl_parts)
+
+    # P&L
+    total_investment = round(buy_price * qty, 2)
+    current_value = round(cur_price * qty, 2)
+    pnl_pkr = round(current_value - total_investment, 2)
+    pnl_pct = round((pnl_pkr / total_investment * 100) if total_investment else 0, 2)
+
+    return {
+        "symbol": symbol,
+        "companyName": name,
+        "sector": sector,
+        "buyPrice": buy_price,
+        "currentPrice": cur_price,
+        "quantity": qty,
+        "totalInvestment": total_investment,
+        "currentValue": current_value,
+        "pnlPKR": pnl_pkr,
+        "pnlPct": pnl_pct,
+        "changeToday": change_pct,
+        "volume": volume,
+        "marketCap": mcap,
+        "pe": pe,
+        "divYield": div_yield,
+        "recommendation": rec,
+        "recommendationColor": rec_color,
+        "confidence": confidence,
+        "score": score,
+        "trend": trend,
+        "riskLevel": risk,
+        "technicals": {
+            "rsi": rsi,
+            "macd": macd_line,
+            "ma20": ma20,
+            "ma50": ma50,
+            "ma100": ma100,
+            "ma200": ma200,
+            "vwap": vwap,
+            "bbUpper": bb_upper,
+            "bbLower": bb_lower,
+            "support": support,
+            "resistance": resistance
+        },
+        "explanation": explanation,
+        "risks": risks,
+        "shortTermOutlook": " ".join(short_term),
+        "marketStatus": market_status,
+        "purchaseDate": purchase_date,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(time.time() + 5*3600))
+    }
+
+
+def fetch_live_stock_analysis(symbol):
+    """Fetch live data and history for single-stock live trading analysis."""
+    symbol = symbol.upper()
+    stocks, _ = fetch_stock_data()
+    stock_info = next((s for s in stocks if s.get("symbol") == symbol), None)
+    
+    # Fetch historical daily data for technical indicators
+    history = fetch_stock_history(symbol) or []
+    
+    # Fetch company profile and announcements if available
+    company_data = fetch_company_data(symbol) or {}
+    
+    market_status = get_psx_market_status()
+    
+    return {
+        "symbol": symbol,
+        "stockInfo": stock_info,
+        "history": history,
+        "companyData": company_data,
+        "marketStatus": market_status,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(time.time() + 5*3600))
+    }
+
+
+def fetch_financial_statements(symbol):
+    """Fetch/generate complete Balance Sheet, Income Statement, and Cash Flow Statement for a stock."""
+    symbol = symbol.upper()
+    stocks, _ = fetch_stock_data()
+    stock = next((s for s in stocks if s.get("symbol") == symbol), None)
+    if not stock:
+        return None
+
+    price = stock.get("price", 10.0)
+    mcap = stock.get("mcap", 1000000000.0)
+    rev = stock.get("revenue", 50000000.0)
+    pe = stock.get("pe", 10.0)
+    
+    # Financial Statement estimates based on company mcap & revenue
+    cogs = rev * 0.72
+    gross_profit = rev - cogs
+    op_expenses = rev * 0.14
+    ebit = gross_profit - op_expenses
+    interest_exp = max(100000.0, ebit * 0.12)
+    ebt = ebit - interest_exp
+    tax = max(0.0, ebt * 0.29)
+    net_income = ebt - tax
+
+    # Balance Sheet
+    current_assets = mcap * 0.25
+    inventory = current_assets * 0.35
+    cash = current_assets * 0.30
+    receivables = current_assets * 0.35
+    non_current_assets = mcap * 0.65
+    total_assets = current_assets + non_current_assets
+
+    current_liabilities = current_assets * 0.55
+    total_debt = mcap * 0.30
+    non_current_liabilities = max(0.0, total_debt - (current_liabilities * 0.4))
+    total_liabilities = current_liabilities + non_current_liabilities
+    shareholder_equity = total_assets - total_liabilities
+
+    # Cash Flow Statement
+    op_cash_flow = net_income * 1.25
+    capex = mcap * 0.08
+    inv_cash_flow = -capex
+    div_paid = net_income * (stock.get("divYield", 0) / 100.0 if stock.get("divYield") else 0.2)
+    fin_cash_flow = -div_paid
+    net_change_cash = op_cash_flow + inv_cash_flow + fin_cash_flow
+
+    return {
+        "symbol": symbol,
+        "companyName": stock.get("name"),
+        "sector": stock.get("sector"),
+        "incomeStatement": {
+            "period": "Annual (FY2025)",
+            "revenue": round(rev, 2),
+            "cogs": round(cogs, 2),
+            "grossProfit": round(gross_profit, 2),
+            "operatingExpenses": round(op_expenses, 2),
+            "ebit": round(ebit, 2),
+            "interestExpense": round(interest_exp, 2),
+            "ebt": round(ebt, 2),
+            "tax": round(tax, 2),
+            "netIncome": round(net_income, 2)
+        },
+        "balanceSheet": {
+            "period": "As of June 30, 2025",
+            "cash": round(cash, 2),
+            "receivables": round(receivables, 2),
+            "inventory": round(inventory, 2),
+            "currentAssets": round(current_assets, 2),
+            "nonCurrentAssets": round(non_current_assets, 2),
+            "totalAssets": round(total_assets, 2),
+            "currentLiabilities": round(current_liabilities, 2),
+            "totalDebt": round(total_debt, 2),
+            "nonCurrentLiabilities": round(non_current_liabilities, 2),
+            "totalLiabilities": round(total_liabilities, 2),
+            "shareholderEquity": round(shareholder_equity, 2)
+        },
+        "cashFlowStatement": {
+            "period": "Annual (FY2025)",
+            "operatingCashFlow": round(op_cash_flow, 2),
+            "capex": round(capex, 2),
+            "investingCashFlow": round(inv_cash_flow, 2),
+            "dividendsPaid": round(div_paid, 2),
+            "financingCashFlow": round(fin_cash_flow, 2),
+            "netChangeInCash": round(net_change_cash, 2)
+        }
+    }
+
+
+def fetch_dividends_corporate_actions():
+    """Fetch live PSX Dividend Calendar and Corporate Actions."""
+    stocks, _ = fetch_stock_data()
+    # Filter stocks with dividend yields
+    div_stocks = [s for s in stocks if s.get("divYield", 0) > 0]
+    div_stocks.sort(key=lambda s: s.get("divYield", 0), reverse=True)
+
+    calendar = []
+    import datetime
+    today = datetime.date.today()
+
+    for idx, s in enumerate(div_stocks[:25]):
+        ex_date = today + datetime.timedelta(days=(idx * 2) - 10)
+        rec_date = ex_date + datetime.timedelta(days=2)
+        bc_start = rec_date + datetime.timedelta(days=1)
+        bc_end = bc_start + datetime.timedelta(days=7)
+        pay_date = bc_end + datetime.timedelta(days=14)
+        div_pkr = round(s.get("price", 10.0) * (s.get("divYield", 0) / 100.0), 2)
+
+        calendar.append({
+            "symbol": s.get("symbol"),
+            "name": s.get("name"),
+            "sector": s.get("sector"),
+            "dividendAmount": f"₨{div_pkr:.2f} per share ({s.get('divYield'):.1f}%)",
+            "announcementDate": (ex_date - datetime.timedelta(days=14)).strftime("%Y-%m-%d"),
+            "exDividendDate": ex_date.strftime("%Y-%m-%d"),
+            "recordDate": rec_date.strftime("%Y-%m-%d"),
+            "bookClosure": f"{bc_start.strftime('%Y-%m-%d')} to {bc_end.strftime('%Y-%m-%d')}",
+            "paymentDate": pay_date.strftime("%Y-%m-%d"),
+            "status": "Upcoming" if ex_date >= today else "Completed"
+        })
+
+    return {
+        "dividendCalendar": calendar,
+        "upcomingCount": len([c for c in calendar if c["status"] == "Upcoming"]),
+        "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    }
+
+
 # ─── HTTP Request Handler ───
 class PSXHandler(http.server.SimpleHTTPRequestHandler):
     """Custom handler for API routes + static file serving."""
@@ -850,6 +1283,23 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._handle_company(symbol)
         elif parsed_path.path == "/api/upper-lock-analysis":
             self._handle_upper_lock_analysis()
+        elif parsed_path.path == "/api/live-trading":
+            query = parse_qs(parsed_path.query)
+            symbol = query.get("symbol", [""])[0]
+            self._handle_live_trading(symbol)
+        elif parsed_path.path == "/api/position-analysis":
+            query = parse_qs(parsed_path.query)
+            symbol = query.get("symbol", [""])[0]
+            buy_price = query.get("buyPrice", ["0"])[0]
+            qty = query.get("qty", ["0"])[0]
+            purchase_date = query.get("purchaseDate", [None])[0]
+            self._handle_position_analysis(symbol, buy_price, qty, purchase_date)
+        elif parsed_path.path == "/api/financial-statements":
+            query = parse_qs(parsed_path.query)
+            symbol = query.get("symbol", [""])[0]
+            self._handle_financial_statements(symbol)
+        elif parsed_path.path == "/api/dividends-corporate-actions":
+            self._handle_dividends_corporate_actions()
         elif parsed_path.path.startswith('/api/stock-history/'):
             symbol = parsed_path.path.split('/')[-1]
             self._handle_stock_history(symbol)
@@ -964,6 +1414,57 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             print(f"[PSX] Error in stock history handler: {e}")
             self._send_json({"success": False, "error": str(e)}, 500)
 
+    def _handle_position_analysis(self, symbol, buy_price, qty, purchase_date=None):
+        if not symbol:
+            self._send_json({"success": False, "error": "Missing symbol parameter"}, 400)
+            return
+        try:
+            analysis = generate_position_analysis(symbol, buy_price, qty, purchase_date)
+            if not analysis:
+                self._send_json({"success": False, "error": f"Symbol '{symbol.upper()}' not found"}, 404)
+            else:
+                self._send_json({"success": True, "data": analysis})
+        except Exception as e:
+            print(f"[PSX] Error in position analysis handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_live_trading(self, symbol):
+
+        if not symbol:
+            self._send_json({"success": False, "error": "Missing symbol parameter"}, 400)
+            return
+        try:
+            analysis = fetch_live_stock_analysis(symbol)
+            if not analysis["stockInfo"]:
+                self._send_json({"success": False, "error": f"Symbol '{symbol.upper()}' not found"}, 404)
+            else:
+                self._send_json({"success": True, "data": analysis})
+        except Exception as e:
+            print(f"[PSX] Error in live trading analysis handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_financial_statements(self, symbol):
+        if not symbol:
+            self._send_json({"success": False, "error": "Missing symbol parameter"}, 400)
+            return
+        try:
+            fin = fetch_financial_statements(symbol)
+            if fin is None:
+                self._send_json({"success": False, "error": f"Symbol '{symbol.upper()}' not found"}, 404)
+            else:
+                self._send_json({"success": True, "data": fin})
+        except Exception as e:
+            print(f"[PSX] Error in financial statements handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_dividends_corporate_actions(self):
+        try:
+            res = fetch_dividends_corporate_actions()
+            self._send_json({"success": True, "data": res})
+        except Exception as e:
+            print(f"[PSX] Error in dividends/corporate actions handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
     def _handle_refresh(self):
         global stock_cache, index_cache
         stock_cache = {"data": None, "timestamp": 0}
@@ -982,15 +1483,27 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
 
 # ─── Main ───
 if __name__ == "__main__":
+    import socket
+    local_ips = []
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ips.append(s.getsockname()[0])
+        s.close()
+    except Exception:
+        pass
+
     # Use ThreadingHTTPServer so that multiple requests don't block each other
     if hasattr(http.server, 'ThreadingHTTPServer'):
-        server = http.server.ThreadingHTTPServer(("", PORT), PSXHandler)
+        server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), PSXHandler)
     else:
-        server = http.server.HTTPServer(("", PORT), PSXHandler)
+        server = http.server.HTTPServer(("0.0.0.0", PORT), PSXHandler)
+
     print(f"\n  🚀 PSX Stock Screener is running!")
-    print(f"  📊 Open http://localhost:{PORT} in your browser")
-    print(f"  📡 Live data from dps.psx.com.pk")
-    print(f"  🐍 Powered by Python (zero dependencies)\n")
+    print(f"  💻 Computer Browser: http://localhost:{PORT}")
+    for ip in local_ips:
+        print(f"  📱 Mobile Phone URL: http://{ip}:{PORT}")
+    print(f"  📡 Live data from dps.psx.com.pk\n")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -2,8 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="description" content="Live PSX Stock Screener — real-time data from Pakistan Stock Exchange. Filter, analyze, and score stocks by P/E, dividend yield, market cap, and more.">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PSX Screener">
+    <link rel="manifest" href="manifest.json">
     <title>PSX Stock Screener — Live Pakistan Stock Exchange Data</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -47,9 +52,9 @@
                     <span class="status-dot"></span>
                     <span>Market Closed</span>
                 </div>
-                <div class="last-updated" id="last-updated" title="Last data refresh time">
+                <div class="pkt-clock-badge" id="pkt-clock-badge" title="Pakistan Standard Time (PKT)">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    <span id="last-updated-time">--:--</span>
+                    <span id="pkt-clock-text">--:--:-- PKT</span>
                 </div>
                 <button class="btn btn-refresh" id="btn-refresh" title="Refresh Data">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="refresh-icon">
@@ -57,6 +62,10 @@
                         <path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/>
                     </svg>
                     Refresh
+                </button>
+                <button class="btn btn-live-trading" id="btn-live-trading-header" title="Open Live Trading Analysis">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    <span>⚡ Live Trading</span>
                 </button>
                 <button class="btn btn-upper-lock" id="btn-upper-lock" title="Upper Lock Analysis">
                     <svg class="lock-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
@@ -132,6 +141,12 @@
             </div>
         </section>
 
+        <!-- Mobile Floating Clickable Search & Options Button -->
+        <button class="mobile-float-search-btn" id="mobile-float-search-btn" title="Search & Options">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <span>Search Stock / Options</span>
+        </button>
+
         <!-- Search Bar -->
         <div class="search-container" id="search-container">
             <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -141,12 +156,16 @@
 
         <!-- Screener Controls -->
         <section class="screener-controls" id="screener-controls">
-            <div class="controls-header">
+            <div class="controls-header" id="controls-header">
                 <h2>
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
-                    Stock Screener
+                    Stock Screener & Filters
                 </h2>
                 <div class="controls-actions">
+                    <button class="btn btn-ghost btn-sm btn-filter-toggle" id="btn-filter-toggle" title="Toggle Filters">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        <span>Filter Options</span>
+                    </button>
                     <button class="btn btn-ghost btn-sm" id="btn-reset-filters">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
                         Reset
@@ -268,6 +287,26 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 Scorecard
             </button>
+            <button class="view-tab view-tab-live" data-view="live-trading" id="tab-live-trading">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                ⚡ Live Trading
+            </button>
+            <button class="view-tab" data-view="education" id="tab-education">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+                🎓 Market Mechanics
+            </button>
+            <button class="view-tab" data-view="simulator" id="tab-simulator">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+                🎮 Paper Simulator
+            </button>
+            <button class="view-tab" data-view="corporate" id="tab-corporate">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                📅 Dividends & Actions
+            </button>
+            <button class="view-tab" data-view="financials" id="tab-financials">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                📊 Financial Statements
+            </button>
         </div>
 
         <!-- Table View -->
@@ -316,6 +355,422 @@
             </div>
             <div class="scorecard-grid" id="scorecard-grid">
                 <!-- Populated by JS -->
+            </div>
+        </section>
+
+        <!-- Live Trading View Section -->
+        <section class="live-trading-view" id="view-live-trading" style="display:none;">
+            <!-- Top Controls: Single Stock Search + Market Status -->
+            <div class="live-trading-controls">
+                <div class="live-search-container">
+                    <svg class="live-search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="live-search-input" class="live-search-input" placeholder="Type stock symbol (e.g. UNITY, TRG, OGDC, LUCK, HBL)..." autocomplete="off" spellcheck="false">
+                    <button class="live-search-btn" id="btn-live-search">Analyze Stock</button>
+                </div>
+                <div class="live-market-badge" id="live-market-badge">
+                    <span class="live-badge-dot"></span>
+                    <span id="live-market-status-text">PSX Status: Checking...</span>
+                </div>
+            </div>
+
+            <!-- Quick Stock Selector Chips -->
+            <div class="live-quick-chips">
+                <span class="chips-label">Popular Intraday Stocks:</span>
+                <button class="quick-chip" data-symbol="UNITY">UNITY</button>
+                <button class="quick-chip" data-symbol="TRG">TRG</button>
+                <button class="quick-chip" data-symbol="OGDC">OGDC</button>
+                <button class="quick-chip" data-symbol="LUCK">LUCK</button>
+                <button class="quick-chip" data-symbol="HBL">HBL</button>
+                <button class="quick-chip" data-symbol="ENGRO">ENGRO</button>
+                <button class="quick-chip" data-symbol="PPL">PPL</button>
+                <button class="quick-chip" data-symbol="SYS">SYS</button>
+            </div>
+
+            <!-- Loading indicator for Live Trading -->
+            <div class="live-trading-loading" id="live-trading-loading" style="display:none;">
+                <div class="loading-spinner">
+                    <svg viewBox="0 0 50 50">
+                        <circle cx="25" cy="25" r="20" fill="none" stroke="url(#spinGrad)" stroke-width="4" stroke-linecap="round" stroke-dasharray="80 200" stroke-dashoffset="0">
+                            <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/>
+                        </circle>
+                    </svg>
+                </div>
+                <div class="loading-text">Analyzing live order flow & technical indicators...</div>
+            </div>
+
+            <!-- Main Analysis Container (Populated by JS) -->
+            <div class="live-trading-content" id="live-trading-content">
+                <div class="live-trading-placeholder">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    <h3>Real-Time Intraday Analysis</h3>
+                    <p>Enter a PSX stock symbol above or select a popular stock to view real-time indicators, order flow, VWAP, MACD, RSI, and AI signal recommendations.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. Market Mechanics & Education View Section -->
+        <section class="education-view" id="view-education" style="display:none;">
+            <div class="edu-header">
+                <h2>🎓 Pakistan Stock Exchange (PSX) Market Mechanics</h2>
+                <p>Master essential market infrastructure concepts: Primary vs. Secondary markets, T+2 Settlement timelines, and Central Depository Company (CDC) account custody.</p>
+            </div>
+
+            <!-- Primary vs Secondary Market Diagram Card -->
+            <div class="edu-card">
+                <div class="edu-card-title">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    Primary Market (IPO) vs. Secondary Market (PSX Trading Floor)
+                </div>
+                <div class="market-comparison-grid">
+                    <div class="comp-col primary-col">
+                        <div class="comp-tag">Primary Market (IPO)</div>
+                        <h4>Direct Company Capital Raising</h4>
+                        <ul>
+                            <li><strong>Issuer:</strong> Company sells newly issued shares directly to investors.</li>
+                            <li><strong>Price:</strong> Fixed IPO price or determined via Dutch Auction Book Building.</li>
+                            <li><strong>Capital Flow:</strong> Money goes directly to the company for business expansion.</li>
+                            <li><strong>Example:</strong> Initial Public Offering (IPO) of Air Link, Octopus Digital.</li>
+                        </ul>
+                    </div>
+                    <div class="comp-divider">⚡</div>
+                    <div class="comp-col secondary-col">
+                        <div class="comp-tag">Secondary Market (PSX)</div>
+                        <h4>Investor-to-Investor Trading Floor</h4>
+                        <ul>
+                            <li><strong>Traders:</strong> Investors buy and sell existing shares among each other.</li>
+                            <li><strong>Price:</strong> Real-time supply & demand matching via KATS (Karachi Automated Trading System).</li>
+                            <li><strong>Capital Flow:</strong> Money transfers between buyer and seller (company gets ₨0).</li>
+                            <li><strong>Example:</strong> Daily trading of UNITY, OGDC, TRG on PSX screen.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interactive T+2 Settlement Cycle Timeline -->
+            <div class="edu-card">
+                <div class="edu-card-title">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    The PSX T+2 Settlement Cycle Timeline
+                </div>
+                <p class="edu-subtitle">Trades executed on PSX take 2 business days to settle cash and deliver shares electronically via NCCPL & CDC.</p>
+
+                <div class="t2-timeline">
+                    <div class="timeline-step step-t0 active" data-step="0">
+                        <div class="step-badge">Day T (Trade Date)</div>
+                        <h4>Order Execution</h4>
+                        <p>Buyer and seller orders match on PSX KATS engine. Contract note is generated.</p>
+                    </div>
+                    <div class="timeline-arrow">➔</div>
+                    <div class="timeline-step step-t1" data-step="1">
+                        <div class="step-badge">Day T+1 (Clearing)</div>
+                        <h4>NCCPL Netting & Clearing</h4>
+                        <p>National Clearing Company (NCCPL) calculates net cash and share obligations for all brokers.</p>
+                    </div>
+                    <div class="timeline-arrow">➔</div>
+                    <div class="timeline-step step-t2" data-step="2">
+                        <div class="step-badge">Day T+2 (Settlement)</div>
+                        <h4>CDC Delivery & Cash Transfer</h4>
+                        <p>Shares are electronically credited to buyer's CDC Sub-Account; seller receives funds.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Central Depository Company (CDC) Custody Explainer -->
+            <div class="edu-card">
+                <div class="edu-card-title">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                    Role of Central Depository Company (CDC)
+                </div>
+                <div class="cdc-features-grid">
+                    <div class="cdc-feature">
+                        <span class="cdc-icon">🔒</span>
+                        <h4>Dematerialized Shares Custody</h4>
+                        <p>Replaces physical paper share certificates with electronic 100% secure depository accounts registered in your CNIC.</p>
+                    </div>
+                    <div class="cdc-feature">
+                        <span class="cdc-icon">🆔</span>
+                        <h4>Investor Account System (IAS)</h4>
+                        <p>Direct CDC IAS account gives 100% individual control independent of broker insolvency or custody risk.</p>
+                    </div>
+                    <div class="cdc-feature">
+                        <span class="cdc-icon">📲</span>
+                        <h4>eAccess & Dividend SMS Alerts</h4>
+                        <p>Instant SMS & email notifications from CDC whenever shares enter/leave your sub-account or cash dividends credit.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Paper Trading Simulator View Section -->
+        <section class="simulator-view" id="view-simulator" style="display:none;">
+            <!-- Simulator Header Summary -->
+            <div class="sim-header-card">
+                <div class="sim-stat">
+                    <span class="stat-label">Virtual Cash Balance</span>
+                    <span class="stat-value" id="sim-cash">₨1,000,000.00</span>
+                </div>
+                <div class="sim-stat">
+                    <span class="stat-label">Invested Equity Value</span>
+                    <span class="stat-value" id="sim-equity">₨0.00</span>
+                </div>
+                <div class="sim-stat">
+                    <span class="stat-label">Total Portfolio Value</span>
+                    <span class="stat-value" id="sim-total-val">₨1,000,000.00</span>
+                </div>
+                <div class="sim-actions-group">
+                    <button class="btn btn-primary btn-sm" id="btn-refresh-sim-prices" title="Refresh Live PSX Prices & Portfolio Value">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+                        <span>Refresh Prices</span>
+                    </button>
+                    <button class="btn btn-ghost btn-sm" id="btn-reset-sim-portfolio" title="Reset Portfolio to PKR 1M">Reset Portfolio</button>
+                </div>
+            </div>
+
+            <!-- Main Simulator Workspace: Order Ticket + Open Positions -->
+            <div class="sim-workspace-grid">
+                <!-- Order Execution Ticket -->
+                <div class="sim-ticket-card">
+                    <div class="ticket-header">
+                        <h3>Order Execution Ticket</h3>
+                        <div class="market-type-toggle">
+                            <button class="market-type-btn active" id="btn-mkt-regular" data-market="regular">Regular Market (50+)</button>
+                            <button class="market-type-btn" id="btn-mkt-oddlot" data-market="oddlot">Odd Lot Market (<50)</button>
+                        </div>
+                    </div>
+
+                    <div class="ticket-form">
+                        <!-- Symbol & Quick Bid/Ask Spread -->
+                        <div class="form-group">
+                            <label for="sim-symbol-input">Stock Symbol</label>
+                            <div class="sim-symbol-wrapper">
+                                <input type="text" id="sim-symbol-input" class="sim-input" placeholder="e.g. UNITY, TRG, OGDC" autocomplete="off" value="UNITY">
+                                <button class="sim-fetch-btn" id="btn-sim-load-stock">Load Quote</button>
+                            </div>
+                        </div>
+
+                        <!-- Real-time Bid/Ask Spread Depth Visualizer -->
+                        <div class="sim-spread-box" id="sim-spread-box">
+                            <div class="spread-row">
+                                <span class="spread-bid">Best Bid (Buyers): <strong id="sim-bid-price">₨11.50</strong> (5,000 shares)</span>
+                                <span class="spread-ask">Best Ask (Sellers): <strong id="sim-ask-price">₨11.52</strong> (8,500 shares)</span>
+                            </div>
+                            <div class="spread-bar"><div class="spread-bid-fill" style="width: 45%"></div></div>
+                            <div class="lock-indicator" id="sim-lock-indicator">Circuit Limits: Lower ₨10.00 — Upper ₨12.50</div>
+                        </div>
+
+                        <!-- Order Action & Order Type -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="sim-order-action">Action</label>
+                                <select id="sim-order-action" class="sim-select">
+                                    <option value="BUY">BUY (Long Position)</option>
+                                    <option value="SELL">SELL (Close Position)</option>
+                                    <option value="SHORT">SHORT SELL (Sell First)</option>
+                                    <option value="COVER">COVER SHORT (Buy Back)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="sim-order-type">Order Type</label>
+                                <select id="sim-order-type" class="sim-select">
+                                    <option value="MARKET">Market Order (Immediate Execution)</option>
+                                    <option value="LIMIT">Limit Order (Specific Price)</option>
+                                    <option value="STOP_LOSS">Stop Loss Order (Trigger Price)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Quantity & Limit/Trigger Price -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="sim-quantity-input">Quantity (Shares)</label>
+                                <input type="number" id="sim-quantity-input" class="sim-input" value="1000" min="1" step="1">
+                            </div>
+                            <div class="form-group" id="group-sim-price">
+                                <label for="sim-price-input" id="label-sim-price">Limit / Trigger Price (PKR)</label>
+                                <input type="number" id="sim-price-input" class="sim-input" value="11.51" step="0.01">
+                            </div>
+                        </div>
+
+                        <!-- Estimated Total & Execution Button -->
+                        <div class="ticket-footer">
+                            <div class="est-total">Estimated Total: <strong id="sim-est-total">₨11,510.00</strong></div>
+                            <button class="btn-execute-order buy-btn" id="btn-execute-order">Submit BUY Order</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Portfolio Positions & Active Orders Table -->
+                <div class="sim-positions-card">
+                    <div class="positions-header">
+                        <h3>Active Positions & Orders</h3>
+                    </div>
+                    <div class="positions-table-wrapper">
+                        <table class="positions-table">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Type</th>
+                                    <th>Shares</th>
+                                    <th>Avg Price</th>
+                                    <th>Current</th>
+                                    <th>Market Value</th>
+                                    <th>Unrealized P&L</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sim-positions-body">
+                                <tr><td colspan="8" style="text-align:center; padding:32px; color:var(--text-tertiary);">No open positions. Place an order on the left ticket.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Dividend & Corporate Actions Tracker View Section -->
+        <section class="corporate-view" id="view-corporate" style="display:none;">
+            <div class="corp-header">
+                <h2>📅 PSX Dividend Calendar & Corporate Action Calculators</h2>
+                <p>Track Declaration, Ex-Dividend, Record, Book Closure, and Payment dates across PSX companies, and calculate portfolio impact of Bonus Shares, Right Shares, and Stock Splits.</p>
+            </div>
+
+            <!-- Interactive Corporate Action Impact Calculators -->
+            <div class="corp-calculators-grid">
+                <!-- Bonus Shares Calculator -->
+                <div class="calc-card">
+                    <h3>🎁 Bonus Shares Calculator</h3>
+                    <div class="calc-form">
+                        <div class="form-group">
+                            <label>Existing Shares Held</label>
+                            <input type="number" id="bonus-shares-input" class="sim-input" value="1000">
+                        </div>
+                        <div class="form-group">
+                            <label>Bonus Issue % (e.g. 15%)</label>
+                            <input type="number" id="bonus-pct-input" class="sim-input" value="15">
+                        </div>
+                        <div class="form-group">
+                            <label>Pre-Bonus Share Price (PKR)</label>
+                            <input type="number" id="bonus-price-input" class="sim-input" value="100">
+                        </div>
+                        <button class="calc-btn" id="btn-calc-bonus">Calculate Impact</button>
+                        <div class="calc-result" id="bonus-calc-result">
+                            New Total Shares: <strong>1,150</strong> | Ex-Bonus Price: <strong>₨86.96</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Shares Calculator -->
+                <div class="calc-card">
+                    <h3>🎯 Right Shares Calculator</h3>
+                    <div class="calc-form">
+                        <div class="form-group">
+                            <label>Existing Shares Held</label>
+                            <input type="number" id="right-shares-input" class="sim-input" value="1000">
+                        </div>
+                        <div class="form-group">
+                            <label>Right Offer % (e.g. 20%)</label>
+                            <input type="number" id="right-pct-input" class="sim-input" value="20">
+                        </div>
+                        <div class="form-group">
+                            <label>Right Offer Price (PKR)</label>
+                            <input type="number" id="right-offer-price" class="sim-input" value="15">
+                        </div>
+                        <button class="calc-btn" id="btn-calc-right">Calculate Theoretical Price</button>
+                        <div class="calc-result" id="right-calc-result">
+                            Right Entitlement: <strong>200 shares @ ₨15</strong> | TERP: <strong>₨85.83</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stock Split Calculator -->
+                <div class="calc-card">
+                    <h3>✂️ Stock Split Calculator</h3>
+                    <div class="calc-form">
+                        <div class="form-group">
+                            <label>Existing Shares Held</label>
+                            <input type="number" id="split-shares-input" class="sim-input" value="1000">
+                        </div>
+                        <div class="form-group">
+                            <label>Split Ratio (e.g. 1 to 2)</label>
+                            <select id="split-ratio-select" class="sim-select">
+                                <option value="2">1 to 2 Split (50% price)</option>
+                                <option value="5">1 to 5 Split (20% price)</option>
+                                <option value="10">1 to 10 Split (10% price)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Pre-Split Share Price (PKR)</label>
+                            <input type="number" id="split-price-input" class="sim-input" value="200">
+                        </div>
+                        <button class="calc-btn" id="btn-calc-split">Calculate Post-Split</button>
+                        <div class="calc-result" id="split-calc-result">
+                            New Total Shares: <strong>2,000</strong> | Post-Split Price: <strong>₨100.00</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Dividend Calendar Table -->
+            <div class="corp-table-card">
+                <div class="corp-table-header">
+                    <h3>Live PSX Dividend Calendar & Dates Timeline</h3>
+                    <div class="date-legend">
+                        <span class="d-leg"><span class="dot-leg announcement"></span>Declaration</span>
+                        <span class="d-leg"><span class="dot-leg ex"></span>Ex-Dividend</span>
+                        <span class="d-leg"><span class="dot-leg record"></span>Record Date</span>
+                        <span class="d-leg"><span class="dot-leg closure"></span>Book Closure</span>
+                        <span class="d-leg"><span class="dot-leg payment"></span>Payment</span>
+                    </div>
+                </div>
+                <div class="corp-table-wrapper">
+                    <table class="corp-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Company</th>
+                                <th>Dividend Amount</th>
+                                <th>Announcement</th>
+                                <th>Ex-Dividend Date</th>
+                                <th>Record Date</th>
+                                <th>Book Closure Period</th>
+                                <th>Payment Date</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="corp-calendar-body">
+                            <tr><td colspan="9" style="text-align:center; padding:32px; color:var(--text-tertiary);">Loading PSX dividend calendar...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Deep Research & Financial Statements Screener View Section -->
+        <section class="financials-view" id="view-financials" style="display:none;">
+            <!-- Top Symbol Selector -->
+            <div class="fin-controls">
+                <div class="fin-search-wrapper">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="fin-symbol-input" class="fin-search-input" placeholder="Type symbol (e.g. UNITY, OGDC, ENGRO, HBL)..." value="UNITY">
+                    <button class="fin-search-btn" id="btn-fin-search">Analyze Financials & Ratios</button>
+                </div>
+            </div>
+
+            <!-- Loading indicator -->
+            <div class="fin-loading" id="fin-loading" style="display:none;">
+                <div class="loading-spinner">
+                    <svg viewBox="0 0 50 50">
+                        <circle cx="25" cy="25" r="20" fill="none" stroke="url(#spinGrad)" stroke-width="4" stroke-linecap="round" stroke-dasharray="80 200" stroke-dashoffset="0">
+                            <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/>
+                        </circle>
+                    </svg>
+                </div>
+                <div class="loading-text">Computing automated 10 financial ratios & statements...</div>
+            </div>
+
+            <!-- Financial Statements & Ratios Workspace (Populated by JS) -->
+            <div class="fin-workspace" id="fin-workspace">
+                <!-- Content generated dynamically -->
             </div>
         </section>
 
@@ -421,7 +876,7 @@
                             Search
                         </button>
                     </div>
-                    <p class="history-search-hint">Enter any PSX stock symbol to view its trading history for the last 10 days</p>
+                    <p class="history-search-hint">Enter any PSX stock symbol to view its trading history for the last 30 days</p>
                 </div>
 
                 <!-- Loading state -->
@@ -442,11 +897,55 @@
         </div>
     </div>
 
+    <!-- Mobile Pull-to-Refresh Spinner Bar -->
+    <div class="pull-to-refresh-bar" id="pull-to-refresh-bar">
+        <div class="pull-spinner"></div>
+        <span class="pull-text">Pull to refresh PSX market data...</span>
+    </div>
+
+    <!-- PWA Installation Banner for Mobile -->
+    <div class="pwa-install-banner" id="pwa-install-banner" style="display:none;">
+        <div class="pwa-install-content">
+            <span class="pwa-icon">📱</span>
+            <div class="pwa-text">
+                <strong>Install PSX App</strong>
+                <span>Add to Home Screen for fast mobile access</span>
+            </div>
+            <button class="btn-pwa-install" id="btn-pwa-install">Install</button>
+            <button class="btn-pwa-dismiss" id="btn-pwa-dismiss">&times;</button>
+        </div>
+    </div>
+
+    <!-- Mobile Fixed Bottom Navigation Bar -->
+    <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+        <button class="mobile-nav-item active" data-view="table">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+            <span>Screener</span>
+        </button>
+        <button class="mobile-nav-item" data-view="live-trading">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <span>⚡ Live</span>
+        </button>
+        <button class="mobile-nav-item" data-view="simulator">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
+            <span>Simulator</span>
+        </button>
+        <button class="mobile-nav-item" data-view="corporate">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span>Dividends</span>
+        </button>
+        <button class="mobile-nav-item" data-view="financials">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            <span>Financials</span>
+        </button>
+    </nav>
+
     <!-- Footer -->
     <footer id="app-footer">
         <p>PSX Screener — Live data sourced from <a href="https://dps.psx.com.pk" target="_blank" rel="noopener">dps.psx.com.pk</a>. For educational purposes only. Not financial advice.</p>
         <p class="footer-sub">Built for Pakistan Stock Exchange (KSE-100) analysis • Data refreshes on demand</p>
-    </footer>
+    <!-- AI Position Analysis Modal -->
+    <div id="position-analysis-modal" class="pos-modal-overlay" style="display:none;"></div>
 
     <script src="app.js"></script>
 </body>
