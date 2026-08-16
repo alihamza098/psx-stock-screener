@@ -3324,6 +3324,8 @@ function getDeviceId() {
     return devId;
 }
 
+let trialPollTimer = null;
+
 function initTrialSystem() {
     const deviceId = getDeviceId();
     fetch(`/api/trial-status?deviceId=${deviceId}`)
@@ -3339,6 +3341,7 @@ function initTrialSystem() {
                 if (info.isLocal) {
                     if (banner) banner.style.display = "none";
                     if (emailModal) emailModal.style.display = "none";
+                    if (trialPollTimer) clearInterval(trialPollTimer);
                     return;
                 }
 
@@ -3350,13 +3353,28 @@ function initTrialSystem() {
                     if (banner) banner.style.display = "none";
                     if (emailModal) emailModal.style.display = "none";
                     if (paywallModal) paywallModal.style.display = "flex";
+                    if (trialPollTimer) clearInterval(trialPollTimer);
                 } else {
                     // Trial active ➔ Show countdown banner
                     if (emailModal) emailModal.style.display = "none";
                     if (paywallModal) paywallModal.style.display = "none";
                     if (banner) banner.style.display = "flex";
                     if (bannerText) {
-                        bannerText.textContent = info.isPaid ? "🌟 PSX Screener Pro (Unlimited Online Access)" : `⏳ Online 3-Day Free Trial: ${info.daysLeft} days (${info.hoursLeft} hrs) remaining`;
+                        let timeLabel = "";
+                        if (info.isPaid) {
+                            timeLabel = "🌟 PSX Screener Pro (Unlimited Online Access)";
+                        } else if (info.hoursLeft < 0.1) {
+                            const mins = Math.max(0, Math.floor(info.hoursLeft * 60));
+                            timeLabel = `🚨 Free Trial Ending Soon: ~${mins} minute(s) remaining!`;
+                        } else {
+                            timeLabel = `⏳ Online 3-Day Free Trial: ${info.daysLeft} days (${info.hoursLeft} hrs) remaining`;
+                        }
+                        bannerText.textContent = timeLabel;
+                    }
+
+                    // Poll every 10 seconds to detect trial expiration in real-time
+                    if (!trialPollTimer && !info.isPaid) {
+                        trialPollTimer = setInterval(initTrialSystem, 10000);
                     }
                 }
             }

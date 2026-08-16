@@ -1348,11 +1348,25 @@ def start_trial(client_ip, device_id, email, host_header=""):
     ip_key = f"ip_{client_ip}" if client_ip else key
     now_ts = time.time()
 
+    trial_duration = 120 if email == "videosupermacy@gmail.com" else (3 * 24 * 3600)
+
     existing = db.get(key) or db.get(ip_key)
     if existing:
         if existing.get("is_paid"):
             return {"success": True, "message": "Pro Account Active", "isPaid": True}
         
+        # If test email videosupermacy@gmail.com, reset to 2 minutes (120 seconds) for testing
+        if email == "videosupermacy@gmail.com" or existing.get("email") == "videosupermacy@gmail.com":
+            existing["trial_end"] = now_ts + 120
+            existing["email"] = "videosupermacy@gmail.com"
+            save_trial_db(db)
+            return {
+                "success": True,
+                "message": "2-Minute Test Trial Started!",
+                "daysLeft": 1,
+                "hoursLeft": 0.03
+            }
+
         trial_end = existing.get("trial_end", now_ts)
         time_left = trial_end - now_ts
         if time_left > 0:
@@ -1370,7 +1384,7 @@ def start_trial(client_ip, device_id, email, host_header=""):
         "client_ip": client_ip,
         "device_id": device_id,
         "created_at": now_ts,
-        "trial_end": now_ts + (3 * 24 * 3600),
+        "trial_end": now_ts + trial_duration,
         "is_paid": False
     }
     db[key] = new_trial
