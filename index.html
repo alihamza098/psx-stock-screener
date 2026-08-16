@@ -969,49 +969,78 @@
 
     <!-- Online 3-Day Trial Expired Paywall Modal -->
     <div id="trial-paywall-modal" class="paywall-overlay" style="display:none;">
-        <div class="paywall-box">
-            <div class="paywall-icon">🔒</div>
-            <h2>3-Day Free Trial Expired</h2>
-            <p>Your 3-day online evaluation trial has ended. Upgrade to <strong>PSX Screener Pro</strong> to keep accessing live market signals, AI position analysis, 10-ratio financial dashboards, and trading tools.</p>
-            <div class="paywall-features">
-                <div class="pw-feat">✓ Live PSX Data & Real-Time KSE-100 Indices</div>
-                <div class="pw-feat">✓ AI Position Reanalysis & Signal Scoring Engine</div>
-                <div class="pw-feat">✓ Automated 10-Ratio Financial Statements Screener</div>
-                <div class="pw-feat">✓ Real-time Paper Trading Simulator + Order Execution</div>
-            </div>
-            <div class="paywall-price">
-                <span class="price-val">₨5,000</span>
-                <span class="price-period">/ month</span>
-            </div>
-            <div class="paywall-payment-methods">
-                <div class="pm-title">💳 Mobile Account Payment Methods</div>
-                <div class="pm-account">
-                    <span class="pm-badge">JazzCash / NayaPay / SadaPay</span>
-                    <strong class="pm-number">0306 6400721</strong>
-                </div>
-            </div>
-            <div class="paywall-contact">
-                📲 Send Payment Receipt/Screenshot via WhatsApp:<br>
-                <a href="https://wa.me/923066400721" target="_blank" class="whatsapp-btn">
-                    💬 WhatsApp: 0306 6400721
-                </a>
+        <div class="paywall-box" style="max-width: 820px; width: 94vw; padding: 24px 28px; border-radius: 16px;">
+            <div class="paywall-top-header" style="text-align: center; margin-bottom: 16px;">
+                <div class="paywall-icon" style="width: 52px; height: 52px; font-size: 1.8rem; margin: 0 auto 8px;">🔒</div>
+                <h2 style="font-size: 1.4rem; font-weight: 800; color: #f8fafc; margin-bottom: 4px;">3-Day Free Trial Expired</h2>
+                <p style="font-size: 0.86rem; color: #94a3b8; margin: 0;">Upgrade to <strong>PSX Screener Pro</strong> for full access to live market data, AI reanalysis & financial screeners.</p>
             </div>
 
-            <!-- License Activation Form -->
-            <div class="paywall-activation-section">
-                <div class="activation-title">🔑 Already Paid? Enter License Key</div>
-                <div class="activation-form">
-                    <input type="text" id="lic-name-input" class="lic-input" placeholder="Full Name">
-                    <input type="email" id="lic-email-input" class="lic-input" placeholder="Email Address">
-                    <input type="text" id="lic-key-input" class="lic-input" placeholder="License Key (e.g. PSX-PRO-XXXX-XXXX)">
-                    <button class="btn btn-primary btn-activate" onclick="submitLicenseActivation()">
-                        ⚡ Activate Pro Account
-                    </button>
-                    <div id="activation-msg" class="activation-msg" style="display:none;"></div>
+            <!-- 2-Column Grid: Left (Payment Info & Features) | Right (License Key Activation) -->
+            <div class="paywall-grid-layout" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 20px; width: 100%; text-align: left;">
+                
+                <!-- Left Column: Pricing, Account Details & WhatsApp -->
+                <div class="paywall-left-col" style="display: flex; flex-direction: column; gap: 14px; background: rgba(30, 41, 59, 0.5); padding: 16px 18px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 10px;">
+                        <span style="font-size: 0.85rem; font-weight: 700; color: #a5b4fc; text-transform: uppercase;">1. Payment Details</span>
+                        <div class="paywall-price" style="margin: 0;">
+                            <span class="price-val" style="font-size: 1.6rem; font-weight: 900; color: #818cf8;">₨5,000</span>
+                            <span class="price-period" style="font-size: 0.8rem; color: #94a3b8;">/ month</span>
+                        </div>
+                    </div>
+
+                    <div class="paywall-payment-methods" style="padding: 10px 12px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(129, 140, 248, 0.25); border-radius: 8px;">
+                        <div class="pm-title" style="font-size: 0.72rem; color: #818cf8; margin-bottom: 4px;">💳 JazzCash / NayaPay / SadaPay</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.78rem; color: #cbd5e1;">Account Number:</span>
+                            <strong class="pm-number" style="font-size: 1.15rem; color: #f8fafc; font-family: monospace;">0306 6400721</strong>
+                        </div>
+                    </div>
+
+                    <div class="paywall-contact" style="padding: 10px 12px; font-size: 0.8rem; text-align: center; border-radius: 8px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25);">
+                        <span style="color: #e2e8f0;">📲 Send Payment Screenshot on WhatsApp for instant License Key:</span>
+                        <a href="https://wa.me/923066400721" target="_blank" class="whatsapp-btn" style="padding: 8px 16px; font-size: 0.85rem; border-radius: 20px; width: 100%; box-sizing: border-box; justify-content: center; margin-top: 6px;">
+                            💬 WhatsApp: 0306 6400721
+                        </a>
+                    </div>
+
+                    <div class="paywall-features" style="padding: 8px 10px; background: transparent; border: none;">
+                        <div class="pw-feat" style="font-size: 0.78rem; color: #94a3b8;">✓ Live PSX Data & Real-Time KSE-100 Indices</div>
+                        <div class="pw-feat" style="font-size: 0.78rem; color: #94a3b8;">✓ AI Position Reanalysis & Signal Scoring Engine</div>
+                        <div class="pw-feat" style="font-size: 0.78rem; color: #94a3b8;">✓ Automated 10-Ratio Financial Statements Screener</div>
+                    </div>
                 </div>
-            </div>
-            <div style="margin-top: 10px; font-size: 0.82rem; color: #94a3b8; text-align: center;">
-                Need to start 3-day trial? <a href="#" onclick="switchToTrialModal(); return false;" style="color: #818cf8; font-weight: 600; text-decoration: underline;">Back to Trial Form ←</a>
+
+                <!-- Right Column: License Activation Form -->
+                <div class="paywall-right-col" style="display: flex; flex-direction: column; gap: 12px; background: rgba(30, 41, 59, 0.5); padding: 16px 18px; border-radius: 12px; border: 1px solid rgba(129, 140, 248, 0.25);">
+                    <div style="font-size: 0.85rem; font-weight: 700; color: #a5b4fc; text-transform: uppercase; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 10px;">
+                        2. Activate License Key
+                    </div>
+
+                    <div class="activation-form" style="display: flex; flex-direction: column; gap: 10px;">
+                        <div>
+                            <label style="font-size: 0.75rem; color: #cbd5e1; margin-bottom: 4px; display: block;">Full Name</label>
+                            <input type="text" id="lic-name-input" class="lic-input" placeholder="Your Name" style="padding: 10px 12px; font-size: 0.88rem; background: #0f172a;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; color: #cbd5e1; margin-bottom: 4px; display: block;">Email Address</label>
+                            <input type="email" id="lic-email-input" class="lic-input" placeholder="name@email.com" style="padding: 10px 12px; font-size: 0.88rem; background: #0f172a;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; color: #cbd5e1; margin-bottom: 4px; display: block;">License Key</label>
+                            <input type="text" id="lic-key-input" class="lic-input" placeholder="e.g. PSX-PRO-XXXX-XXXX" style="padding: 10px 12px; font-size: 0.88rem; background: #0f172a;">
+                        </div>
+                        <button class="btn btn-primary btn-activate" onclick="submitLicenseActivation()" style="margin-top: 4px; min-height: 44px; font-weight: 700; font-size: 0.9rem; border-radius: 8px;">
+                            ⚡ Activate Pro Account
+                        </button>
+                        <div id="activation-msg" class="activation-msg" style="display:none;"></div>
+                    </div>
+
+                    <div style="margin-top: auto; font-size: 0.78rem; color: #94a3b8; text-align: center;">
+                        Need trial? <a href="#" onclick="switchToTrialModal(); return false;" style="color: #818cf8; font-weight: 600; text-decoration: underline;">Back to Trial Form ←</a>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
