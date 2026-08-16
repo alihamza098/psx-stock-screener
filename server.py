@@ -1280,8 +1280,7 @@ def save_trial_db(db):
     except Exception as e:
         print(f"[PSX] Error saving trial db: {e}")
 
-def check_trial_status(client_ip, device_id, host_header=""):
-    # Detect if request is coming from local network / localhost
+def check_trial_status(client_ip, device_id, host_header="", email=""):
     host_lower = (host_header or "").lower()
     is_local_host = any(h in host_lower for h in ["localhost", "127.0.0.1", "192.168.", "10."]) or \
                    any(ip in (client_ip or "") for ip in ["127.0.0.1", "192.168.", "10."])
@@ -1295,7 +1294,6 @@ def check_trial_status(client_ip, device_id, host_header=""):
             "message": "Local Mode — Unlimited Access (No Trial Needed)"
         }
 
-    # Online Deployment Mode: 3-Day (72-hour) Trial per IP & Device ID
     db = get_trial_db()
     key = device_id or client_ip or "online_guest"
     ip_key = f"ip_{client_ip}" if client_ip else key
@@ -1303,8 +1301,27 @@ def check_trial_status(client_ip, device_id, host_header=""):
 
     user_info = db.get(key) or db.get(ip_key)
 
+    # Check licenses.json if no record exists yet
+    if not user_info and (email or device_id):
+        lic_db = get_license_db()
+        email_clean = (email or "").strip().lower()
+        dev_clean = (device_id or "").strip()
+        for lk, ldata in lic_db.items():
+            if ldata.get("used"):
+                if (email_clean and ldata.get("email") == email_clean) or (dev_clean and ldata.get("device_id") == dev_clean):
+                    user_info = {
+                        "email": ldata.get("email"),
+                        "is_paid": True,
+                        "paid_name": ldata.get("name"),
+                        "paid_email": ldata.get("email"),
+                        "license_key": lk
+                    }
+                    db[key] = user_info
+                    if client_ip: db[ip_key] = user_info
+                    save_trial_db(db)
+                    break
+
     if not user_info:
-        # Needs Email Registration to start 3-day trial
         return {
             "isLocal": False,
             "needsEmail": True,
@@ -1314,7 +1331,16 @@ def check_trial_status(client_ip, device_id, host_header=""):
         }
 
     if user_info.get("is_paid"):
-        return {"isLocal": False, "trialActive": True, "isPaid": True, "secondsLeft": 99999999, "message": "Pro Account Active"}
+        return {
+            "isLocal": False,
+            "trialActive": True,
+            "isPaid": True,
+            "email": user_info.get("email") or user_info.get("paid_email") or "",
+            "name": user_info.get("paid_name") or "",
+            "licenseKey": user_info.get("license_key") or "",
+            "secondsLeft": 99999999,
+            "message": "Pro Account Active"
+        }
 
     trial_end = user_info.get("trial_end", now_ts)
     time_left = trial_end - now_ts
@@ -1323,6 +1349,7 @@ def check_trial_status(client_ip, device_id, host_header=""):
         return {
             "isLocal": False,
             "trialActive": False,
+            "email": user_info.get("email") or "",
             "secondsLeft": 0,
             "hoursLeft": 0,
             "daysLeft": 0,
@@ -1337,6 +1364,7 @@ def check_trial_status(client_ip, device_id, host_header=""):
         "isLocal": False,
         "trialActive": True,
         "isPaid": False,
+        "email": user_info.get("email") or "",
         "secondsLeft": seconds_left,
         "hoursLeft": hours_left,
         "daysLeft": days_left,

@@ -1229,8 +1229,15 @@ function openUpperLockAnalysis() {
     document.getElementById("upper-lock-sort").value = "probability";
 
     // Fetch analysis
-    fetch("/api/upper-lock-analysis")
-        .then(r => r.json())
+    const deviceId = getDeviceId();
+    fetch(`/api/upper-lock-analysis?deviceId=${deviceId}`)
+        .then(r => {
+            if (r.status === 402) {
+                initTrialSystem();
+                throw new Error("3-Day Free Trial Expired. Upgrade to Pro.");
+            }
+            return r.json();
+        })
         .then(data => {
             if (data.success) {
                 upperLockData = data;
@@ -1240,7 +1247,7 @@ function openUpperLockAnalysis() {
             }
         })
         .catch(err => {
-            showUpperLockError("Network error: " + err.message);
+            showUpperLockError(err.message);
         });
 }
 
@@ -1477,37 +1484,47 @@ function closeStockHistory() {
 
 function searchStockHistory() {
     const input = document.getElementById('history-search-input');
-    const symbol = input.value.trim().toUpperCase();
+    const symbol = input ? input.value.trim().toUpperCase() : "";
     if (!symbol) return;
     
     const resultsDiv = document.getElementById('history-results');
     const loadingDiv = document.getElementById('history-loading');
     
-    // Show loading
-    loadingDiv.style.display = 'flex';
-    resultsDiv.style.display = 'none';
+    if (loadingDiv) loadingDiv.style.display = 'flex';
+    if (resultsDiv) resultsDiv.style.display = 'none';
     
-    fetch(`/api/stock-history/${symbol}`)
-        .then(r => r.json())
+    const deviceId = getDeviceId();
+    fetch(`/api/stock-history/${symbol}?deviceId=${deviceId}`)
+        .then(r => {
+            if (r.status === 402) {
+                initTrialSystem();
+                throw new Error("Trial expired");
+            }
+            return r.json();
+        })
         .then(data => {
-            loadingDiv.style.display = 'none';
-            resultsDiv.style.display = 'block';
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            if (resultsDiv) resultsDiv.style.display = 'block';
             if (data.success) {
                 renderStockHistory(data);
             } else {
-                resultsDiv.innerHTML = `<div class="upper-lock-empty">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                    </svg>
-                    <p>${data.error || 'Stock not found'}</p>
-                    <p style="font-size: 0.8rem; color: var(--text-tertiary)">Try symbols like OGDC, HBL, ENGRO, UNITY, LUCK</p>
-                </div>`;
+                if (resultsDiv) {
+                    resultsDiv.innerHTML = `<div class="upper-lock-empty">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                        </svg>
+                        <p>${data.error || 'Stock not found'}</p>
+                        <p style="font-size: 0.8rem; color: var(--text-tertiary)">Try symbols like OGDC, HBL, ENGRO, UNITY, LUCK</p>
+                    </div>`;
+                }
             }
         })
         .catch(err => {
-            loadingDiv.style.display = 'none';
-            resultsDiv.style.display = 'block';
-            resultsDiv.innerHTML = `<div class="upper-lock-empty"><p>Network error: ${err.message}</p></div>`;
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            if (err.message !== "Trial expired" && resultsDiv) {
+                resultsDiv.style.display = 'block';
+                resultsDiv.innerHTML = `<div class="upper-lock-empty"><p>Network error: ${err.message}</p></div>`;
+            }
         });
 }
 
@@ -1907,6 +1924,7 @@ function searchLiveTrading() {
 function fetchLiveTradingAnalysis(symbol) {
     if (!symbol) return;
     currentLiveSymbol = symbol.toUpperCase();
+    const deviceId = getDeviceId();
 
     // Show loading
     const loading = document.getElementById("live-trading-loading");
@@ -1919,8 +1937,14 @@ function fetchLiveTradingAnalysis(symbol) {
         else chip.classList.remove("active");
     });
 
-    fetch(`/api/live-trading?symbol=${currentLiveSymbol}`)
-        .then(r => r.json())
+    fetch(`/api/live-trading?symbol=${currentLiveSymbol}&deviceId=${deviceId}`)
+        .then(r => {
+            if (r.status === 402) {
+                initTrialSystem();
+                throw new Error("3-Day Free Trial Expired. Upgrade to Pro.");
+            }
+            return r.json();
+        })
         .then(res => {
             if (loading) loading.style.display = "none";
             if (res.success && res.data) {
@@ -1940,8 +1964,8 @@ function fetchLiveTradingAnalysis(symbol) {
         })
         .catch(err => {
             if (loading) loading.style.display = "none";
-            if (container) {
-                container.innerHTML = `<div class="upper-lock-empty"><p>Network Error: ${err.message}</p></div>`;
+            if (err.message !== "3-Day Free Trial Expired. Upgrade to Pro." && container) {
+                container.innerHTML = `<div class="upper-lock-empty"><p>${err.message}</p></div>`;
             }
         });
 }
@@ -1951,8 +1975,9 @@ function setupLiveAutoRefresh(isOpen) {
     // Refresh every 10s if market OPEN, every 60s if CLOSED
     const intervalMs = isOpen ? 10000 : 60000;
     liveTradingTimer = setInterval(() => {
+        const deviceId = getDeviceId();
         if (currentView === "live-trading" && currentLiveSymbol) {
-            fetch(`/api/live-trading?symbol=${currentLiveSymbol}`)
+            fetch(`/api/live-trading?symbol=${currentLiveSymbol}&deviceId=${deviceId}`)
                 .then(r => r.json())
                 .then(res => {
                     if (res.success && res.data && currentView === "live-trading") {
@@ -2727,25 +2752,29 @@ function analyzePosition(symbol) {
             </div>
         </div>`;
 
+    const deviceId = getDeviceId();
     const params = new URLSearchParams({
         symbol,
         buyPrice: pos.avgPrice,
         qty: pos.shares,
-        purchaseDate: pos.purchaseDate || ""
+        purchaseDate: pos.purchaseDate || "",
+        deviceId: deviceId
     });
 
     fetch(`/api/position-analysis?${params}`)
-        .then(r => r.json())
+        .then(r => {
+            if (r.status === 402) {
+                closePositionModal();
+                initTrialSystem();
+                throw new Error("Trial expired");
+            }
+            return r.json();
+        })
         .then(res => {
             if (res.success && res.data) {
                 renderPositionAnalysisModal(res.data, pos);
             } else {
                 modal.innerHTML = `<div class="pos-modal-box" style="text-align:center;padding:40px;">
-                    <p style="color:#ef4444;">⚠ Could not load analysis for ${symbol}.</p>
-                    <button class="btn btn-ghost" onclick="closePositionModal()">Close</button>
-                </div>`;
-            }
-        })
         .catch(() => {
             modal.innerHTML = `<div class="pos-modal-box" style="text-align:center;padding:40px;">
                 <p style="color:#ef4444;">Network error. Please check your connection.</p>
@@ -3343,6 +3372,73 @@ function getDeviceId() {
     return devId;
 }
 
+function toggleAccountMenu() {
+    const menu = document.getElementById("account-dropdown-menu");
+    if (menu) {
+        menu.style.display = menu.style.display === "none" ? "block" : "none";
+    }
+}
+
+document.addEventListener("click", (e) => {
+    const badgeContainer = document.getElementById("account-badge-container");
+    const menu = document.getElementById("account-dropdown-menu");
+    if (menu && badgeContainer && !badgeContainer.contains(e.target)) {
+        menu.style.display = "none";
+    }
+});
+
+function updateAccountBadge(info) {
+    const badgeContainer = document.getElementById("account-badge-container");
+    const badgeIcon = document.getElementById("account-badge-icon");
+    const badgeText = document.getElementById("account-badge-text");
+    const accEmail = document.getElementById("acc-menu-email");
+    const accStatus = document.getElementById("acc-menu-status");
+    const accKeyRow = document.getElementById("acc-menu-key-row");
+    const accKey = document.getElementById("acc-menu-key");
+    const accUpgradeBtn = document.getElementById("acc-menu-upgrade-btn");
+
+    if (!badgeContainer) return;
+    badgeContainer.style.display = "inline-block";
+
+    const email = info.email || localStorage.getItem("psx_user_email") || "Guest User";
+    if (accEmail) accEmail.textContent = email;
+
+    if (info.isPaid) {
+        if (badgeIcon) badgeIcon.textContent = "🌟";
+        if (badgeText) badgeText.textContent = `${email.split("@")[0]} (PRO)`;
+        if (accStatus) {
+            accStatus.textContent = "🌟 Pro Account Active";
+            accStatus.style.background = "#065f46";
+            accStatus.style.color = "#a7f3d0";
+        }
+        if (accKeyRow) {
+            accKeyRow.style.display = "block";
+            if (accKey) accKey.textContent = info.licenseKey || localStorage.getItem("psx_user_key") || "PSX-PRO-ACTIVE";
+        }
+        if (accUpgradeBtn) accUpgradeBtn.style.display = "none";
+    } else if (info.trialActive) {
+        if (badgeIcon) badgeIcon.textContent = "⏳";
+        if (badgeText) badgeText.textContent = `${email.split("@")[0]} (Trial)`;
+        if (accStatus) {
+            accStatus.textContent = `⏳ 3-Day Trial Active (${info.daysLeft}d ${info.hoursLeft}h left)`;
+            accStatus.style.background = "#312e81";
+            accStatus.style.color = "#a5b4fc";
+        }
+        if (accKeyRow) accKeyRow.style.display = "none";
+        if (accUpgradeBtn) accUpgradeBtn.style.display = "block";
+    } else {
+        if (badgeIcon) badgeIcon.textContent = "🔒";
+        if (badgeText) badgeText.textContent = `${email.split("@")[0]} (Expired)`;
+        if (accStatus) {
+            accStatus.textContent = "🔒 Trial Expired";
+            accStatus.style.background = "#991b1b";
+            accStatus.style.color = "#fecaca";
+        }
+        if (accKeyRow) accKeyRow.style.display = "none";
+        if (accUpgradeBtn) accUpgradeBtn.style.display = "block";
+    }
+}
+
 let trialPollTimer = null;
 let trialCountdownTimer = null;
 let currentSecondsLeft = 0;
@@ -3369,6 +3465,8 @@ function initTrialSystem() {
                 const bannerText = document.getElementById("online-trial-text");
                 const paywallModal = document.getElementById("trial-paywall-modal");
                 const trialEmailModal = document.getElementById("trial-email-modal");
+
+                updateAccountBadge(info);
 
                 if (info.isLocal) {
                     if (banner) banner.style.display = "none";
