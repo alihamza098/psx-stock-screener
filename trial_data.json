@@ -6,5 +6,21 @@
     "license_key": "PSX-PRO-7569-2697",
     "paid_until": 1789462738.4514601,
     "activated_at": "2026-08-16 18:58:58 PKT"
+  },
+  "test_device_99": {
+    "email": "testbuyer@gmail.com",
+    "client_ip": "127.0.0.1",
+    "device_id": "test_device_99",
+    "created_at": 1786871621.849047,
+    "trial_end": 1787130821.849047,
+    "is_paid": false
+  },
+  "ip_127.0.0.1": {
+    "email": "testbuyer@gmail.com",
+    "client_ip": "127.0.0.1",
+    "device_id": "test_device_99",
+    "created_at": 1786871621.849047,
+    "trial_end": 1787130821.849047,
+    "is_paid": false
   }
 }

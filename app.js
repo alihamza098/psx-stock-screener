@@ -2615,7 +2615,7 @@ function renderSimPositions() {
 
     const symbols = Object.keys(simPositions);
     if (symbols.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:32px; color:var(--text-tertiary);">No open positions. Place an order on the left ticket.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:32px; color:var(--text-tertiary);">No open positions. Place an order on the left ticket.</td></tr>`;
     } else {
         let rowsHtml = "";
         symbols.forEach(sym => {
@@ -3325,17 +3325,6 @@ function getDeviceId() {
 }
 
 function initTrialSystem() {
-    const host = window.location.hostname;
-    const isLocalHost = host === "localhost" || host === "127.0.0.1" || host.startsWith("192.168.") || host.startsWith("10.");
-    
-    // If local, completely bypass trial system!
-    if (isLocalHost) {
-        const banner = document.getElementById("online-trial-banner");
-        if (banner) banner.style.display = "none";
-        return;
-    }
-
-    // Online deployment mode: Check trial status with server
     const deviceId = getDeviceId();
     fetch(`/api/trial-status?deviceId=${deviceId}`)
         .then(r => r.json())
@@ -3345,18 +3334,26 @@ function initTrialSystem() {
                 const banner = document.getElementById("online-trial-banner");
                 const bannerText = document.getElementById("online-trial-text");
                 const paywallModal = document.getElementById("trial-paywall-modal");
+                const emailModal = document.getElementById("trial-email-modal");
 
                 if (info.isLocal) {
                     if (banner) banner.style.display = "none";
+                    if (emailModal) emailModal.style.display = "none";
                     return;
                 }
 
-                if (!info.trialActive) {
-                    // Trial expired on online deployment ➔ Lock app with paywall
+                if (info.needsEmail) {
                     if (banner) banner.style.display = "none";
+                    if (emailModal) emailModal.style.display = "flex";
+                } else if (!info.trialActive) {
+                    // Trial expired ➔ Lock app with paywall
+                    if (banner) banner.style.display = "none";
+                    if (emailModal) emailModal.style.display = "none";
                     if (paywallModal) paywallModal.style.display = "flex";
                 } else {
-                    // Trial active on online deployment ➔ Show countdown banner
+                    // Trial active ➔ Show countdown banner
+                    if (emailModal) emailModal.style.display = "none";
+                    if (paywallModal) paywallModal.style.display = "none";
                     if (banner) banner.style.display = "flex";
                     if (bannerText) {
                         bannerText.textContent = info.isPaid ? "🌟 PSX Screener Pro (Unlimited Online Access)" : `⏳ Online 3-Day Free Trial: ${info.daysLeft} days (${info.hoursLeft} hrs) remaining`;
@@ -3429,6 +3426,7 @@ function acceptTermsAndConditions() {
     localStorage.setItem("psx_terms_accepted_v1", "true");
     const modal = document.getElementById("terms-disclaimer-modal");
     if (modal) modal.style.display = "none";
+    initTrialSystem();
 }
 
 function initTermsCheck() {

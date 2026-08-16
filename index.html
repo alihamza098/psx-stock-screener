@@ -628,6 +628,7 @@
                                     <th>Current</th>
                                     <th>Market Value</th>
                                     <th>Unrealized P&L</th>
+                                    <th>High / Low</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -1006,38 +1007,47 @@
         </div>
     </div>
 
-    <!-- Mandatory Terms & Conditions + Financial Disclaimer Modal -->
+    <!-- Simple 1-2 Liner Disclaimer Modal -->
     <div id="terms-disclaimer-modal" class="terms-modal-overlay" style="display:none;">
-        <div class="terms-modal-box">
-            <div class="terms-header">
-                <span class="terms-header-icon">📜</span>
-                <h2>Terms & Conditions & Disclaimer</h2>
+        <div class="terms-modal-box" style="max-width: 460px; text-align: center;">
+            <div class="terms-header" style="justify-content: center; text-align: center;">
+                <span class="terms-header-icon">🤖</span>
+                <h2>Welcome to PSX Screener Pro</h2>
             </div>
-            <div class="terms-body">
-                <div class="terms-highlight-box">
-                    <span style="font-size:1.4rem;">⚡</span>
-                    <p><strong>1-Click AI Deep Analysis:</strong> PSX Screener is an advanced AI-powered stock analytics platform designed to fetch comprehensive market data, financial ratios, technical indicators, and position re-analysis in <strong>1 click</strong> — saving you hours of manual research.</p>
-                </div>
-                
-                <p>By accessing and using this application, you agree to the following terms and conditions:</p>
-
-                <div class="terms-disclaimer-warning">
-                    <strong>⚠️ FINANCIAL DISCLAIMER (MUST READ):</strong>
-                    This application is strictly for <strong>educational and informational purposes only</strong>. It does NOT constitute financial, investment, trading, or legal advice. All AI recommendations (Strong Buy, Hold, Sell, etc.), confidence scores, technical signals, and financial estimates are generated automatically by algorithms and must <strong>NEVER</strong> be used as the sole basis for making buy or sell decisions on the Pakistan Stock Exchange (PSX).
-                </div>
-
-                <p style="font-size:0.82rem;color:var(--text-tertiary);">
-                    Investing in stock markets involves significant risk of capital loss. Past market performance is no guarantee of future results. Always perform your own due diligence or consult a SECP-licensed financial advisor before placing live trades.
+            <div class="terms-body" style="padding: 20px 24px; text-align: center;">
+                <p style="font-size: 0.95rem; line-height: 1.6; color: #e2e8f0; margin: 0;">
+                    This app provides <strong>AI-driven stock analysis</strong> powered by cumulative PSX market data for educational & research purposes.
                 </p>
+                <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: var(--radius-lg); padding: 12px 14px; font-size: 0.82rem; color: #a5b4fc; margin-top: 8px;">
+                    ⚠️ All signals, recommendations, and metrics are algorithmically generated — not guaranteed, and not financial advice.
+                </div>
             </div>
-            <div class="terms-footer">
-                <label class="terms-checkbox-wrap">
-                    <input type="checkbox" id="chk-accept-terms" onchange="toggleAcceptTermsButton()">
-                    <span>I have read, understood, and agree to the Terms & Conditions and Financial Disclaimer</span>
-                </label>
-                <button class="btn btn-primary btn-accept-terms" id="btn-accept-terms" disabled onclick="acceptTermsAndConditions()">
-                    Proceed to PSX Screener Pro →
+            <div class="terms-footer" style="padding: 16px 24px;">
+                <button class="btn btn-primary btn-accept-terms" onclick="acceptTermsAndConditions()" style="min-height: 44px; font-weight: 700;">
+                    Agree & Continue →
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3-Day Free Trial Email Registration Modal -->
+    <div id="trial-email-modal" class="terms-modal-overlay" style="display:none;">
+        <div class="terms-modal-box" style="max-width: 440px;">
+            <div class="terms-header" style="justify-content: center; text-align: center;">
+                <span class="terms-header-icon">🚀</span>
+                <h2>Start Your 3-Day Free Trial</h2>
+            </div>
+            <div class="terms-body" style="padding: 18px 24px; text-align: center;">
+                <p style="font-size: 0.88rem; color: #cbd5e1; margin-bottom: 14px;">
+                    Enter your email to activate <strong>72 hours of unlimited access</strong> on this device & IP address.
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <input type="email" id="trial-user-email" class="lic-input" placeholder="Enter your email address" style="padding: 10px 14px; font-size: 0.9rem;">
+                    <button class="btn btn-primary" onclick="submitTrialEmail()" style="width: 100%; min-height: 44px; font-weight: 700;">
+                        ⚡ Start 3-Day Free Trial
+                    </button>
+                    <div id="trial-email-msg" class="activation-msg" style="display:none;"></div>
+                </div>
             </div>
         </div>
     </div>

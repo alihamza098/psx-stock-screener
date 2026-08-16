@@ -1294,20 +1294,23 @@ def check_trial_status(client_ip, device_id, host_header=""):
             "message": "Local Mode — Unlimited Access (No Trial Needed)"
         }
 
-    # Online Deployment Mode: 3-Day (72-hour) Trial per Device ID
+    # Online Deployment Mode: 3-Day (72-hour) Trial per IP & Device ID
     db = get_trial_db()
     key = device_id or client_ip or "online_guest"
+    ip_key = f"ip_{client_ip}" if client_ip else key
     now_ts = time.time()
 
-    if key not in db:
-        db[key] = {
-            "created_at": now_ts,
-            "trial_end": now_ts + (3 * 24 * 3600),  # 3 Days (72 Hours)
-            "is_paid": False
-        }
-        save_trial_db(db)
+    user_info = db.get(key) or db.get(ip_key)
 
-    user_info = db[key]
+    if not user_info:
+        # Needs Email Registration to start 3-day trial
+        return {
+            "isLocal": False,
+            "needsEmail": True,
+            "trialActive": False,
+            "message": "Registration Required to Start 3-Day Free Trial"
+        }
+
     if user_info.get("is_paid"):
         return {"isLocal": False, "trialActive": True, "isPaid": True, "message": "Pro Account Active"}
 
@@ -1325,6 +1328,62 @@ def check_trial_status(client_ip, device_id, host_header=""):
 
     hours_left = round(time_left / 3600, 1)
     days_left = max(1, int(time_left // 86400) + 1)
+
+    return {
+        "isLocal": False,
+        "trialActive": True,
+        "isPaid": False,
+        "hoursLeft": hours_left,
+        "daysLeft": days_left,
+        "message": f"Online Mode — {days_left} Days Left in Free Trial"
+    }
+
+def start_trial(client_ip, device_id, email, host_header=""):
+    email = (email or "").strip().lower()
+    if not email or "@" not in email:
+        return {"success": False, "error": "Please enter a valid email address."}
+
+    db = get_trial_db()
+    key = device_id or client_ip or "online_guest"
+    ip_key = f"ip_{client_ip}" if client_ip else key
+    now_ts = time.time()
+
+    existing = db.get(key) or db.get(ip_key)
+    if existing:
+        if existing.get("is_paid"):
+            return {"success": True, "message": "Pro Account Active", "isPaid": True}
+        
+        trial_end = existing.get("trial_end", now_ts)
+        time_left = trial_end - now_ts
+        if time_left > 0:
+            return {
+                "success": True,
+                "message": "Trial Active",
+                "daysLeft": max(1, int(time_left // 86400) + 1),
+                "hoursLeft": round(time_left / 3600, 1)
+            }
+        else:
+            return {"success": False, "error": "Your 3-day free trial on this IP / Device has already expired. Please upgrade to Pro."}
+
+    new_trial = {
+        "email": email,
+        "client_ip": client_ip,
+        "device_id": device_id,
+        "created_at": now_ts,
+        "trial_end": now_ts + (3 * 24 * 3600),
+        "is_paid": False
+    }
+    db[key] = new_trial
+    if client_ip:
+        db[ip_key] = new_trial
+    save_trial_db(db)
+
+    return {
+        "success": True,
+        "message": "3-Day Free Trial Started!",
+        "daysLeft": 3,
+        "hoursLeft": 72.0
+    }
 
 # ─── License Key System (Admin & Payment Activation) ───
 LICENSE_FILE = str(Path(__file__).parent / "licenses.json")
@@ -1456,6 +1515,14 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             client_ip = self.client_address[0] if self.client_address else ""
             res = check_trial_status(client_ip, device_id, host_header)
             self._send_json({"success": True, "data": res})
+        elif parsed_path.path == "/api/start-trial":
+            query = parse_qs(parsed_path.query)
+            email = query.get("email", [""])[0]
+            device_id = query.get("deviceId", [""])[0]
+            host_header = self.headers.get("Host", "")
+            client_ip = self.client_address[0] if self.client_address else ""
+            res = start_trial(client_ip, device_id, email, host_header)
+            self._send_json(res, 200 if res["success"] else 400)
         elif parsed_path.path == "/api/activate-license":
             query = parse_qs(parsed_path.query)
             key = query.get("key", [""])[0]

@@ -9,5 +9,13 @@
     "activated_at": "2026-08-16 18:58:58 PKT",
     "device_id": "test_dev_1",
     "client_ip": "127.0.0.1"
+  },
+  "PSX-PRO-5487-9321": {
+    "valid": true,
+    "days": 30,
+    "used": false,
+    "email": null,
+    "name": null,
+    "generated_at": "2026-08-16 19:13:52 PKT"
   }
 }
