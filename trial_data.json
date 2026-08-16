@@ -16,11 +16,25 @@
     "is_paid": false
   },
   "ip_127.0.0.1": {
-    "email": "videosupermacy@gmail.com",
+    "email": "user1@gmail.com",
     "client_ip": "127.0.0.1",
-    "device_id": "test_device_99",
-    "created_at": 1786871621.849047,
-    "trial_end": 1786872852.5593169,
-    "is_paid": false
+    "device_id": "dev1",
+    "is_paid": true,
+    "paid_name": "User1",
+    "paid_email": "user1@gmail.com",
+    "license_key": "PSX-PRO-5487-9321",
+    "paid_until": 1789466666.420667,
+    "activated_at": "2026-08-16 20:04:26 PKT"
+  },
+  "dev1": {
+    "email": "user1@gmail.com",
+    "client_ip": "127.0.0.1",
+    "device_id": "dev1",
+    "is_paid": true,
+    "paid_name": "User1",
+    "paid_email": "user1@gmail.com",
+    "license_key": "PSX-PRO-5487-9321",
+    "paid_until": 1789466666.420667,
+    "activated_at": "2026-08-16 20:04:26 PKT"
   }
 }

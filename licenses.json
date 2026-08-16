@@ -13,10 +13,13 @@
   "PSX-PRO-5487-9321": {
     "valid": true,
     "days": 30,
-    "used": false,
-    "email": null,
-    "name": null,
-    "generated_at": "2026-08-16 19:13:52 PKT"
+    "used": true,
+    "email": "user1@gmail.com",
+    "name": "User1",
+    "generated_at": "2026-08-16 19:13:52 PKT",
+    "activated_at": "2026-08-16 20:04:26 PKT",
+    "device_id": "dev1",
+    "client_ip": "127.0.0.1"
   },
   "PSX-PRO-2150-8356": {
     "valid": true,

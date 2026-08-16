@@ -3015,8 +3015,15 @@ function fetchFinancialStatements(symbol) {
     const workspace = document.getElementById("fin-workspace");
     if (loading) loading.style.display = "flex";
 
-    fetch(`/api/financial-statements?symbol=${symbol}`)
-        .then(r => r.json())
+    const deviceId = getDeviceId();
+    fetch(`/api/financial-statements?symbol=${encodeURIComponent(symbol)}&deviceId=${deviceId}`)
+        .then(r => {
+            if (r.status === 402) {
+                initTrialSystem();
+                throw new Error("Trial expired");
+            }
+            return r.json();
+        })
         .then(res => {
             if (loading) loading.style.display = "none";
             if (res.success && res.data) {
@@ -3028,7 +3035,9 @@ function fetchFinancialStatements(symbol) {
         })
         .catch(err => {
             if (loading) loading.style.display = "none";
-            if (workspace) workspace.innerHTML = `<div class="upper-lock-empty"><p>Error loading financials: ${err.message}</p></div>`;
+            if (err.message !== "Trial expired" && workspace) {
+                workspace.innerHTML = `<div class="upper-lock-empty"><p>Error loading financials: ${err.message}</p></div>`;
+            }
         });
 }
 
@@ -3381,18 +3390,29 @@ function initTrialSystem() {
                     if (trialPollTimer) { clearInterval(trialPollTimer); trialPollTimer = null; }
                     if (trialCountdownTimer) { clearInterval(trialCountdownTimer); trialCountdownTimer = null; }
                 } else {
-                    // Trial active ➔ Show countdown banner
+                    // Trial active or Pro Account
                     if (trialEmailModal) trialEmailModal.style.display = "none";
                     if (paywallModal) paywallModal.style.display = "none";
                     if (banner) banner.style.display = "flex";
+
+                    const upgradeBtn = document.querySelector(".btn-upgrade-top");
 
                     currentSecondsLeft = info.secondsLeft || 0;
 
                     const updateCountdownUI = () => {
                         if (info.isPaid) {
-                            if (bannerText) bannerText.textContent = "🌟 PSX Screener Pro (Unlimited Online Access)";
+                            if (bannerText) bannerText.textContent = "🌟 PSX Screener Pro (Unlimited Access)";
+                            if (upgradeBtn) upgradeBtn.style.display = "none";
+                            if (banner) {
+                                banner.style.background = "linear-gradient(90deg, #064e3b, #047857)";
+                                banner.style.borderColor = "#10b981";
+                                banner.style.color = "#a7f3d0";
+                            }
                             return;
                         }
+
+                        if (upgradeBtn) upgradeBtn.style.display = "inline-block";
+
                         if (currentSecondsLeft <= 0) {
                             if (banner) banner.style.display = "none";
                             if (paywallModal) paywallModal.style.display = "flex";

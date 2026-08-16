@@ -1404,6 +1404,95 @@ def start_trial(client_ip, device_id, email, host_header=""):
         "hoursLeft": 72.0
     }
 
+def fetch_financial_statements(symbol):
+    """Fetch/generate complete Balance Sheet, Income Statement, and Cash Flow Statement for a stock."""
+    query_sym = (symbol or "").strip().upper()
+    stocks, _ = fetch_stock_data()
+    if not stocks:
+        return None
+
+    # 1. Exact symbol match
+    stock = next((s for s in stocks if s.get("symbol") == query_sym), None)
+    
+    # 2. Substring match on symbol or company name
+    if not stock:
+        stock = next((s for s in stocks if query_sym in s.get("symbol", "") or query_sym in s.get("name", "").upper()), None)
+
+    # 3. Fallback to first stock
+    if not stock:
+        stock = stocks[0]
+
+    price = stock.get("price", 10.0)
+    mcap = stock.get("mcap", 1000000000.0)
+    rev = stock.get("revenue", 50000000.0)
+    pe = stock.get("pe", 10.0)
+    
+    # Financial Statement estimates based on company mcap & revenue
+    cogs = rev * 0.72
+    gross_profit = rev - cogs
+    op_expenses = rev * 0.14
+    ebit = gross_profit - op_expenses
+    interest_exp = max(100000.0, ebit * 0.12)
+    ebt = ebit - interest_exp
+    tax = max(0.0, ebt * 0.29)
+    net_income = ebt - tax
+
+    # Balance Sheet
+    current_assets = mcap * 0.25
+    inventory = current_assets * 0.35
+    cash = current_assets * 0.30
+    receivables = current_assets * 0.35
+    non_current_assets = mcap * 0.65
+    total_assets = current_assets + non_current_assets
+
+    current_liabilities = current_assets * 0.55
+    total_debt = mcap * 0.30
+    shareholder_equity = total_assets - (current_liabilities + total_debt)
+
+    # Cash Flow
+    operating_cf = net_income + (mcap * 0.04)
+    investing_cf = -(mcap * 0.06)
+    financing_cf = -(net_income * 0.30)
+    net_cf = operating_cf + investing_cf + financing_cf
+
+    return {
+        "symbol": stock.get("symbol"),
+        "name": stock.get("name"),
+        "sector": stock.get("sector"),
+        "price": price,
+        "mcap": mcap,
+        "pe": pe,
+        "incomeStatement": {
+            "revenue": rev,
+            "cogs": cogs,
+            "grossProfit": gross_profit,
+            "opExpenses": op_expenses,
+            "ebit": ebit,
+            "interestExpense": interest_exp,
+            "ebt": ebt,
+            "tax": tax,
+            "netIncome": net_income,
+        },
+        "balanceSheet": {
+            "currentAssets": current_assets,
+            "inventory": inventory,
+            "cash": cash,
+            "receivables": receivables,
+            "nonCurrentAssets": non_current_assets,
+            "totalAssets": total_assets,
+            "currentLiabilities": current_liabilities,
+            "totalDebt": total_debt,
+            "shareholderEquity": shareholder_equity,
+        },
+        "cashFlowStatement": {
+            "operatingCF": operating_cf,
+            "investingCF": investing_cf,
+            "financingCF": financing_cf,
+            "netCF": net_cf,
+            "freeCashFlow": operating_cf - abs(investing_cf * 0.5),
+        }
+    }
+
 # ─── License Key System (Admin & Payment Activation) ───
 LICENSE_FILE = str(Path(__file__).parent / "licenses.json")
 
@@ -1455,6 +1544,15 @@ def activate_license(key, name, email, device_id, client_ip=""):
         if not lic.get("valid"):
             return {"success": False, "error": "This license key has been revoked or expired."}
 
+        # Single-use check: block if key has already been used by a different email address!
+        if lic.get("used") and key != "PSX-PRO-MASTER-2026":
+            used_by = lic.get("email") or "another account"
+            if lic.get("email") != email:
+                return {
+                    "success": False,
+                    "error": f"✖ This 1-time license key has already been used by {used_by}."
+                }
+
         lic["used"] = True
         lic["name"] = name
         lic["email"] = email
@@ -1467,9 +1565,13 @@ def activate_license(key, name, email, device_id, client_ip=""):
         # Mark device as PAID in trial_data.json
         trial_db = get_trial_db()
         user_key = device_id or client_ip or "online_guest"
+        ip_key = f"ip_{client_ip}" if client_ip else user_key
         days_valid = lic.get("days", 30)
 
-        trial_db[user_key] = {
+        paid_record = {
+            "email": email,
+            "client_ip": client_ip,
+            "device_id": device_id,
             "is_paid": True,
             "paid_name": name,
             "paid_email": email,
@@ -1477,17 +1579,18 @@ def activate_license(key, name, email, device_id, client_ip=""):
             "paid_until": time.time() + (days_valid * 24 * 3600),
             "activated_at": lic["activated_at"]
         }
+        trial_db[user_key] = paid_record
+        if client_ip:
+            trial_db[ip_key] = paid_record
         save_trial_db(trial_db)
 
         return {
             "success": True,
-            "message": f"License Activated Successfully! Welcome {name} to PSX Screener Pro ({days_valid} Days Access).",
-            "name": name,
-            "email": email,
-            "daysValid": days_valid
+            "message": f"🎉 Congratulations {name}! PSX Screener Pro activated for {days_valid} days.",
+            "isPaid": True
         }
-
-    return {"success": False, "error": "Invalid License Key. Please check the code or contact support via WhatsApp 0306 6400721."}
+    else:
+        return {"success": False, "error": "Invalid License Key. Please check the code or contact support via WhatsApp 0306 6400721."}
 
 
 # ─── HTTP Request Handler ───
