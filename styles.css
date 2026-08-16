@@ -5395,5 +5395,55 @@ body {
     cursor: not-allowed;
 }
 
+/* ─── Desktop Recommendation Mobile Tip ─── */
+.mobile-desktop-tip {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .mobile-desktop-tip {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
+        border: 1px solid rgba(168, 85, 247, 0.3);
+        padding: 10px 14px;
+        font-size: 0.78rem;
+        color: #e2e8f0;
+        line-height: 1.4;
+        margin: 8px 12px 0 12px;
+        border-radius: var(--radius-lg);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .mobile-desktop-tip strong {
+        color: #a78bfa;
+    }
+
+    .tip-icon {
+        font-size: 1.2rem;
+        flex-shrink: 0;
+    }
+
+    .tip-text {
+        flex: 1;
+    }
+
+    .tip-close {
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        font-size: 1.1rem;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: var(--radius-sm);
+        transition: color var(--transition-fast);
+    }
+
+    .tip-close:hover {
+        color: #fff;
+    }
+}
+
 
 
