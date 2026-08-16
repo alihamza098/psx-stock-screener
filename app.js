@@ -194,10 +194,20 @@ async function fetchLiveData() {
     }
 }
 
+let loadingTimeoutTimer = null;
+
 function showLoading(show) {
     const overlay = document.getElementById('loading-overlay');
     if (overlay) {
         overlay.style.display = show ? 'flex' : 'none';
+    }
+    if (show) {
+        if (loadingTimeoutTimer) clearTimeout(loadingTimeoutTimer);
+        loadingTimeoutTimer = setTimeout(() => {
+            if (overlay) overlay.style.display = 'none';
+        }, 8000);
+    } else {
+        if (loadingTimeoutTimer) clearTimeout(loadingTimeoutTimer);
     }
 }
 
@@ -3478,10 +3488,12 @@ function initTrialSystem() {
                 }
 
                 if (info.needsEmail) {
+                    showLoading(false);
                     if (banner) banner.style.display = "none";
                     if (trialEmailModal) trialEmailModal.style.display = "flex";
                 } else if (!info.trialActive || (info.secondsLeft !== undefined && info.secondsLeft <= 0)) {
                     // Trial expired ➔ LOCK APP WITH PAYWALL IMMEDIATELY!
+                    showLoading(false);
                     if (banner) banner.style.display = "none";
                     if (trialEmailModal) trialEmailModal.style.display = "none";
                     if (paywallModal) paywallModal.style.display = "flex";
