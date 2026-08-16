@@ -3367,12 +3367,85 @@ function initTrialSystem() {
         .catch(e => console.error("Trial status check error:", e));
 }
 
+function submitLicenseActivation() {
+    const nameInput = document.getElementById("lic-name-input");
+    const emailInput = document.getElementById("lic-email-input");
+    const keyInput = document.getElementById("lic-key-input");
+    const msgEl = document.getElementById("activation-msg");
+
+    const name = nameInput ? nameInput.value.trim() : "";
+    const email = emailInput ? emailInput.value.trim() : "";
+    const key = keyInput ? keyInput.value.trim() : "";
+
+    if (!name || !email || !key) {
+        if (msgEl) {
+            msgEl.style.display = "block";
+            msgEl.className = "activation-msg msg-error";
+            msgEl.textContent = "Please enter your Name, Email, and License Key.";
+        }
+        return;
+    }
+
+    const deviceId = getDeviceId();
+    const params = new URLSearchParams({ name, email, key, deviceId });
+
+    fetch(`/api/activate-license?${params}`)
+        .then(r => r.json())
+        .then(res => {
+            if (msgEl) {
+                msgEl.style.display = "block";
+                if (res.success) {
+                    msgEl.className = "activation-msg msg-success";
+                    msgEl.textContent = "✔ " + res.message;
+                    setTimeout(() => {
+                        const modal = document.getElementById("trial-paywall-modal");
+                        if (modal) modal.style.display = "none";
+                        initTrialSystem();
+                    }, 1800);
+                } else {
+                    msgEl.className = "activation-msg msg-error";
+                    msgEl.textContent = "✖ " + (res.error || "Invalid License Key.");
+                }
+            }
+        })
+        .catch(() => {
+            if (msgEl) {
+                msgEl.style.display = "block";
+                msgEl.className = "activation-msg msg-error";
+                msgEl.textContent = "Network error. Please check your connection.";
+            }
+        });
+}
+
+function toggleAcceptTermsButton() {
+    const chk = document.getElementById("chk-accept-terms");
+    const btn = document.getElementById("btn-accept-terms");
+    if (btn && chk) {
+        btn.disabled = !chk.checked;
+    }
+}
+
+function acceptTermsAndConditions() {
+    localStorage.setItem("psx_terms_accepted_v1", "true");
+    const modal = document.getElementById("terms-disclaimer-modal");
+    if (modal) modal.style.display = "none";
+}
+
+function initTermsCheck() {
+    const accepted = localStorage.getItem("psx_terms_accepted_v1");
+    if (!accepted) {
+        const modal = document.getElementById("terms-disclaimer-modal");
+        if (modal) modal.style.display = "flex";
+    }
+}
+
 // ─── Initialize ───
 document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("watchlist-count").textContent = watchlist.size;
     updateRangeLabels();
     initEventListeners();
     initPWAAndMobile();
+    initTermsCheck();
     initTrialSystem();
     
     // Live Pakistan Clock Ticker

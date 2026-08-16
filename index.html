@@ -982,6 +982,56 @@
                     💬 WhatsApp: 0306 6400721
                 </a>
             </div>
+
+            <!-- License Activation Form -->
+            <div class="paywall-activation-section">
+                <div class="activation-title">🔑 Already Paid? Enter License Key</div>
+                <div class="activation-form">
+                    <input type="text" id="lic-name-input" class="lic-input" placeholder="Full Name">
+                    <input type="email" id="lic-email-input" class="lic-input" placeholder="Email Address">
+                    <input type="text" id="lic-key-input" class="lic-input" placeholder="License Key (e.g. PSX-PRO-XXXX-XXXX)">
+                    <button class="btn btn-primary btn-activate" onclick="submitLicenseActivation()">
+                        ⚡ Activate Pro Account
+                    </button>
+                    <div id="activation-msg" class="activation-msg" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mandatory Terms & Conditions + Financial Disclaimer Modal -->
+    <div id="terms-disclaimer-modal" class="terms-modal-overlay" style="display:none;">
+        <div class="terms-modal-box">
+            <div class="terms-header">
+                <span class="terms-header-icon">📜</span>
+                <h2>Terms & Conditions & Disclaimer</h2>
+            </div>
+            <div class="terms-body">
+                <div class="terms-highlight-box">
+                    <span style="font-size:1.4rem;">⚡</span>
+                    <p><strong>1-Click AI Deep Analysis:</strong> PSX Screener is an advanced AI-powered stock analytics platform designed to fetch comprehensive market data, financial ratios, technical indicators, and position re-analysis in <strong>1 click</strong> — saving you hours of manual research.</p>
+                </div>
+                
+                <p>By accessing and using this application, you agree to the following terms and conditions:</p>
+
+                <div class="terms-disclaimer-warning">
+                    <strong>⚠️ FINANCIAL DISCLAIMER (MUST READ):</strong>
+                    This application is strictly for <strong>educational and informational purposes only</strong>. It does NOT constitute financial, investment, trading, or legal advice. All AI recommendations (Strong Buy, Hold, Sell, etc.), confidence scores, technical signals, and financial estimates are generated automatically by algorithms and must <strong>NEVER</strong> be used as the sole basis for making buy or sell decisions on the Pakistan Stock Exchange (PSX).
+                </div>
+
+                <p style="font-size:0.82rem;color:var(--text-tertiary);">
+                    Investing in stock markets involves significant risk of capital loss. Past market performance is no guarantee of future results. Always perform your own due diligence or consult a SECP-licensed financial advisor before placing live trades.
+                </p>
+            </div>
+            <div class="terms-footer">
+                <label class="terms-checkbox-wrap">
+                    <input type="checkbox" id="chk-accept-terms" onchange="toggleAcceptTermsButton()">
+                    <span>I have read, understood, and agree to the Terms & Conditions and Financial Disclaimer</span>
+                </label>
+                <button class="btn btn-primary btn-accept-terms" id="btn-accept-terms" disabled onclick="acceptTermsAndConditions()">
+                    Proceed to PSX Screener Pro →
+                </button>
+            </div>
         </div>
     </div>
 

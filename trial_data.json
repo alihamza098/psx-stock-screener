@@ -1,0 +1,10 @@
+{
+  "test_dev_1": {
+    "is_paid": true,
+    "paid_name": "Ali Hamza",
+    "paid_email": "ali@example.com",
+    "license_key": "PSX-PRO-7569-2697",
+    "paid_until": 1789462738.4514601,
+    "activated_at": "2026-08-16 18:58:58 PKT"
+  }
+}

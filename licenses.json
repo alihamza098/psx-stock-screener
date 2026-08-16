@@ -1,0 +1,13 @@
+{
+  "PSX-PRO-7569-2697": {
+    "valid": true,
+    "days": 30,
+    "used": true,
+    "email": "ali@example.com",
+    "name": "Ali Hamza",
+    "generated_at": "2026-08-16 18:57:01 PKT",
+    "activated_at": "2026-08-16 18:58:58 PKT",
+    "device_id": "test_dev_1",
+    "client_ip": "127.0.0.1"
+  }
+}

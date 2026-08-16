@@ -5191,5 +5191,209 @@ body {
     box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
 }
 
+/* ─── License Activation Form Styles ─── */
+.paywall-activation-section {
+    width: 100%;
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(129, 140, 248, 0.2);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.activation-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #a5b4fc;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    text-align: center;
+}
+
+.activation-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.lic-input {
+    width: 100%;
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    color: #f8fafc;
+    outline: none;
+    transition: border-color var(--transition-fast);
+}
+
+.lic-input:focus {
+    border-color: #818cf8;
+}
+
+.btn-activate {
+    width: 100%;
+    padding: 10px;
+    font-size: 0.88rem;
+    font-weight: 700;
+}
+
+.activation-msg {
+    font-size: 0.8rem;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    text-align: center;
+    line-height: 1.4;
+}
+
+.msg-success {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.msg-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* ─── Terms & Conditions Disclaimer Modal ─── */
+.terms-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(10, 14, 26, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    z-index: 11000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-md);
+}
+
+.terms-modal-box {
+    background: #0f172a;
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    border-radius: var(--radius-xl);
+    max-width: 580px;
+    width: 100%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9);
+    overflow: hidden;
+    color: var(--text-primary);
+}
+
+.terms-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: rgba(15, 23, 42, 0.95);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.terms-header-icon {
+    font-size: 1.8rem;
+}
+
+.terms-header h2 {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #f8fafc;
+    margin: 0;
+}
+
+.terms-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: #cbd5e1;
+}
+
+.terms-highlight-box {
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.terms-highlight-box p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #c7d2fe;
+}
+
+.terms-disclaimer-warning {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    color: #fca5a5;
+    font-size: 0.83rem;
+    line-height: 1.5;
+}
+
+.terms-disclaimer-warning strong {
+    color: #ef4444;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.terms-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border-subtle);
+    background: rgba(15, 23, 42, 0.95);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.terms-checkbox-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.83rem;
+    color: #f8fafc;
+    cursor: pointer;
+    user-select: none;
+}
+
+.terms-checkbox-wrap input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #6366f1;
+    cursor: pointer;
+}
+
+.btn-accept-terms {
+    width: 100%;
+    padding: 12px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    border-radius: var(--radius-lg);
+}
+
+.btn-accept-terms:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 
 

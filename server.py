@@ -1326,14 +1326,90 @@ def check_trial_status(client_ip, device_id, host_header=""):
     hours_left = round(time_left / 3600, 1)
     days_left = max(1, int(time_left // 86400) + 1)
 
-    return {
-        "isLocal": False,
-        "trialActive": True,
-        "isPaid": False,
-        "hoursLeft": hours_left,
-        "daysLeft": days_left,
-        "message": f"Online Mode — {days_left} Days Left in Free Trial"
-    }
+# ─── License Key System (Admin & Payment Activation) ───
+LICENSE_FILE = str(Path(__file__).parent / "licenses.json")
+
+DEFAULT_LICENSES = {
+    "PSX-PRO-7821-9901": {"valid": True, "days": 30, "used": False, "email": None, "name": None},
+    "PSX-PRO-5542-1092": {"valid": True, "days": 30, "used": False, "email": None, "name": None},
+    "PSX-PRO-3391-8843": {"valid": True, "days": 30, "used": False, "email": None, "name": None},
+    "PSX-PRO-6620-4115": {"valid": True, "days": 30, "used": False, "email": None, "name": None},
+    "PSX-PRO-9914-7230": {"valid": True, "days": 365, "used": False, "email": None, "name": None},
+    "PSX-VIP-1000-8888": {"valid": True, "days": 3650, "used": False, "email": "admin@psx.com", "name": "VIP Admin"}
+}
+
+def get_license_db():
+    if os.path.exists(LICENSE_FILE):
+        try:
+            with open(LICENSE_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    try:
+        with open(LICENSE_FILE, "w") as f:
+            json.dump(DEFAULT_LICENSES, f, indent=2)
+    except Exception as e:
+        print(f"[PSX] Error creating license db: {e}")
+    return DEFAULT_LICENSES
+
+def save_license_db(db):
+    try:
+        with open(LICENSE_FILE, "w") as f:
+            json.dump(db, f, indent=2)
+    except Exception as e:
+        print(f"[PSX] Error saving license db: {e}")
+
+def activate_license(key, name, email, device_id, client_ip=""):
+    key = (key or "").strip().upper()
+    name = (name or "").strip()
+    email = (email or "").strip().lower()
+    device_id = (device_id or "").strip()
+
+    if not key or not name or not email:
+        return {"success": False, "error": "Please enter your Name, Email, and License Key."}
+
+    licenses = get_license_db()
+
+    # Universal Master Key or stored valid key
+    if key == "PSX-PRO-MASTER-2026" or key in licenses:
+        lic = licenses.get(key, {"valid": True, "days": 30, "used": False})
+
+        if not lic.get("valid"):
+            return {"success": False, "error": "This license key has been revoked or expired."}
+
+        lic["used"] = True
+        lic["name"] = name
+        lic["email"] = email
+        lic["activated_at"] = time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(time.time() + 5*3600))
+        lic["device_id"] = device_id
+        lic["client_ip"] = client_ip
+        licenses[key] = lic
+        save_license_db(licenses)
+
+        # Mark device as PAID in trial_data.json
+        trial_db = get_trial_db()
+        user_key = device_id or client_ip or "online_guest"
+        days_valid = lic.get("days", 30)
+
+        trial_db[user_key] = {
+            "is_paid": True,
+            "paid_name": name,
+            "paid_email": email,
+            "license_key": key,
+            "paid_until": time.time() + (days_valid * 24 * 3600),
+            "activated_at": lic["activated_at"]
+        }
+        save_trial_db(trial_db)
+
+        return {
+            "success": True,
+            "message": f"License Activated Successfully! Welcome {name} to PSX Screener Pro ({days_valid} Days Access).",
+            "name": name,
+            "email": email,
+            "daysValid": days_valid
+        }
+
+    return {"success": False, "error": "Invalid License Key. Please check the code or contact support via WhatsApp 0306 6400721."}
 
 
 # ─── HTTP Request Handler ───
@@ -1380,6 +1456,15 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             client_ip = self.client_address[0] if self.client_address else ""
             res = check_trial_status(client_ip, device_id, host_header)
             self._send_json({"success": True, "data": res})
+        elif parsed_path.path == "/api/activate-license":
+            query = parse_qs(parsed_path.query)
+            key = query.get("key", [""])[0]
+            name = query.get("name", [""])[0]
+            email = query.get("email", [""])[0]
+            device_id = query.get("deviceId", [""])[0]
+            client_ip = self.client_address[0] if self.client_address else ""
+            res = activate_license(key, name, email, device_id, client_ip)
+            self._send_json(res, 200 if res["success"] else 400)
         elif parsed_path.path.startswith('/api/stock-history/'):
             symbol = parsed_path.path.split('/')[-1]
             self._handle_stock_history(symbol)
