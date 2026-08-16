@@ -5021,14 +5021,15 @@ body {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(10, 14, 26, 0.96);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    z-index: 10000;
+    background: rgba(3, 7, 18, 0.96) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    z-index: 999999 !important;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: var(--space-md);
+    overflow-y: auto;
 }
 
 .paywall-box {
@@ -5269,14 +5270,15 @@ body {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(10, 14, 26, 0.92);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    z-index: 11000;
+    background: rgba(3, 7, 18, 0.96) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    z-index: 999999 !important;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: var(--space-md);
+    overflow-y: auto;
 }
 
 .terms-modal-box {

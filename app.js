@@ -3364,6 +3364,66 @@ function initTrialSystem() {
         .catch(e => console.error("Trial status check error:", e));
 }
 
+function submitTrialEmail() {
+    const input = document.getElementById("trial-user-email");
+    const msgEl = document.getElementById("trial-email-msg");
+    const email = input ? input.value.trim() : "";
+
+    if (!email || !email.includes("@")) {
+        if (msgEl) {
+            msgEl.style.display = "block";
+            msgEl.className = "activation-msg msg-error";
+            msgEl.textContent = "Please enter a valid email address.";
+        }
+        return;
+    }
+
+    const deviceId = getDeviceId();
+    const params = new URLSearchParams({ email, deviceId });
+
+    fetch(`/api/start-trial?${params}`)
+        .then(r => r.json())
+        .then(res => {
+            if (msgEl) {
+                msgEl.style.display = "block";
+                if (res.success) {
+                    msgEl.className = "activation-msg msg-success";
+                    msgEl.textContent = "✔ " + (res.message || "3-Day Free Trial Started!");
+                    setTimeout(() => {
+                        const emailModal = document.getElementById("trial-email-modal");
+                        if (emailModal) emailModal.style.display = "none";
+                        initTrialSystem();
+                    }, 1200);
+                } else {
+                    msgEl.className = "activation-msg msg-error";
+                    msgEl.textContent = "✖ " + (res.error || "Trial registration error.");
+                }
+            }
+        })
+        .catch(err => {
+            console.error("submitTrialEmail error:", err);
+            if (msgEl) {
+                msgEl.style.display = "block";
+                msgEl.className = "activation-msg msg-error";
+                msgEl.textContent = "Network error. Please check your connection.";
+            }
+        });
+}
+
+function switchToPaywallModal() {
+    const emailModal = document.getElementById("trial-email-modal");
+    const paywallModal = document.getElementById("trial-paywall-modal");
+    if (emailModal) emailModal.style.display = "none";
+    if (paywallModal) paywallModal.style.display = "flex";
+}
+
+function switchToTrialModal() {
+    const emailModal = document.getElementById("trial-email-modal");
+    const paywallModal = document.getElementById("trial-paywall-modal");
+    if (paywallModal) paywallModal.style.display = "none";
+    if (emailModal) emailModal.style.display = "flex";
+}
+
 function submitLicenseActivation() {
     const nameInput = document.getElementById("lic-name-input");
     const emailInput = document.getElementById("lic-email-input");

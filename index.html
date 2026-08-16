@@ -1004,6 +1004,9 @@
                     <div id="activation-msg" class="activation-msg" style="display:none;"></div>
                 </div>
             </div>
+            <div style="margin-top: 10px; font-size: 0.82rem; color: #94a3b8; text-align: center;">
+                Need to start 3-day trial? <a href="#" onclick="switchToTrialModal(); return false;" style="color: #818cf8; font-weight: 600; text-decoration: underline;">Back to Trial Form ←</a>
+            </div>
         </div>
     </div>
 
@@ -1032,21 +1035,24 @@
 
     <!-- 3-Day Free Trial Email Registration Modal -->
     <div id="trial-email-modal" class="terms-modal-overlay" style="display:none;">
-        <div class="terms-modal-box" style="max-width: 440px;">
-            <div class="terms-header" style="justify-content: center; text-align: center;">
+        <div class="terms-modal-box" style="max-width: 440px; border: 1px solid rgba(99, 102, 241, 0.4); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85); background: #0f172a;">
+            <div class="terms-header" style="justify-content: center; text-align: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 14px;">
                 <span class="terms-header-icon">🚀</span>
-                <h2>Start Your 3-Day Free Trial</h2>
+                <h2 style="color: #f8fafc; font-size: 1.35rem; font-weight: 800;">Start Your 3-Day Free Trial</h2>
             </div>
-            <div class="terms-body" style="padding: 18px 24px; text-align: center;">
-                <p style="font-size: 0.88rem; color: #cbd5e1; margin-bottom: 14px;">
+            <div class="terms-body" style="padding: 20px 24px; text-align: center;">
+                <p style="font-size: 0.9rem; color: #cbd5e1; margin-bottom: 16px; line-height: 1.5;">
                     Enter your email to activate <strong>72 hours of unlimited access</strong> on this device & IP address.
                 </p>
-                <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <input type="email" id="trial-user-email" class="lic-input" placeholder="Enter your email address" style="padding: 10px 14px; font-size: 0.9rem;">
-                    <button class="btn btn-primary" onclick="submitTrialEmail()" style="width: 100%; min-height: 44px; font-weight: 700;">
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <input type="email" id="trial-user-email" class="lic-input" placeholder="Enter your email address (e.g. name@email.com)" style="padding: 12px 14px; font-size: 0.92rem; background: #1e293b; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: #fff;">
+                    <button class="btn btn-primary" onclick="submitTrialEmail()" style="width: 100%; min-height: 46px; font-weight: 700; font-size: 0.95rem; border-radius: 8px;">
                         ⚡ Start 3-Day Free Trial
                     </button>
                     <div id="trial-email-msg" class="activation-msg" style="display:none;"></div>
+                </div>
+                <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.82rem; color: #94a3b8;">
+                    Already paid or have a key? <a href="#" onclick="switchToPaywallModal(); return false;" style="color: #818cf8; font-weight: 600; text-decoration: underline;">Enter License Key →</a>
                 </div>
             </div>
         </div>
