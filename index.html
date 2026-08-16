@@ -87,6 +87,12 @@
         </div>
     </header>
 
+    <!-- Online 3-Day Free Trial Notice Banner (Shown only on online deployment) -->
+    <div id="online-trial-banner" class="online-trial-banner" style="display:none;">
+        <span class="trial-pulse-dot"></span>
+        <span id="online-trial-text">⏳ Online 3-Day Free Trial: Calculating time remaining...</span>
+    </div>
+
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loading-overlay">
         <div class="loading-content">
@@ -946,6 +952,29 @@
         <p class="footer-sub">Built for Pakistan Stock Exchange (KSE-100) analysis • Data refreshes on demand</p>
     <!-- AI Position Analysis Modal -->
     <div id="position-analysis-modal" class="pos-modal-overlay" style="display:none;"></div>
+
+    <!-- Online 3-Day Trial Expired Paywall Modal -->
+    <div id="trial-paywall-modal" class="paywall-overlay" style="display:none;">
+        <div class="paywall-box">
+            <div class="paywall-icon">🔒</div>
+            <h2>3-Day Free Trial Expired</h2>
+            <p>Your 3-day online evaluation period has ended. To continue accessing live PSX market screeners, AI position analysis, and trading tools online, please upgrade to PSX Screener Pro.</p>
+            <div class="paywall-features">
+                <div class="pw-feat">✓ Live PSX Data & KSE-100 Indices</div>
+                <div class="pw-feat">✓ AI Position Reanalysis & Signal Scoring</div>
+                <div class="pw-feat">✓ 10-Ratio Financial Statements Engine</div>
+                <div class="pw-feat">✓ Real-time Paper Trading Simulator</div>
+            </div>
+            <div class="paywall-price">
+                <span class="price-val">₨1,500</span>
+                <span class="price-period">/ month</span>
+            </div>
+            <div class="paywall-contact">
+                Contact Admin to Activate Access:<br>
+                <strong>WhatsApp / Contact: +92 300 0000000</strong>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>

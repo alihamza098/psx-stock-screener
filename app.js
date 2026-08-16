@@ -3315,12 +3315,65 @@ function updatePKTClock() {
     }
 }
 
+function getDeviceId() {
+    let devId = localStorage.getItem("psx_device_id");
+    if (!devId) {
+        devId = "dev_" + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+        localStorage.setItem("psx_device_id", devId);
+    }
+    return devId;
+}
+
+function initTrialSystem() {
+    const host = window.location.hostname;
+    const isLocalHost = host === "localhost" || host === "127.0.0.1" || host.startsWith("192.168.") || host.startsWith("10.");
+    
+    // If local, completely bypass trial system!
+    if (isLocalHost) {
+        const banner = document.getElementById("online-trial-banner");
+        if (banner) banner.style.display = "none";
+        return;
+    }
+
+    // Online deployment mode: Check trial status with server
+    const deviceId = getDeviceId();
+    fetch(`/api/trial-status?deviceId=${deviceId}`)
+        .then(r => r.json())
+        .then(res => {
+            if (res.success && res.data) {
+                const info = res.data;
+                const banner = document.getElementById("online-trial-banner");
+                const bannerText = document.getElementById("online-trial-text");
+                const paywallModal = document.getElementById("trial-paywall-modal");
+
+                if (info.isLocal) {
+                    if (banner) banner.style.display = "none";
+                    return;
+                }
+
+                if (!info.trialActive) {
+                    // Trial expired on online deployment ➔ Lock app with paywall
+                    if (banner) banner.style.display = "none";
+                    if (paywallModal) paywallModal.style.display = "flex";
+                } else {
+                    // Trial active on online deployment ➔ Show countdown banner
+                    if (banner) banner.style.display = "flex";
+                    if (bannerText) {
+                        bannerText.textContent = info.isPaid ? "🌟 PSX Screener Pro (Unlimited Online Access)" : `⏳ Online 3-Day Free Trial: ${info.daysLeft} days (${info.hoursLeft} hrs) remaining`;
+                    }
+                }
+            }
+        })
+        .catch(e => console.error("Trial status check error:", e));
+}
+
 // ─── Initialize ───
 document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("watchlist-count").textContent = watchlist.size;
     updateRangeLabels();
     initEventListeners();
     initPWAAndMobile();
+    initTrialSystem();
     
     // Live Pakistan Clock Ticker
     updatePKTClock();

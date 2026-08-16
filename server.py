@@ -1261,6 +1261,81 @@ def fetch_dividends_corporate_actions():
     }
 
 
+# ─── 3-Day Free Trial Engine (Online Only) ───
+TRIAL_FILE = str(Path(__file__).parent / "trial_data.json")
+
+def get_trial_db():
+    if os.path.exists(TRIAL_FILE):
+        try:
+            with open(TRIAL_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_trial_db(db):
+    try:
+        with open(TRIAL_FILE, "w") as f:
+            json.dump(db, f, indent=2)
+    except Exception as e:
+        print(f"[PSX] Error saving trial db: {e}")
+
+def check_trial_status(client_ip, device_id, host_header=""):
+    # Detect if request is coming from local network / localhost
+    host_lower = (host_header or "").lower()
+    is_local_host = any(h in host_lower for h in ["localhost", "127.0.0.1", "192.168.", "10."]) or \
+                   any(ip in (client_ip or "") for ip in ["127.0.0.1", "192.168.", "10."])
+
+    if is_local_host:
+        return {
+            "isLocal": True,
+            "trialActive": True,
+            "unlimited": True,
+            "message": "Local Mode — Unlimited Access (No Trial Needed)"
+        }
+
+    # Online Deployment Mode: 3-Day (72-hour) Trial per Device ID
+    db = get_trial_db()
+    key = device_id or client_ip or "online_guest"
+    now_ts = time.time()
+
+    if key not in db:
+        db[key] = {
+            "created_at": now_ts,
+            "trial_end": now_ts + (3 * 24 * 3600),  # 3 Days (72 Hours)
+            "is_paid": False
+        }
+        save_trial_db(db)
+
+    user_info = db[key]
+    if user_info.get("is_paid"):
+        return {"isLocal": False, "trialActive": True, "isPaid": True, "message": "Pro Account Active"}
+
+    trial_end = user_info.get("trial_end", now_ts)
+    time_left = trial_end - now_ts
+
+    if time_left <= 0:
+        return {
+            "isLocal": False,
+            "trialActive": False,
+            "hoursLeft": 0,
+            "daysLeft": 0,
+            "message": "3-Day Free Trial Expired"
+        }
+
+    hours_left = round(time_left / 3600, 1)
+    days_left = max(1, int(time_left // 86400) + 1)
+
+    return {
+        "isLocal": False,
+        "trialActive": True,
+        "isPaid": False,
+        "hoursLeft": hours_left,
+        "daysLeft": days_left,
+        "message": f"Online Mode — {days_left} Days Left in Free Trial"
+    }
+
+
 # ─── HTTP Request Handler ───
 class PSXHandler(http.server.SimpleHTTPRequestHandler):
     """Custom handler for API routes + static file serving."""
@@ -1298,8 +1373,13 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             query = parse_qs(parsed_path.query)
             symbol = query.get("symbol", [""])[0]
             self._handle_financial_statements(symbol)
-        elif parsed_path.path == "/api/dividends-corporate-actions":
-            self._handle_dividends_corporate_actions()
+        elif parsed_path.path == "/api/trial-status":
+            query = parse_qs(parsed_path.query)
+            device_id = query.get("deviceId", [""])[0]
+            host_header = self.headers.get("Host", "")
+            client_ip = self.client_address[0] if self.client_address else ""
+            res = check_trial_status(client_ip, device_id, host_header)
+            self._send_json({"success": True, "data": res})
         elif parsed_path.path.startswith('/api/stock-history/'):
             symbol = parsed_path.path.split('/')[-1]
             self._handle_stock_history(symbol)
