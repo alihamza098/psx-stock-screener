@@ -3328,6 +3328,17 @@ let trialPollTimer = null;
 
 function initTrialSystem() {
     const deviceId = getDeviceId();
+    const savedEmail = localStorage.getItem("psx_user_email") || "";
+    const savedName = localStorage.getItem("psx_user_name") || "";
+
+    const emailInput = document.getElementById("trial-user-email");
+    const licEmailInput = document.getElementById("lic-email-input");
+    const licNameInput = document.getElementById("lic-name-input");
+
+    if (emailInput && !emailInput.value && savedEmail) emailInput.value = savedEmail;
+    if (licEmailInput && !licEmailInput.value && savedEmail) licEmailInput.value = savedEmail;
+    if (licNameInput && !licNameInput.value && savedName) licNameInput.value = savedName;
+
     fetch(`/api/trial-status?deviceId=${deviceId}`)
         .then(r => r.json())
         .then(res => {
@@ -3336,27 +3347,27 @@ function initTrialSystem() {
                 const banner = document.getElementById("online-trial-banner");
                 const bannerText = document.getElementById("online-trial-text");
                 const paywallModal = document.getElementById("trial-paywall-modal");
-                const emailModal = document.getElementById("trial-email-modal");
+                const trialEmailModal = document.getElementById("trial-email-modal");
 
                 if (info.isLocal) {
                     if (banner) banner.style.display = "none";
-                    if (emailModal) emailModal.style.display = "none";
+                    if (trialEmailModal) trialEmailModal.style.display = "none";
                     if (trialPollTimer) clearInterval(trialPollTimer);
                     return;
                 }
 
                 if (info.needsEmail) {
                     if (banner) banner.style.display = "none";
-                    if (emailModal) emailModal.style.display = "flex";
+                    if (trialEmailModal) trialEmailModal.style.display = "flex";
                 } else if (!info.trialActive) {
                     // Trial expired ➔ Lock app with paywall
                     if (banner) banner.style.display = "none";
-                    if (emailModal) emailModal.style.display = "none";
+                    if (trialEmailModal) trialEmailModal.style.display = "none";
                     if (paywallModal) paywallModal.style.display = "flex";
                     if (trialPollTimer) clearInterval(trialPollTimer);
                 } else {
                     // Trial active ➔ Show countdown banner
-                    if (emailModal) emailModal.style.display = "none";
+                    if (trialEmailModal) trialEmailModal.style.display = "none";
                     if (paywallModal) paywallModal.style.display = "none";
                     if (banner) banner.style.display = "flex";
                     if (bannerText) {
@@ -3372,7 +3383,6 @@ function initTrialSystem() {
                         bannerText.textContent = timeLabel;
                     }
 
-                    // Poll every 10 seconds to detect trial expiration in real-time
                     if (!trialPollTimer && !info.isPaid) {
                         trialPollTimer = setInterval(initTrialSystem, 10000);
                     }
@@ -3395,6 +3405,8 @@ function submitTrialEmail() {
         }
         return;
     }
+
+    localStorage.setItem("psx_user_email", email);
 
     const deviceId = getDeviceId();
     const params = new URLSearchParams({ email, deviceId });
@@ -3460,6 +3472,9 @@ function submitLicenseActivation() {
         }
         return;
     }
+
+    localStorage.setItem("psx_user_email", email);
+    localStorage.setItem("psx_user_name", name);
 
     const deviceId = getDeviceId();
     const params = new URLSearchParams({ name, email, key, deviceId });

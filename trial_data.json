@@ -16,11 +16,11 @@
     "is_paid": false
   },
   "ip_127.0.0.1": {
-    "email": "testbuyer@gmail.com",
+    "email": "videosupermacy@gmail.com",
     "client_ip": "127.0.0.1",
     "device_id": "test_device_99",
     "created_at": 1786871621.849047,
-    "trial_end": 1787130821.849047,
+    "trial_end": 1786872852.5593169,
     "is_paid": false
   }
 }
