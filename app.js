@@ -149,14 +149,24 @@ async function fetchLiveData() {
     setRefreshBtnSpinning(true);
 
     try {
-        // Fetch stocks and indices in parallel
+        const deviceId = getDeviceId();
         const [stockRes, indexRes] = await Promise.all([
-            fetch('/api/stocks'),
-            fetch('/api/indices'),
+            fetch(`/api/stocks?deviceId=${deviceId}`),
+            fetch(`/api/indices?deviceId=${deviceId}`),
         ]);
+
+        if (stockRes.status === 402 || indexRes.status === 402) {
+            initTrialSystem();
+            return;
+        }
 
         const stockData = await stockRes.json();
         const indexData = await indexRes.json();
+
+        if (stockData.trialExpired || indexData.trialExpired) {
+            initTrialSystem();
+            return;
+        }
 
         if (stockData.success && stockData.data) {
             STOCKS = stockData.data;
@@ -3325,6 +3335,8 @@ function getDeviceId() {
 }
 
 let trialPollTimer = null;
+let trialCountdownTimer = null;
+let currentSecondsLeft = 0;
 
 function initTrialSystem() {
     const deviceId = getDeviceId();
@@ -3352,39 +3364,66 @@ function initTrialSystem() {
                 if (info.isLocal) {
                     if (banner) banner.style.display = "none";
                     if (trialEmailModal) trialEmailModal.style.display = "none";
+                    if (paywallModal) paywallModal.style.display = "none";
                     if (trialPollTimer) clearInterval(trialPollTimer);
+                    if (trialCountdownTimer) clearInterval(trialCountdownTimer);
                     return;
                 }
 
                 if (info.needsEmail) {
                     if (banner) banner.style.display = "none";
                     if (trialEmailModal) trialEmailModal.style.display = "flex";
-                } else if (!info.trialActive) {
-                    // Trial expired ➔ Lock app with paywall
+                } else if (!info.trialActive || (info.secondsLeft !== undefined && info.secondsLeft <= 0)) {
+                    // Trial expired ➔ LOCK APP WITH PAYWALL IMMEDIATELY!
                     if (banner) banner.style.display = "none";
                     if (trialEmailModal) trialEmailModal.style.display = "none";
                     if (paywallModal) paywallModal.style.display = "flex";
-                    if (trialPollTimer) clearInterval(trialPollTimer);
+                    if (trialPollTimer) { clearInterval(trialPollTimer); trialPollTimer = null; }
+                    if (trialCountdownTimer) { clearInterval(trialCountdownTimer); trialCountdownTimer = null; }
                 } else {
                     // Trial active ➔ Show countdown banner
                     if (trialEmailModal) trialEmailModal.style.display = "none";
                     if (paywallModal) paywallModal.style.display = "none";
                     if (banner) banner.style.display = "flex";
-                    if (bannerText) {
-                        let timeLabel = "";
+
+                    currentSecondsLeft = info.secondsLeft || 0;
+
+                    const updateCountdownUI = () => {
                         if (info.isPaid) {
-                            timeLabel = "🌟 PSX Screener Pro (Unlimited Online Access)";
-                        } else if (info.hoursLeft < 0.1) {
-                            const mins = Math.max(0, Math.floor(info.hoursLeft * 60));
-                            timeLabel = `🚨 Free Trial Ending Soon: ~${mins} minute(s) remaining!`;
-                        } else {
-                            timeLabel = `⏳ Online 3-Day Free Trial: ${info.daysLeft} days (${info.hoursLeft} hrs) remaining`;
+                            if (bannerText) bannerText.textContent = "🌟 PSX Screener Pro (Unlimited Online Access)";
+                            return;
                         }
-                        bannerText.textContent = timeLabel;
+                        if (currentSecondsLeft <= 0) {
+                            if (banner) banner.style.display = "none";
+                            if (paywallModal) paywallModal.style.display = "flex";
+                            if (trialCountdownTimer) { clearInterval(trialCountdownTimer); trialCountdownTimer = null; }
+                            return;
+                        }
+
+                        if (bannerText) {
+                            if (currentSecondsLeft < 300) {
+                                const m = Math.floor(currentSecondsLeft / 60);
+                                const s = currentSecondsLeft % 60;
+                                bannerText.textContent = `🚨 Free Trial Ending Soon: ${m}m ${s}s remaining!`;
+                            } else {
+                                bannerText.textContent = `⏳ Online 3-Day Free Trial: ${info.daysLeft} days (${info.hoursLeft} hrs) remaining`;
+                            }
+                        }
+                    };
+
+                    updateCountdownUI();
+
+                    if (!trialCountdownTimer && !info.isPaid && currentSecondsLeft < 300) {
+                        trialCountdownTimer = setInterval(() => {
+                            currentSecondsLeft--;
+                            updateCountdownUI();
+                        }, 1000);
                     }
 
-                    if (!trialPollTimer && !info.isPaid) {
-                        trialPollTimer = setInterval(initTrialSystem, 10000);
+                    const pollMs = currentSecondsLeft < 300 ? 4000 : 20000;
+                    if (trialPollTimer) clearInterval(trialPollTimer);
+                    if (!info.isPaid) {
+                        trialPollTimer = setInterval(initTrialSystem, pollMs);
                     }
                 }
             }

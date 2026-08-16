@@ -1291,6 +1291,7 @@ def check_trial_status(client_ip, device_id, host_header=""):
             "isLocal": True,
             "trialActive": True,
             "unlimited": True,
+            "secondsLeft": 99999999,
             "message": "Local Mode — Unlimited Access (No Trial Needed)"
         }
 
@@ -1308,11 +1309,12 @@ def check_trial_status(client_ip, device_id, host_header=""):
             "isLocal": False,
             "needsEmail": True,
             "trialActive": False,
+            "secondsLeft": 0,
             "message": "Registration Required to Start 3-Day Free Trial"
         }
 
     if user_info.get("is_paid"):
-        return {"isLocal": False, "trialActive": True, "isPaid": True, "message": "Pro Account Active"}
+        return {"isLocal": False, "trialActive": True, "isPaid": True, "secondsLeft": 99999999, "message": "Pro Account Active"}
 
     trial_end = user_info.get("trial_end", now_ts)
     time_left = trial_end - now_ts
@@ -1321,18 +1323,21 @@ def check_trial_status(client_ip, device_id, host_header=""):
         return {
             "isLocal": False,
             "trialActive": False,
+            "secondsLeft": 0,
             "hoursLeft": 0,
             "daysLeft": 0,
             "message": "3-Day Free Trial Expired"
         }
 
-    hours_left = round(time_left / 3600, 1)
+    seconds_left = max(0, int(time_left))
+    hours_left = round(time_left / 3600, 2)
     days_left = max(1, int(time_left // 86400) + 1)
 
     return {
         "isLocal": False,
         "trialActive": True,
         "isPaid": False,
+        "secondsLeft": seconds_left,
         "hoursLeft": hours_left,
         "daysLeft": days_left,
         "message": f"Online Mode — {days_left} Days Left in Free Trial"
@@ -1493,26 +1498,49 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         # Serve from current directory
         super().__init__(*args, directory=str(Path(__file__).parent), **kwargs)
 
+    def _check_auth(self, query=None):
+        host_header = self.headers.get("Host", "")
+        client_ip = self.client_address[0] if self.client_address else ""
+        device_id = query.get("deviceId", [""])[0] if query else ""
+        status = check_trial_status(client_ip, device_id, host_header)
+        if status.get("isLocal") or status.get("trialActive"):
+            return True
+        self._send_json({
+            "success": False,
+            "error": "3-Day Free Trial Expired. Upgrade to PSX Screener Pro to continue accessing live data.",
+            "trialExpired": True
+        }, 402)
+        return False
+
     def do_GET(self):
         from urllib.parse import urlparse, parse_qs
         parsed_path = urlparse(self.path)
         
         if parsed_path.path == "/api/stocks":
+            query = parse_qs(parsed_path.query)
+            if not self._check_auth(query): return
             self._handle_stocks()
         elif parsed_path.path == "/api/indices":
+            query = parse_qs(parsed_path.query)
+            if not self._check_auth(query): return
             self._handle_indices()
         elif parsed_path.path == "/api/company":
             query = parse_qs(parsed_path.query)
+            if not self._check_auth(query): return
             symbol = query.get("symbol", [""])[0]
             self._handle_company(symbol)
         elif parsed_path.path == "/api/upper-lock-analysis":
+            query = parse_qs(parsed_path.query)
+            if not self._check_auth(query): return
             self._handle_upper_lock_analysis()
         elif parsed_path.path == "/api/live-trading":
             query = parse_qs(parsed_path.query)
+            if not self._check_auth(query): return
             symbol = query.get("symbol", [""])[0]
             self._handle_live_trading(symbol)
         elif parsed_path.path == "/api/position-analysis":
             query = parse_qs(parsed_path.query)
+            if not self._check_auth(query): return
             symbol = query.get("symbol", [""])[0]
             buy_price = query.get("buyPrice", ["0"])[0]
             qty = query.get("qty", ["0"])[0]
@@ -1520,6 +1548,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._handle_position_analysis(symbol, buy_price, qty, purchase_date)
         elif parsed_path.path == "/api/financial-statements":
             query = parse_qs(parsed_path.query)
+            if not self._check_auth(query): return
             symbol = query.get("symbol", [""])[0]
             self._handle_financial_statements(symbol)
         elif parsed_path.path == "/api/trial-status":
