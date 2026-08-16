@@ -23,12 +23,19 @@ def generate_key():
 
 def main():
     days = 30
+    count = 1
     if "--days" in sys.argv:
         try:
             idx = sys.argv.index("--days")
             days = int(sys.argv[idx + 1])
         except Exception:
             days = 30
+    if "--count" in sys.argv:
+        try:
+            idx = sys.argv.index("--count")
+            count = int(sys.argv[idx + 1])
+        except Exception:
+            count = 1
 
     db = {}
     if LICENSE_FILE.exists():
@@ -38,25 +45,29 @@ def main():
         except Exception:
             db = {}
 
-    key = generate_key()
-    db[key] = {
-        "valid": True,
-        "days": days,
-        "used": False,
-        "email": None,
-        "name": None,
-        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(time.time() + 5*3600))
-    }
+    generated = []
+    for _ in range(count):
+        key = generate_key()
+        while key in db:
+            key = generate_key()
+        db[key] = {
+            "valid": True,
+            "days": days,
+            "used": False,
+            "email": None,
+            "name": None,
+            "generated_at": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(time.time() + 5*3600))
+        }
+        generated.append(key)
 
     with open(LICENSE_FILE, "w") as f:
         json.dump(db, f, indent=2)
 
     print("=" * 60)
-    print("🔑 PSX SCREENER PRO — LICENSE KEY GENERATED")
+    print(f"🔑 PSX SCREENER PRO — {len(generated)} LICENSE KEY(S) GENERATED")
     print("=" * 60)
-    print(f"License Key: {key}")
-    print(f"Valid For:   {days} Days")
-    print(f"Status:      Active (Ready to send to buyer)")
+    for k in generated:
+        print(f"License Key: {k}  | Valid: {days} Days | Single Use")
     print("=" * 60)
 
 if __name__ == "__main__":
