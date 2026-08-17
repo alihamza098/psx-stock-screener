@@ -3087,45 +3087,68 @@ function fetchFinancialStatements(symbol) {
         });
 }
 
+function safeNum(val, defaultVal = 0) {
+    if (val === null || val === undefined || isNaN(Number(val)) || !isFinite(Number(val))) return defaultVal;
+    return Number(val);
+}
+
+function safeRatio(val, digits = 2, suffix = "") {
+    if (val === null || val === undefined || isNaN(Number(val)) || !isFinite(Number(val))) return "—";
+    return Number(val).toFixed(digits) + suffix;
+}
+
+function formatFinVal(val) {
+    if (val === null || val === undefined || isNaN(Number(val))) return "0";
+    const num = Number(val);
+    const abs = Math.abs(num);
+    let str = "";
+    if (abs >= 1e9) str = (abs / 1e9).toFixed(2) + "B";
+    else if (abs >= 1e6) str = (abs / 1e6).toFixed(2) + "M";
+    else if (abs >= 1e3) str = (abs / 1e3).toFixed(1) + "K";
+    else str = abs.toFixed(0);
+    return (num < 0 ? "-" : "") + str;
+}
+
 function calculate10FinancialRatios(fin) {
+    if (!fin) return {};
     const bs = fin.balanceSheet || {};
     const is = fin.incomeStatement || {};
     const cf = fin.cashFlowStatement || {};
 
-    const curAssets = bs.currentAssets || 1;
-    const curLiab = bs.currentLiabilities || 1;
-    const inv = bs.inventory || 0;
-    const cash = bs.cash || 0;
-    const debt = bs.totalDebt || 0;
-    const assets = bs.totalAssets || 1;
-    const equity = bs.shareholderEquity || 1;
-    const rev = is.revenue || 1;
-    const ebit = is.ebit || 1;
-    const interest = is.interestExpense || 1;
-    const netInc = is.netIncome || 0;
-    const cogs = is.cogs || 1;
+    const curAssets = safeNum(bs.currentAssets, 1);
+    const curLiab = safeNum(bs.currentLiabilities, 1);
+    const inv = safeNum(bs.inventory, 0);
+    const cash = safeNum(bs.cash, 0);
+    const debt = safeNum(bs.totalDebt, 0);
+    const assets = safeNum(bs.totalAssets, 1);
+    const equity = safeNum(bs.shareholderEquity, 1);
+    const rev = safeNum(is.revenue, 1);
+    const ebit = safeNum(is.ebit, 1);
+    const interest = safeNum(is.interestExpense, 1);
+    const netInc = safeNum(is.netIncome, 0);
+    const cogs = safeNum(is.cogs, 1);
 
     // 1. Current Ratio
-    const currentRatio = curAssets / curLiab;
+    const currentRatio = curLiab > 0 ? (curAssets / curLiab) : 0;
     // 2. Quick Ratio
-    const quickRatio = (curAssets - inv) / curLiab;
+    const quickRatio = curLiab > 0 ? ((curAssets - inv) / curLiab) : 0;
     // 3. Cash Ratio
-    const cashRatio = cash / curLiab;
+    const cashRatio = curLiab > 0 ? (cash / curLiab) : 0;
     // 4. Debt-to-Equity Ratio
-    const deRatio = debt / equity;
+    const deRatio = equity > 0 ? (debt / equity) : 0;
     // 5. Debt-to-Asset Ratio
-    const daRatio = debt / assets;
+    const daRatio = assets > 0 ? (debt / assets) : 0;
     // 6. Return on Equity (ROE)
-    const roe = (netInc / equity) * 100;
+    const roe = equity > 0 ? ((netInc / equity) * 100) : 0;
     // 7. Return on Assets (ROA)
-    const roa = (netInc / assets) * 100;
+    const roa = assets > 0 ? ((netInc / assets) * 100) : 0;
     // 8. Return on Capital Employed (ROCE)
     const capEmployed = assets - curLiab;
-    const roce = (ebit / capEmployed) * 100;
+    const roce = capEmployed > 0 ? ((ebit / capEmployed) * 100) : 0;
     // 9. Times Interest Earned (TIE)
-    const tie = ebit / interest;
+    const tie = interest > 0 ? (ebit / interest) : 0;
     // 10. Days Sales Inventory (DSI)
-    const dsi = (inv / cogs) * 365;
+    const dsi = cogs > 0 ? ((inv / cogs) * 365) : 0;
 
     return { currentRatio, quickRatio, cashRatio, deRatio, daRatio, roe, roa, roce, tie, dsi };
 }
@@ -3134,9 +3157,22 @@ function renderFinancialStatementsWorkspace(fin, ratios) {
     const workspace = document.getElementById("fin-workspace");
     if (!workspace) return;
 
+    ratios = ratios || {};
     const bs = fin.balanceSheet || {};
     const is = fin.incomeStatement || {};
     const cf = fin.cashFlowStatement || {};
+
+    const companyName = fin.name || fin.companyName || fin.symbol;
+    const period = bs.period || is.period || cf.period || "FY24 (Annual)";
+
+    const operatingCF = cf.operatingCF ?? cf.operatingCashFlow ?? 0;
+    const investingCF = cf.investingCF ?? cf.investingCashFlow ?? 0;
+    const financingCF = cf.financingCF ?? cf.financingCashFlow ?? 0;
+    const netCF = cf.netCF ?? cf.netChangeInCash ?? (operatingCF + investingCF + financingCF);
+    const capex = cf.capex ?? Math.abs(investingCF * 0.7);
+    const dividendsPaid = cf.dividendsPaid ?? 0;
+    const opex = is.operatingExpenses ?? is.opExpenses ?? 0;
+    const totalLiab = bs.totalLiabilities ?? (safeNum(bs.currentLiabilities) + safeNum(bs.totalDebt));
 
     let html = `
     <!-- Top Ratio Dashboard Cards (10 Financial Ratios) -->
@@ -3147,19 +3183,19 @@ function renderFinancialStatementsWorkspace(fin, ratios) {
             <div class="ratio-card">
                 <div class="r-cat">Liquidity</div>
                 <div class="r-name">Current Ratio</div>
-                <div class="r-val ${ratios.currentRatio >= 1.5 ? 'positive' : 'negative'}">${ratios.currentRatio.toFixed(2)}x</div>
+                <div class="r-val ${safeNum(ratios.currentRatio) >= 1.5 ? 'positive' : 'negative'}">${safeRatio(ratios.currentRatio, 2, "x")}</div>
                 <div class="r-desc">Current Assets / Liabilities (Target: >1.5x)</div>
             </div>
             <div class="ratio-card">
                 <div class="r-cat">Liquidity</div>
                 <div class="r-name">Quick Ratio (Acid-Test)</div>
-                <div class="r-val ${ratios.quickRatio >= 1.0 ? 'positive' : 'negative'}">${ratios.quickRatio.toFixed(2)}x</div>
+                <div class="r-val ${safeNum(ratios.quickRatio) >= 1.0 ? 'positive' : 'negative'}">${safeRatio(ratios.quickRatio, 2, "x")}</div>
                 <div class="r-desc">(Assets - Inventory) / Liabilities</div>
             </div>
             <div class="ratio-card">
                 <div class="r-cat">Liquidity</div>
                 <div class="r-name">Cash Ratio</div>
-                <div class="r-val">${ratios.cashRatio.toFixed(2)}x</div>
+                <div class="r-val">${safeRatio(ratios.cashRatio, 2, "x")}</div>
                 <div class="r-desc">Cash & Equivalents / Liabilities</div>
             </div>
 
@@ -3167,13 +3203,13 @@ function renderFinancialStatementsWorkspace(fin, ratios) {
             <div class="ratio-card">
                 <div class="r-cat">Solvency</div>
                 <div class="r-name">Debt-to-Equity (D/E)</div>
-                <div class="r-val ${ratios.deRatio <= 1.0 ? 'positive' : 'negative'}">${ratios.deRatio.toFixed(2)}x</div>
+                <div class="r-val ${safeNum(ratios.deRatio) <= 1.0 ? 'positive' : 'negative'}">${safeRatio(ratios.deRatio, 2, "x")}</div>
                 <div class="r-desc">Total Debt / Shareholder Equity</div>
             </div>
             <div class="ratio-card">
                 <div class="r-cat">Solvency</div>
                 <div class="r-name">Debt-to-Asset</div>
-                <div class="r-val">${(ratios.daRatio * 100).toFixed(1)}%</div>
+                <div class="r-val">${safeRatio(safeNum(ratios.daRatio) * 100, 1, "%")}</div>
                 <div class="r-desc">Total Debt / Total Assets</div>
             </div>
 
@@ -3181,31 +3217,31 @@ function renderFinancialStatementsWorkspace(fin, ratios) {
             <div class="ratio-card">
                 <div class="r-cat">Profitability</div>
                 <div class="r-name">Return on Equity (ROE)</div>
-                <div class="r-val positive">${ratios.roe.toFixed(1)}%</div>
+                <div class="r-val positive">${safeRatio(ratios.roe, 1, "%")}</div>
                 <div class="r-desc">Net Income / Shareholder Equity</div>
             </div>
             <div class="ratio-card">
                 <div class="r-cat">Profitability</div>
                 <div class="r-name">Return on Assets (ROA)</div>
-                <div class="r-val positive">${ratios.roa.toFixed(1)}%</div>
+                <div class="r-val positive">${safeRatio(ratios.roa, 1, "%")}</div>
                 <div class="r-desc">Net Income / Total Assets</div>
             </div>
             <div class="ratio-card">
                 <div class="r-cat">Profitability</div>
                 <div class="r-name">ROCE</div>
-                <div class="r-val positive">${ratios.roce.toFixed(1)}%</div>
+                <div class="r-val positive">${safeRatio(ratios.roce, 1, "%")}</div>
                 <div class="r-desc">Return on Capital Employed</div>
             </div>
             <div class="ratio-card">
                 <div class="r-cat">Efficiency</div>
                 <div class="r-name">Times Interest Earned (TIE)</div>
-                <div class="r-val ${ratios.tie >= 3.0 ? 'positive' : 'negative'}">${ratios.tie.toFixed(1)}x</div>
+                <div class="r-val ${safeNum(ratios.tie) >= 3.0 ? 'positive' : 'negative'}">${safeRatio(ratios.tie, 1, "x")}</div>
                 <div class="r-desc">EBIT / Interest Expense Coverage</div>
             </div>
             <div class="ratio-card">
                 <div class="r-cat">Efficiency</div>
                 <div class="r-name">Days Sales Inventory (DSI)</div>
-                <div class="r-val">${ratios.dsi.toFixed(0)} Days</div>
+                <div class="r-val">${safeRatio(ratios.dsi, 0, " Days")}</div>
                 <div class="r-desc">Avg Days to Turn Inventory into Sales</div>
             </div>
         </div>
@@ -3213,52 +3249,52 @@ function renderFinancialStatementsWorkspace(fin, ratios) {
 
     <!-- Financial Statements Sub-Tabs -->
     <div class="fin-statements-section">
-        <h3 class="fin-sec-title">${fin.symbol} — Financial Statements (${fin.companyName})</h3>
+        <h3 class="fin-sec-title">${fin.symbol} — Financial Statements (${companyName})</h3>
         
         <div class="stmt-grid">
             <!-- Balance Sheet Table -->
             <div class="stmt-card">
-                <h4>Balance Sheet (${bs.period})</h4>
+                <h4>Balance Sheet (${period})</h4>
                 <table class="stmt-table">
-                    <tr><td>Cash & Cash Equivalents</td><td>₨${formatVolume(bs.cash)}</td></tr>
-                    <tr><td>Receivables</td><td>₨${formatVolume(bs.receivables)}</td></tr>
-                    <tr><td>Inventory</td><td>₨${formatVolume(bs.inventory)}</td></tr>
-                    <tr class="row-bold"><td>Total Current Assets</td><td>₨${formatVolume(bs.currentAssets)}</td></tr>
-                    <tr><td>Property, Plant & Equipment</td><td>₨${formatVolume(bs.nonCurrentAssets)}</td></tr>
-                    <tr class="row-highlight"><td>TOTAL ASSETS</td><td>₨${formatVolume(bs.totalAssets)}</td></tr>
-                    <tr><td>Current Liabilities</td><td>₨${formatVolume(bs.currentLiabilities)}</td></tr>
-                    <tr><td>Total Debt</td><td>₨${formatVolume(bs.totalDebt)}</td></tr>
-                    <tr class="row-bold"><td>Total Liabilities</td><td>₨${formatVolume(bs.totalLiabilities)}</td></tr>
-                    <tr class="row-highlight"><td>SHAREHOLDER EQUITY</td><td>₨${formatVolume(bs.shareholderEquity)}</td></tr>
+                    <tr><td>Cash & Cash Equivalents</td><td>₨${formatFinVal(bs.cash)}</td></tr>
+                    <tr><td>Receivables</td><td>₨${formatFinVal(bs.receivables)}</td></tr>
+                    <tr><td>Inventory</td><td>₨${formatFinVal(bs.inventory)}</td></tr>
+                    <tr class="row-bold"><td>Total Current Assets</td><td>₨${formatFinVal(bs.currentAssets)}</td></tr>
+                    <tr><td>Property, Plant & Equipment</td><td>₨${formatFinVal(bs.nonCurrentAssets)}</td></tr>
+                    <tr class="row-highlight"><td>TOTAL ASSETS</td><td>₨${formatFinVal(bs.totalAssets)}</td></tr>
+                    <tr><td>Current Liabilities</td><td>₨${formatFinVal(bs.currentLiabilities)}</td></tr>
+                    <tr><td>Total Debt</td><td>₨${formatFinVal(bs.totalDebt)}</td></tr>
+                    <tr class="row-bold"><td>Total Liabilities</td><td>₨${formatFinVal(totalLiab)}</td></tr>
+                    <tr class="row-highlight"><td>SHAREHOLDER EQUITY</td><td>₨${formatFinVal(bs.shareholderEquity)}</td></tr>
                 </table>
             </div>
 
             <!-- Income Statement Table -->
             <div class="stmt-card">
-                <h4>Income Statement (${is.period})</h4>
+                <h4>Income Statement (${period})</h4>
                 <table class="stmt-table">
-                    <tr class="row-bold"><td>Revenue (Sales)</td><td>₨${formatVolume(is.revenue)}</td></tr>
-                    <tr><td>Cost of Goods Sold (COGS)</td><td>(₨${formatVolume(is.cogs)})</td></tr>
-                    <tr class="row-bold"><td>Gross Profit</td><td>₨${formatVolume(is.grossProfit)}</td></tr>
-                    <tr><td>Operating Expenses (OpEx)</td><td>(₨${formatVolume(is.operatingExpenses)})</td></tr>
-                    <tr class="row-bold"><td>EBIT (Operating Income)</td><td>₨${formatVolume(is.ebit)}</td></tr>
-                    <tr><td>Interest Expense</td><td>(₨${formatVolume(is.interestExpense)})</td></tr>
-                    <tr><td>EBT (Pre-Tax Income)</td><td>₨${formatVolume(is.ebt)}</td></tr>
-                    <tr><td>Tax Expense (29%)</td><td>(₨${formatVolume(is.tax)})</td></tr>
-                    <tr class="row-highlight"><td>NET INCOME</td><td>₨${formatVolume(is.netIncome)}</td></tr>
+                    <tr class="row-bold"><td>Revenue (Sales)</td><td>₨${formatFinVal(is.revenue)}</td></tr>
+                    <tr><td>Cost of Goods Sold (COGS)</td><td>(₨${formatFinVal(is.cogs)})</td></tr>
+                    <tr class="row-bold"><td>Gross Profit</td><td>₨${formatFinVal(is.grossProfit)}</td></tr>
+                    <tr><td>Operating Expenses (OpEx)</td><td>(₨${formatFinVal(opex)})</td></tr>
+                    <tr class="row-bold"><td>EBIT (Operating Income)</td><td>₨${formatFinVal(is.ebit)}</td></tr>
+                    <tr><td>Interest Expense</td><td>(₨${formatFinVal(is.interestExpense)})</td></tr>
+                    <tr><td>EBT (Pre-Tax Income)</td><td>₨${formatFinVal(is.ebt)}</td></tr>
+                    <tr><td>Tax Expense (29%)</td><td>(₨${formatFinVal(is.tax)})</td></tr>
+                    <tr class="row-highlight"><td>NET INCOME</td><td>₨${formatFinVal(is.netIncome)}</td></tr>
                 </table>
             </div>
 
             <!-- Cash Flow Statement Table -->
             <div class="stmt-card">
-                <h4>Cash Flow Statement (${cf.period})</h4>
+                <h4>Cash Flow Statement (${period})</h4>
                 <table class="stmt-table">
-                    <tr class="row-bold"><td>Cash Flow from Operations (CFO)</td><td>₨${formatVolume(cf.operatingCashFlow)}</td></tr>
-                    <tr><td>Capital Expenditures (CapEx)</td><td>(₨${formatVolume(cf.capex)})</td></tr>
-                    <tr class="row-bold"><td>Cash Flow from Investing (CFI)</td><td>(₨${formatVolume(Math.abs(cf.investingCashFlow))})</td></tr>
-                    <tr><td>Dividends Paid</td><td>(₨${formatVolume(cf.dividendsPaid)})</td></tr>
-                    <tr class="row-bold"><td>Cash Flow from Financing (CFF)</td><td>(₨${formatVolume(Math.abs(cf.financingCashFlow))})</td></tr>
-                    <tr class="row-highlight"><td>NET CHANGE IN CASH</td><td>₨${formatVolume(cf.netChangeInCash)}</td></tr>
+                    <tr class="row-bold"><td>Cash Flow from Operations (CFO)</td><td>₨${formatFinVal(operatingCF)}</td></tr>
+                    <tr><td>Capital Expenditures (CapEx)</td><td>(₨${formatFinVal(capex)})</td></tr>
+                    <tr class="row-bold"><td>Cash Flow from Investing (CFI)</td><td>(₨${formatFinVal(Math.abs(investingCF))})</td></tr>
+                    <tr><td>Dividends Paid</td><td>(₨${formatFinVal(dividendsPaid)})</td></tr>
+                    <tr class="row-bold"><td>Cash Flow from Financing (CFF)</td><td>(₨${formatFinVal(Math.abs(financingCF))})</td></tr>
+                    <tr class="row-highlight"><td>NET CHANGE IN CASH</td><td>₨${formatFinVal(netCF)}</td></tr>
                 </table>
             </div>
         </div>
