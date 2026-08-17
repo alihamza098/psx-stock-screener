@@ -1654,6 +1654,226 @@ def activate_license(key, name, email, device_id, client_ip=""):
     else:
         return {"success": False, "error": "Invalid License Key. Please check the code or contact support via WhatsApp 0306 6400721."}
 
+# ─── Admin Dashboard Backend ───
+ADMIN_PASSWORDS = ["psx-admin-2026", "admin123", "03066400721"]
+
+def verify_admin_secret(secret):
+    sec = (secret or "").strip()
+    return sec in ADMIN_PASSWORDS or sec == os.environ.get("ADMIN_SECRET", "")
+
+def get_admin_dashboard_data():
+    trial_db = get_trial_db()
+    lic_db = get_license_db()
+    now_ts = time.time()
+
+    # Aggregate Unique Users from trial_db
+    users_by_email = {}
+    guest_count = 0
+
+    for k, v in trial_db.items():
+        if not isinstance(v, dict):
+            continue
+        email = (v.get("email") or v.get("paid_email") or "").strip().lower()
+        if email:
+            if email not in users_by_email:
+                users_by_email[email] = v
+            else:
+                # Merge info, prefer paid status
+                if v.get("is_paid"):
+                    users_by_email[email] = v
+        else:
+            guest_count += 1
+
+    formatted_users = []
+    pro_count = 0
+    active_trial_count = 0
+    expired_count = 0
+
+    for email, u in users_by_email.items():
+        is_paid = bool(u.get("is_paid"))
+        trial_end = u.get("trial_end", 0)
+        time_left = max(0, trial_end - now_ts)
+        created_at = u.get("created_at") or u.get("activated_at")
+
+        if created_at and isinstance(created_at, (int, float)):
+            created_str = time.strftime("%d %b %Y, %I:%M %p PKT", time.localtime(created_at + 5*3600))
+        elif isinstance(created_at, str):
+            created_str = created_at
+        else:
+            created_str = "—"
+
+        if is_paid:
+            status = "PRO"
+            pro_count += 1
+            time_left_str = "🌟 Unlimited Pro"
+        elif time_left > 0:
+            status = "ACTIVE_TRIAL"
+            active_trial_count += 1
+            d_left = int(time_left // 86400)
+            h_left = int((time_left % 86400) // 3600)
+            m_left = int((time_left % 3600) // 60)
+            if d_left > 0:
+                time_left_str = f"{d_left}d {h_left}h left"
+            elif h_left > 0:
+                time_left_str = f"{h_left}h {m_left}m left"
+            else:
+                time_left_str = f"{m_left}m left"
+        else:
+            status = "EXPIRED"
+            expired_count += 1
+            time_left_str = "🔒 Expired"
+
+        formatted_users.append({
+            "email": email,
+            "name": u.get("paid_name") or "User",
+            "status": status,
+            "isPaid": is_paid,
+            "timeLeft": time_left_str,
+            "secondsLeft": int(time_left) if not is_paid else 99999999,
+            "licenseKey": u.get("license_key") or "—",
+            "clientIp": u.get("client_ip") or "—",
+            "deviceId": u.get("device_id") or "—",
+            "createdAt": created_str
+        })
+
+    # Sort users: Pro first, then active trials, then expired
+    status_order = {"PRO": 0, "ACTIVE_TRIAL": 1, "EXPIRED": 2}
+    formatted_users.sort(key=lambda x: (status_order.get(x["status"], 9), -x["secondsLeft"]))
+
+    # Aggregate License Inventory
+    licenses_list = []
+    used_keys_count = 0
+    available_keys_count = 0
+
+    for lk, ldata in lic_db.items():
+        used = bool(ldata.get("used"))
+        if used: used_keys_count += 1
+        else: available_keys_count += 1
+
+        licenses_list.append({
+            "key": lk,
+            "used": used,
+            "days": ldata.get("days", 30),
+            "email": ldata.get("email") or "—",
+            "name": ldata.get("name") or "—",
+            "activatedAt": ldata.get("activated_at") or "—",
+            "note": ldata.get("note") or "—"
+        })
+
+    # Sort licenses: unused first
+    licenses_list.sort(key=lambda x: (x["used"], x["key"]))
+
+    return {
+        "stats": {
+            "totalUsers": len(formatted_users),
+            "proUsers": pro_count,
+            "activeTrials": active_trial_count,
+            "expiredTrials": expired_count,
+            "totalLicenses": len(licenses_list),
+            "availableLicenses": available_keys_count,
+            "usedLicenses": used_keys_count,
+            "totalTrafficLogs": len(trial_db)
+        },
+        "users": formatted_users,
+        "licenses": licenses_list,
+        "serverTime": time.strftime("%d %b %Y, %I:%M:%S %p PKT", time.localtime(now_ts + 5*3600))
+    }
+
+def admin_generate_licenses(count=1, days=30, note=""):
+    lic_db = get_license_db()
+    count = max(1, min(50, int(count)))
+    days = max(1, int(days))
+    new_keys = []
+    import random
+
+    for _ in range(count):
+        part1 = f"{random.randint(1000, 9999)}"
+        part2 = f"{random.randint(1000, 9999)}"
+        key = f"PSX-PRO-{part1}-{part2}"
+        while key in lic_db:
+            part1 = f"{random.randint(1000, 9999)}"
+            part2 = f"{random.randint(1000, 9999)}"
+            key = f"PSX-PRO-{part1}-{part2}"
+
+        lic_db[key] = {
+            "valid": True,
+            "days": days,
+            "used": False,
+            "email": None,
+            "name": None,
+            "note": note or f"Generated {days}-Day Key",
+            "created_at": time.strftime("%Y-%m-%d %H:%M PKT", time.localtime(time.time() + 5*3600))
+        }
+        new_keys.append(key)
+
+    save_license_db(lic_db)
+    return new_keys
+
+def admin_upgrade_to_pro(email, name="", days=30):
+    email_clean = (email or "").strip().lower()
+    if not email_clean or "@" not in email_clean:
+        return {"success": False, "error": "Invalid email address."}
+
+    trial_db = get_trial_db()
+    now_ts = time.time()
+    days_valid = int(days) if days else 30
+
+    record = {
+        "email": email_clean,
+        "is_paid": True,
+        "paid_name": name or email_clean.split("@")[0],
+        "paid_email": email_clean,
+        "license_key": "ADMIN-PRO-GRANT",
+        "paid_until": now_ts + (days_valid * 86400),
+        "activated_at": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_ts + 5*3600))
+    }
+
+    trial_db[f"email_{email_clean}"] = record
+    for k, v in list(trial_db.items()):
+        if isinstance(v, dict) and (v.get("email") == email_clean or v.get("paid_email") == email_clean):
+            trial_db[k] = record
+
+    save_trial_db(trial_db)
+    return {"success": True, "message": f"Successfully upgraded {email_clean} to Pro ({days_valid} days)!"}
+
+def admin_extend_trial_days(email, extra_days=3):
+    email_clean = (email or "").strip().lower()
+    if not email_clean:
+        return {"success": False, "error": "Invalid email."}
+
+    trial_db = get_trial_db()
+    now_ts = time.time()
+    extra_sec = int(extra_days) * 86400
+
+    updated = False
+    for k, v in list(trial_db.items()):
+        if isinstance(v, dict) and (v.get("email") == email_clean or k == f"email_{email_clean}"):
+            current_end = max(now_ts, v.get("trial_end", now_ts))
+            v["trial_end"] = current_end + extra_sec
+            v["is_paid"] = False
+            trial_db[k] = v
+            updated = True
+
+    if not updated:
+        trial_db[f"email_{email_clean}"] = {
+            "email": email_clean,
+            "created_at": now_ts,
+            "trial_end": now_ts + extra_sec,
+            "is_paid": False
+        }
+
+    save_trial_db(trial_db)
+    return {"success": True, "message": f"Extended trial for {email_clean} by {extra_days} days!"}
+
+def admin_delete_user_record(email):
+    email_clean = (email or "").strip().lower()
+    trial_db = get_trial_db()
+    keys_to_del = [k for k, v in trial_db.items() if isinstance(v, dict) and (v.get("email") == email_clean or k == f"email_{email_clean}")]
+    for k in keys_to_del:
+        del trial_db[k]
+    save_trial_db(trial_db)
+    return {"success": True, "message": f"Removed records for {email_clean}"}
+
 
 # ─── HTTP Request Handler ───
 class PSXHandler(http.server.SimpleHTTPRequestHandler):
@@ -1751,6 +1971,67 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed_path.path.startswith('/api/stock-history/'):
             symbol = parsed_path.path.split('/')[-1]
             self._handle_stock_history(symbol)
+
+        # ─── Admin Endpoints ───
+        elif parsed_path.path in ["/admin", "/admin/"]:
+            self.path = "/admin.html"
+            super().do_GET()
+        elif parsed_path.path == "/api/admin/login":
+            query = parse_qs(parsed_path.query)
+            secret = query.get("secret", [""])[0]
+            if verify_admin_secret(secret):
+                self._send_json({"success": True, "message": "Admin authenticated successfully."})
+            else:
+                self._send_json({"success": False, "error": "Invalid Admin Secret Password."}, 401)
+        elif parsed_path.path == "/api/admin/stats":
+            query = parse_qs(parsed_path.query)
+            secret = query.get("secret", [""])[0]
+            if not verify_admin_secret(secret):
+                self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                return
+            data = get_admin_dashboard_data()
+            self._send_json({"success": True, "data": data})
+        elif parsed_path.path == "/api/admin/generate-keys":
+            query = parse_qs(parsed_path.query)
+            secret = query.get("secret", [""])[0]
+            if not verify_admin_secret(secret):
+                self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                return
+            count = int(query.get("count", ["1"])[0])
+            days = int(query.get("days", ["30"])[0])
+            note = query.get("note", [""])[0]
+            keys = admin_generate_licenses(count, days, note)
+            self._send_json({"success": True, "keys": keys, "message": f"Generated {len(keys)} new {days}-day license key(s)!"})
+        elif parsed_path.path == "/api/admin/make-pro":
+            query = parse_qs(parsed_path.query)
+            secret = query.get("secret", [""])[0]
+            if not verify_admin_secret(secret):
+                self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                return
+            email = query.get("email", [""])[0]
+            name = query.get("name", [""])[0]
+            days = int(query.get("days", ["30"])[0])
+            res = admin_upgrade_to_pro(email, name, days)
+            self._send_json(res, 200 if res["success"] else 400)
+        elif parsed_path.path == "/api/admin/extend-trial":
+            query = parse_qs(parsed_path.query)
+            secret = query.get("secret", [""])[0]
+            if not verify_admin_secret(secret):
+                self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                return
+            email = query.get("email", [""])[0]
+            days = int(query.get("days", ["3"])[0])
+            res = admin_extend_trial_days(email, days)
+            self._send_json(res, 200 if res["success"] else 400)
+        elif parsed_path.path == "/api/admin/delete-user":
+            query = parse_qs(parsed_path.query)
+            secret = query.get("secret", [""])[0]
+            if not verify_admin_secret(secret):
+                self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                return
+            email = query.get("email", [""])[0]
+            res = admin_delete_user_record(email)
+            self._send_json(res, 200 if res["success"] else 400)
         else:
             # Serve static files
             super().do_GET()

@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PSX Screener — Admin Control Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-card: #1e293b;
+            --bg-glass: rgba(30, 41, 59, 0.7);
+            --border-color: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-green: #10b981;
+            --accent-green-bg: rgba(16, 185, 129, 0.15);
+            --accent-indigo: #6366f1;
+            --accent-purple: #a855f7;
+            --accent-red: #ef4444;
+            --accent-amber: #f59e0b;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; display: flex; flex-direction: column; }
+
+        /* Navigation Header */
+        .admin-header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 14px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .admin-logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.15rem; color: #fff; }
+        .admin-badge { background: #3b82f6; color: #fff; font-size: 0.7rem; padding: 3px 8px; border-radius: 6px; font-weight: 700; letter-spacing: 0.5px; }
+        .header-actions { display: flex; align-items: center; gap: 12px; }
+
+        /* Login Screen Overlay */
+        .login-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 14, 23, 0.95);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 16px;
+        }
+        .login-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 36px 32px;
+            width: 100%;
+            max-width: 420px;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+        }
+        .login-card h2 { margin-bottom: 8px; font-size: 1.5rem; }
+        .login-card p { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 24px; }
+        .login-input {
+            width: 100%;
+            padding: 14px 16px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1rem;
+            margin-bottom: 16px;
+            text-align: center;
+            letter-spacing: 1px;
+            outline: none;
+        }
+        .login-input:focus { border-color: var(--accent-indigo); }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+        }
+        .btn-primary { background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple)); color: #fff; }
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-success { background: var(--accent-green); color: #fff; }
+        .btn-success:hover { filter: brightness(1.1); }
+        .btn-danger { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.4); }
+        .btn-sm { padding: 5px 10px; font-size: 0.75rem; border-radius: 6px; }
+        .btn-ghost { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); }
+        .btn-ghost:hover { background: var(--border-color); }
+
+        /* Main Container */
+        .admin-main { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+        /* Top KPI Stats */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .kpi-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        .kpi-label { color: var(--text-secondary); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .kpi-val { font-size: 2rem; font-weight: 800; }
+        .kpi-sub { font-size: 0.75rem; color: var(--text-muted); }
+
+        /* Navigation Tabs */
+        .admin-tabs {
+            display: flex;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 20px;
+            padding-bottom: 2px;
+        }
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 10px 18px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: #fff; }
+        .tab-btn.active { color: var(--accent-indigo); border-bottom-color: var(--accent-indigo); }
+
+        /* Table Card Container */
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .card-title { font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+
+        /* Search & Filter Bar */
+        .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .search-input {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: #fff;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            min-width: 240px;
+            outline: none;
+        }
+        .search-input:focus { border-color: var(--accent-indigo); }
+
+        /* Table Styling */
+        .table-responsive { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border-color); }
+        .admin-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            text-align: left;
+        }
+        .admin-table th {
+            background: var(--bg-primary);
+            padding: 12px 16px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+        }
+        .admin-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+            white-space: nowrap;
+        }
+        .admin-table tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+        /* Status Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+        .badge-pro { background: var(--accent-green-bg); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-trial { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.3); }
+        .badge-expired { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge-unused { background: rgba(245, 158, 11, 0.15); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.3); }
+
+        /* Code copy chip */
+        .key-chip {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: #38bdf8;
+            cursor: pointer;
+        }
+        .key-chip:hover { border-color: #38bdf8; }
+
+        /* Key Generator Box */
+        .generator-box {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            align-items: flex-end;
+            margin-bottom: 20px;
+        }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group label { font-size: 0.78rem; color: var(--text-secondary); font-weight: 600; }
+        .form-control {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: #fff;
+            padding: 9px 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            outline: none;
+        }
+        .form-control:focus { border-color: var(--accent-indigo); }
+
+        .new-keys-box {
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid var(--accent-green);
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .new-keys-box h4 { color: var(--accent-green); margin-bottom: 8px; font-size: 0.9rem; }
+        .new-keys-list { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; line-height: 1.6; color: #fff; }
+
+        .pulse-live {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+            animation: livePulse 1.8s infinite;
+        }
+        @keyframes livePulse {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.3); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Admin Authentication Modal -->
+    <div id="login-modal" class="login-overlay">
+        <div class="login-card">
+            <div style="font-size: 2.5rem; margin-bottom: 12px;">🛡️</div>
+            <h2>PSX Screener Admin</h2>
+            <p>Enter Master Admin Secret to access live visitor logs & license management</p>
+            <input type="password" id="admin-pass-input" class="login-input" placeholder="Enter Admin Secret PIN..." onkeydown="if(event.key==='Enter') loginAdmin()">
+            <div id="login-error" style="color: var(--accent-red); font-size: 0.8rem; margin-bottom: 12px; display: none;"></div>
+            <button class="btn btn-primary" style="width: 100%; justify-content: center; padding: 12px;" onclick="loginAdmin()">
+                Unlock Admin Dashboard 🔓
+            </button>
+            <p style="margin-top: 16px; font-size: 0.75rem; color: var(--text-muted);">Default: <code>admin123</code> or <code>psx-admin-2026</code></p>
+        </div>
+    </div>
+
+    <!-- Admin Top Header -->
+    <header class="admin-header">
+        <div class="admin-logo">
+            <span>📈 PSX Stock Screener</span>
+            <span class="admin-badge">ADMIN CONTROL</span>
+        </div>
+        <div class="header-actions">
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-secondary);">
+                <span class="pulse-live"></span>
+                <span id="server-time-display">Live Server</span>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="fetchAdminData()" title="Refresh Data">🔄 Refresh</button>
+            <a href="/" class="btn btn-ghost btn-sm" target="_blank">🌐 Open App</a>
+            <button class="btn btn-danger btn-sm" onclick="logoutAdmin()">Logout</button>
+        </div>
+    </header>
+
+    <!-- Main Admin Dashboard Content -->
+    <main class="admin-main">
+
+        <!-- Top Metric KPI Cards -->
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-label">👥 Total Registered Users</div>
+                <div class="kpi-val" id="kpi-total-users" style="color: #38bdf8;">0</div>
+                <div class="kpi-sub">Total verified visitor accounts</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">⏳ Active 3-Day Trials</div>
+                <div class="kpi-val" id="kpi-active-trials" style="color: #a5b4fc;">0</div>
+                <div class="kpi-sub">Currently researching with active trial</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">🌟 Pro Paid Subscribers</div>
+                <div class="kpi-val" id="kpi-pro-users" style="color: var(--accent-green);">0</div>
+                <div class="kpi-sub">Unlimited Pro Access accounts</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">🔑 Available License Keys</div>
+                <div class="kpi-val" id="kpi-available-keys" style="color: var(--accent-amber);">0</div>
+                <div class="kpi-sub"><span id="kpi-used-keys">0</span> redeemed by clients</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">🌐 Total Traffic Logs</div>
+                <div class="kpi-val" id="kpi-traffic-logs" style="color: #cbd5e1;">0</div>
+                <div class="kpi-sub">Device & IP records tracked</div>
+            </div>
+        </div>
+
+        <!-- Dashboard Sub-Tabs -->
+        <div class="admin-tabs">
+            <button class="tab-btn active" onclick="switchAdminTab('users', this)">👥 Visitors & Free Trials</button>
+            <button class="tab-btn" onclick="switchAdminTab('licenses', this)">🔑 License Key Manager</button>
+            <button class="tab-btn" onclick="switchAdminTab('upgrade', this)">⚡ Direct Account Upgrader</button>
+        </div>
+
+        <!-- TAB 1: Registered Visitors & Trials -->
+        <div id="tab-users" class="admin-tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span>👥 Registered User Database & Trial Status</span>
+                    </div>
+                    <div class="filter-bar">
+                        <input type="text" id="user-search-input" class="search-input" placeholder="🔍 Search email, name, IP, key..." oninput="renderUsersTable()">
+                        <select id="user-status-filter" class="form-control" onchange="renderUsersTable()">
+                            <option value="ALL">All Statuses</option>
+                            <option value="PRO">🌟 Pro Accounts Only</option>
+                            <option value="ACTIVE_TRIAL">⏳ Active Trials Only</option>
+                            <option value="EXPIRED">🔒 Expired Only</option>
+                        </select>
+                        <button class="btn btn-success btn-sm" onclick="exportUsersCSV()">📥 Export CSV (Emails)</button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Email / Account</th>
+                                <th>Status</th>
+                                <th>Time Remaining</th>
+                                <th>License Key</th>
+                                <th>Registered (PKT)</th>
+                                <th>IP & Device</th>
+                                <th>Quick Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body">
+                            <tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">Loading visitors data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: License Key Manager & Generator -->
+        <div id="tab-licenses" class="admin-tab-content" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span>🔑 Generate New License Keys</span>
+                    </div>
+                </div>
+
+                <!-- Generator Controls -->
+                <div class="generator-box">
+                    <div class="form-group">
+                        <label>Quantity of Keys:</label>
+                        <select id="gen-count" class="form-control">
+                            <option value="1">1 Key</option>
+                            <option value="5" selected>5 Keys</option>
+                            <option value="10">10 Keys</option>
+                            <option value="20">20 Keys</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Validity Duration:</label>
+                        <select id="gen-days" class="form-control">
+                            <option value="30" selected>30 Days (1 Month - PKR 5,000)</option>
+                            <option value="90">90 Days (Quarterly - PKR 12,000)</option>
+                            <option value="365">365 Days (1 Year - PKR 40,000)</option>
+                            <option value="3650">Lifetime VIP (10 Years)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Custom Note / Customer Name:</label>
+                        <input type="text" id="gen-note" class="form-control" placeholder="e.g. Sold to Ali via JazzCash">
+                    </div>
+                    <button class="btn btn-primary" onclick="generateNewKeys()">
+                        ⚡ Generate License Keys
+                    </button>
+                </div>
+
+                <!-- Newly Generated Keys Alert Box -->
+                <div id="new-keys-box" class="new-keys-box">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h4 id="new-keys-heading">🎉 Newly Generated License Keys</h4>
+                        <button class="btn btn-ghost btn-sm" onclick="copyNewKeys()">📋 Copy All</button>
+                    </div>
+                    <div id="new-keys-list" class="new-keys-list"></div>
+                </div>
+
+                <!-- Existing Licenses Table -->
+                <div class="card-header" style="margin-top: 10px;">
+                    <div class="card-title">
+                        <span>📋 All License Keys & Redemption Status</span>
+                    </div>
+                    <input type="text" id="lic-search-input" class="search-input" placeholder="🔍 Search license key, email, buyer..." oninput="renderLicensesTable()">
+                </div>
+
+                <div class="table-responsive">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>License Key</th>
+                                <th>Status</th>
+                                <th>Validity</th>
+                                <th>Redeemed By Email</th>
+                                <th>Buyer Name</th>
+                                <th>Activated Date</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="licenses-table-body">
+                            <tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">Loading license inventory...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: Direct User Pro Upgrader -->
+        <div id="tab-upgrade" class="admin-tab-content" style="display: none;">
+            <div class="card" style="max-width: 600px; margin: 0 auto;">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span>⚡ Direct Pro Access Grant</span>
+                    </div>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px;">
+                    Instantly upgrade any visitor email address to Pro without them needing to enter a license key code.
+                </p>
+
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label>Customer Email Address:</label>
+                    <input type="email" id="grant-email" class="form-control" placeholder="user@gmail.com">
+                </div>
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label>Customer Full Name (Optional):</label>
+                    <input type="text" id="grant-name" class="form-control" placeholder="e.g. Tariq Khan">
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label>Duration:</label>
+                    <select id="grant-days" class="form-control">
+                        <option value="30">30 Days Pro</option>
+                        <option value="90">90 Days Pro</option>
+                        <option value="365">1 Year Pro</option>
+                    </select>
+                </div>
+
+                <div id="grant-msg" style="padding: 10px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 14px; display: none;"></div>
+
+                <button class="btn btn-primary" style="width: 100%; justify-content: center; padding: 12px;" onclick="grantProAccess()">
+                    🌟 Grant Instant Pro Access
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        let adminSecret = sessionStorage.getItem("psx_admin_secret") || "";
+        let adminData = null;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            if (adminSecret) {
+                document.getElementById("login-modal").style.display = "none";
+                fetchAdminData();
+            }
+        });
+
+        function loginAdmin() {
+            const input = document.getElementById("admin-pass-input");
+            const errEl = document.getElementById("login-error");
+            const pass = input ? input.value.trim() : "";
+
+            if (!pass) {
+                errEl.style.display = "block";
+                errEl.textContent = "Please enter Admin Password.";
+                return;
+            }
+
+            fetch(`/api/admin/login?secret=${encodeURIComponent(pass)}`)
+                .then(r => r.json())
+                .then(res => {
+                    if (res.success) {
+                        adminSecret = pass;
+                        sessionStorage.setItem("psx_admin_secret", pass);
+                        document.getElementById("login-modal").style.display = "none";
+                        errEl.style.display = "none";
+                        fetchAdminData();
+                    } else {
+                        errEl.style.display = "block";
+                        errEl.textContent = res.error || "Incorrect Password.";
+                    }
+                })
+                .catch(err => {
+                    errEl.style.display = "block";
+                    errEl.textContent = "Network error: " + err.message;
+                });
+        }
+
+        function logoutAdmin() {
+            sessionStorage.removeItem("psx_admin_secret");
+            adminSecret = "";
+            document.getElementById("login-modal").style.display = "flex";
+        }
+
+        function switchAdminTab(tabId, btn) {
+            document.querySelectorAll(".admin-tab-content").forEach(el => el.style.display = "none");
+            document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
+            
+            const target = document.getElementById("tab-" + tabId);
+            if (target) target.style.display = "block";
+            if (btn) btn.classList.add("active");
+        }
+
+        function fetchAdminData() {
+            if (!adminSecret) return;
+
+            fetch(`/api/admin/stats?secret=${encodeURIComponent(adminSecret)}`)
+                .then(r => {
+                    if (r.status === 401) {
+                        logoutAdmin();
+                        throw new Error("Unauthorized");
+                    }
+                    return r.json();
+                })
+                .then(res => {
+                    if (res.success && res.data) {
+                        adminData = res.data;
+                        renderDashboard(adminData);
+                    }
+                })
+                .catch(err => {
+                    console.error("fetchAdminData error:", err);
+                });
+        }
+
+        function renderDashboard(data) {
+            const stats = data.stats || {};
+            document.getElementById("kpi-total-users").textContent = stats.totalUsers || 0;
+            document.getElementById("kpi-active-trials").textContent = stats.activeTrials || 0;
+            document.getElementById("kpi-pro-users").textContent = stats.proUsers || 0;
+            document.getElementById("kpi-available-keys").textContent = stats.availableLicenses || 0;
+            document.getElementById("kpi-used-keys").textContent = stats.usedLicenses || 0;
+            document.getElementById("kpi-traffic-logs").textContent = stats.totalTrafficLogs || 0;
+
+            if (data.serverTime) {
+                document.getElementById("server-time-display").textContent = data.serverTime;
+            }
+
+            renderUsersTable();
+            renderLicensesTable();
+        }
+
+        function renderUsersTable() {
+            if (!adminData || !adminData.users) return;
+            const tbody = document.getElementById("users-table-body");
+            const search = (document.getElementById("user-search-input").value || "").trim().toLowerCase();
+            const statusFilter = document.getElementById("user-status-filter").value;
+
+            let filtered = adminData.users.filter(u => {
+                const matchSearch = !search || 
+                    u.email.toLowerCase().includes(search) || 
+                    u.name.toLowerCase().includes(search) || 
+                    u.clientIp.toLowerCase().includes(search) || 
+                    u.licenseKey.toLowerCase().includes(search);
+                
+                const matchStatus = statusFilter === "ALL" || u.status === statusFilter;
+                return matchSearch && matchStatus;
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">No visitors matching your search filter.</td></tr>`;
+                return;
+            }
+
+            let html = "";
+            filtered.forEach(u => {
+                let badgeClass = "badge-expired";
+                let badgeLabel = "🔒 Expired";
+                if (u.status === "PRO") {
+                    badgeClass = "badge-pro";
+                    badgeLabel = "🌟 Pro Account";
+                } else if (u.status === "ACTIVE_TRIAL") {
+                    badgeClass = "badge-trial";
+                    badgeLabel = "⏳ Active Trial";
+                }
+
+                html += `
+                <tr>
+                    <td>
+                        <div style="font-weight:700;">${u.email}</div>
+                        <div style="font-size:0.75rem; color:var(--text-muted);">${u.name}</div>
+                    </td>
+                    <td><span class="badge ${badgeClass}">${badgeLabel}</span></td>
+                    <td style="font-weight:600;">${u.timeLeft}</td>
+                    <td>${u.licenseKey !== '—' ? `<code class="key-chip" onclick="copyText('${u.licenseKey}')">${u.licenseKey}</code>` : '<span style="color:var(--text-muted);">—</span>'}</td>
+                    <td style="color:var(--text-secondary); font-size:0.8rem;">${u.createdAt}</td>
+                    <td style="font-size:0.75rem; color:var(--text-muted); font-family:monospace;">${u.clientIp}</td>
+                    <td>
+                        <div style="display:flex; gap:6px;">
+                            ${!u.isPaid ? `<button class="btn btn-primary btn-sm" onclick="quickMakePro('${u.email}')">🌟 Make Pro</button>` : ''}
+                            <button class="btn btn-ghost btn-sm" onclick="quickExtendTrial('${u.email}')">+3d Trial</button>
+                            <button class="btn btn-danger btn-sm" onclick="quickDeleteUser('${u.email}')">🗑</button>
+                        </div>
+                    </td>
+                </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        function renderLicensesTable() {
+            if (!adminData || !adminData.licenses) return;
+            const tbody = document.getElementById("licenses-table-body");
+            const search = (document.getElementById("lic-search-input").value || "").trim().toLowerCase();
+
+            let filtered = adminData.licenses.filter(l => {
+                return !search || 
+                    l.key.toLowerCase().includes(search) || 
+                    l.email.toLowerCase().includes(search) || 
+                    l.name.toLowerCase().includes(search) ||
+                    l.note.toLowerCase().includes(search);
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">No license keys matching search.</td></tr>`;
+                return;
+            }
+
+            let html = "";
+            filtered.forEach(l => {
+                const statusBadge = l.used 
+                    ? `<span class="badge badge-pro">✔ Used / Redeemed</span>` 
+                    : `<span class="badge badge-unused">⚡ Available</span>`;
+
+                html += `
+                <tr>
+                    <td><code class="key-chip" onclick="copyText('${l.key}')">${l.key}</code></td>
+                    <td>${statusBadge}</td>
+                    <td><strong>${l.days} Days</strong></td>
+                    <td>${l.email !== '—' ? `<strong>${l.email}</strong>` : '<span style="color:var(--text-muted);">—</span>'}</td>
+                    <td>${l.name}</td>
+                    <td style="color:var(--text-secondary); font-size:0.8rem;">${l.activatedAt}</td>
+                    <td style="color:var(--text-muted); font-size:0.8rem;">${l.note}</td>
+                </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        function generateNewKeys() {
+            const count = document.getElementById("gen-count").value;
+            const days = document.getElementById("gen-days").value;
+            const note = document.getElementById("gen-note").value.trim();
+
+            const params = new URLSearchParams({
+                secret: adminSecret,
+                count: count,
+                days: days,
+                note: note
+            });
+
+            fetch(`/api/admin/generate-keys?${params}`)
+                .then(r => r.json())
+                .then(res => {
+                    if (res.success && res.keys) {
+                        const box = document.getElementById("new-keys-box");
+                        const list = document.getElementById("new-keys-list");
+                        box.style.display = "block";
+                        list.innerHTML = res.keys.map(k => `<div>🔑 <strong>${k}</strong> (${days} Days)</div>`).join("");
+                        fetchAdminData();
+                    } else {
+                        alert(res.error || "Could not generate keys.");
+                    }
+                })
+                .catch(err => alert("Error: " + err.message));
+        }
+
+        let lastGeneratedKeys = [];
+        function copyNewKeys() {
+            const list = document.getElementById("new-keys-list");
+            if (list) {
+                const text = list.innerText;
+                navigator.clipboard.writeText(text).then(() => alert("All generated keys copied to clipboard!"));
+            }
+        }
+
+        function quickMakePro(email) {
+            if (!confirm(`Upgrade ${email} to Pro Account (30 Days)?`)) return;
+            fetch(`/api/admin/make-pro?secret=${encodeURIComponent(adminSecret)}&email=${encodeURIComponent(email)}&days=30`)
+                .then(r => r.json())
+                .then(res => {
+                    alert(res.message || "Pro upgraded!");
+                    fetchAdminData();
+                });
+        }
+
+        function quickExtendTrial(email) {
+            fetch(`/api/admin/extend-trial?secret=${encodeURIComponent(adminSecret)}&email=${encodeURIComponent(email)}&days=3`)
+                .then(r => r.json())
+                .then(res => {
+                    alert(res.message || "Trial extended by 3 days!");
+                    fetchAdminData();
+                });
+        }
+
+        function quickDeleteUser(email) {
+            if (!confirm(`Delete visitor record for ${email}? This will reset their session.`)) return;
+            fetch(`/api/admin/delete-user?secret=${encodeURIComponent(adminSecret)}&email=${encodeURIComponent(email)}`)
+                .then(r => r.json())
+                .then(res => {
+                    alert(res.message || "User record removed.");
+                    fetchAdminData();
+                });
+        }
+
+        function grantProAccess() {
+            const email = document.getElementById("grant-email").value.trim();
+            const name = document.getElementById("grant-name").value.trim();
+            const days = document.getElementById("grant-days").value;
+            const msgEl = document.getElementById("grant-msg");
+
+            if (!email || !email.includes("@")) {
+                msgEl.style.display = "block";
+                msgEl.style.background = "rgba(239, 68, 68, 0.15)";
+                msgEl.style.color = "#fca5a5";
+                msgEl.textContent = "Please enter a valid email address.";
+                return;
+            }
+
+            const params = new URLSearchParams({
+                secret: adminSecret,
+                email: email,
+                name: name,
+                days: days
+            });
+
+            fetch(`/api/admin/make-pro?${params}`)
+                .then(r => r.json())
+                .then(res => {
+                    msgEl.style.display = "block";
+                    if (res.success) {
+                        msgEl.style.background = "rgba(16, 185, 129, 0.15)";
+                        msgEl.style.color = "#a7f3d0";
+                        msgEl.textContent = res.message;
+                        document.getElementById("grant-email").value = "";
+                        fetchAdminData();
+                    } else {
+                        msgEl.style.background = "rgba(239, 68, 68, 0.15)";
+                        msgEl.style.color = "#fca5a5";
+                        msgEl.textContent = res.error || "Failed to grant Pro.";
+                    }
+                })
+                .catch(err => {
+                    msgEl.style.display = "block";
+                    msgEl.style.background = "rgba(239, 68, 68, 0.15)";
+                    msgEl.style.color = "#fca5a5";
+                    msgEl.textContent = "Error: " + err.message;
+                });
+        }
+
+        function exportUsersCSV() {
+            if (!adminData || !adminData.users || adminData.users.length === 0) {
+                alert("No users data to export.");
+                return;
+            }
+
+            let csv = "Email,Name,Status,Time Remaining,License Key,Registered Date,IP Address\n";
+            adminData.users.forEach(u => {
+                csv += `"${u.email}","${u.name}","${u.status}","${u.timeLeft}","${u.licenseKey}","${u.createdAt}","${u.clientIp}"\n`;
+            });
+
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `psx_screener_registered_visitors_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function copyText(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert(`Copied "${text}" to clipboard!`);
+            });
+        }
+    </script>
+</body>
+</html>
