@@ -1279,6 +1279,181 @@ def fetch_dividends_corporate_actions():
 # ─── 3-Day Free Trial Engine (Online Only) ───
 TRIAL_FILE = str(Path(__file__).parent / "trial_data.json")
 
+# ─── Strict Email Verification & Anti-Burner Engine ───
+DISPOSABLE_DOMAINS = {
+    "mailinator.com", "guerrillamail.com", "10minutemail.com", "tempmail.com", "temp-mail.org",
+    "yopmail.com", "trashmail.com", "sharklasers.com", "dispostable.com", "getnada.com",
+    "throwawaymail.com", "fakeinbox.com", "mohmal.com", "burnermail.io", "crazymailing.com",
+    "mytemp.email", "tempail.com", "dropmail.me", "emailondeck.com", "generator.email",
+    "inboxbear.com", "trashmail.net", "tempmail.net", "maildrop.cc", "tempinbox.com",
+    "nada.ltd", "nada.email", "inboxkitten.com", "fakemailgenerator.com", "armyspy.com",
+    "cuvox.de", "dayrep.com", "einrot.com", "fleckens.hu", "gustr.com", "jourrapide.com",
+    "rhyta.com", "superrito.com", "teleworm.us", "chacuo.net", "0-mail.com", "10mail.org",
+    "20minutemail.com", "33mail.com", "anonaddy.me", "discard.email", "spambox.us",
+    "mailnull.com", "mytempmail.com", "trash-mail.com", "mohmal.im", "mohmal.in",
+    "trashmail.me", "guerrillamailblock.com", "guerrillamail.net", "guerrillamail.biz",
+    "guerrillamail.org", "grr.la", "pokemail.net", "spam4.me", "bccto.me", "chacuo.net",
+    "brefmail.com", "jetable.org", "kasmail.com", "spamex.com", "uggsrock.com", "mytempemail.com"
+}
+
+POPULAR_TRUSTED_DOMAINS = {
+    "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "live.com",
+    "protonmail.com", "proton.me", "zoho.com", "aol.com", "msn.com", "mail.com", "yandex.com"
+}
+
+def validate_email_strict(email):
+    """Deep verification: syntax, burner domain blacklist, fake user check, and DNS domain existence."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False, "Please enter your email address."
+
+    # 1. Syntax Check
+    pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+    if not re.match(pattern, email):
+        return False, "Invalid email format. Please enter a valid email (e.g. name@gmail.com)."
+
+    parts = email.split("@")
+    if len(parts) != 2:
+        return False, "Invalid email structure."
+
+    username, domain = parts[0].strip(), parts[1].strip()
+
+    # 2. Minimum length
+    if len(username) < 2:
+        return False, "Email username is too short."
+
+    # 3. Block generic fake usernames
+    fake_usernames = {"test", "admin", "fake", "asdf", "12345", "user", "demo", "sample", "temp", "noemail", "random"}
+    if username in fake_usernames and domain not in POPULAR_TRUSTED_DOMAINS:
+        return False, "Please enter your real personal or business email address."
+
+    # 4. Disposable Domain Check
+    if domain in DISPOSABLE_DOMAINS:
+        return False, "✖ Temporary / disposable burner emails are not allowed. Please enter your real email."
+
+    # 5. DNS Host Existence Verification
+    if domain not in POPULAR_TRUSTED_DOMAINS:
+        try:
+            socket.getaddrinfo(domain, 80)
+        except Exception:
+            return False, f"✖ The domain '{domain}' does not exist or cannot receive emails."
+
+    return True, ""
+
+# ─── IP Geolocation & User-Agent Parser Engine ───
+geo_cache = {}
+
+COUNTRY_FLAGS = {
+    "PK": "🇵🇰", "US": "🇺🇸", "GB": "🇬🇧", "AE": "🇦🇪", "SA": "🇸🇦", "CA": "🇨🇦",
+    "AU": "🇦🇺", "DE": "🇩🇪", "FR": "🇫🇷", "IN": "🇮🇳", "CN": "🇨🇳", "SG": "🇸🇬",
+    "MY": "🇲🇾", "TR": "🇹🇷", "QA": "🇶🇦", "OM": "🇴🇲", "KW": "🇰🇼", "BH": "🇧🇭"
+}
+
+def get_ip_location(ip):
+    """Lookup real City, Country, Flag, and ISP from client IP with caching."""
+    ip = (ip or "").strip()
+    if not ip or ip in ["127.0.0.1", "localhost", "::1"] or ip.startswith("192.168.") or ip.startswith("10."):
+        return {"city": "Local Dev", "country": "Pakistan", "countryCode": "PK", "flag": "🇵🇰", "isp": "Localhost"}
+
+    if ip in geo_cache:
+        return geo_cache[ip]
+
+    try:
+        url = f"http://ip-api.com/json/{ip}?fields=status,country,countryCode,regionName,city,isp"
+        req = urllib.request.Request(url, headers={"User-Agent": "PSX-Screener/1.0"})
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
+            data = json.load(resp)
+            if data.get("status") == "success":
+                cc = data.get("countryCode", "")
+                flag = COUNTRY_FLAGS.get(cc, "🌐")
+                loc = {
+                    "city": data.get("city", "Unknown City"),
+                    "country": data.get("country", "Unknown Country"),
+                    "countryCode": cc,
+                    "region": data.get("regionName", ""),
+                    "flag": flag,
+                    "isp": data.get("isp", "")
+                }
+                geo_cache[ip] = loc
+                return loc
+    except Exception:
+        pass
+
+    fallback = {"city": "Unknown", "country": "Pakistan", "countryCode": "PK", "flag": "🇵🇰", "isp": "Unknown"}
+    geo_cache[ip] = fallback
+    return fallback
+
+def parse_user_agent_details(ua):
+    """Detect Device Type, OS, and Browser from User-Agent string."""
+    ua = ua or ""
+    ua_lower = ua.lower()
+
+    # Device
+    if "mobile" in ua_lower or "android" in ua_lower or "iphone" in ua_lower:
+        device = "📱 Mobile"
+    elif "tablet" in ua_lower or "ipad" in ua_lower:
+        device = "📱 Tablet"
+    else:
+        device = "💻 Desktop"
+
+    # OS
+    os_name = "Other OS"
+    if "windows" in ua_lower: os_name = "Windows"
+    elif "macintosh" in ua_lower or "mac os" in ua_lower: os_name = "macOS"
+    elif "android" in ua_lower: os_name = "Android"
+    elif "iphone" in ua_lower or "ios" in ua_lower: os_name = "iOS"
+    elif "linux" in ua_lower: os_name = "Linux"
+
+    # Browser
+    browser = "Browser"
+    if "edg" in ua_lower: browser = "Edge"
+    elif "chrome" in ua_lower and "edg" not in ua_lower: browser = "Chrome"
+    elif "safari" in ua_lower and "chrome" not in ua_lower: browser = "Safari"
+    elif "firefox" in ua_lower: browser = "Firefox"
+
+    return f"{device} ({os_name} {browser})"
+
+# ─── Real-Time Live Online Visitor Presence Tracker ───
+active_online_visitors = {}
+
+def record_visitor_heartbeat(client_ip, device_id, email="", tab="Stock Screener", user_agent=""):
+    now_ts = time.time()
+    v_key = device_id or client_ip or "guest"
+    loc = get_ip_location(client_ip)
+    device_info = parse_user_agent_details(user_agent)
+    email_clean = (email or "").strip().lower()
+
+    active_online_visitors[v_key] = {
+        "key": v_key,
+        "email": email_clean or "Guest Visitor",
+        "clientIp": client_ip or "—",
+        "deviceId": device_id or "—",
+        "location": loc,
+        "flag": loc.get("flag", "🌐"),
+        "city": loc.get("city", "Unknown"),
+        "country": loc.get("country", "Pakistan"),
+        "locationStr": f"{loc.get('flag', '🌐')} {loc.get('city', '')}, {loc.get('country', '')}",
+        "deviceInfo": device_info,
+        "currentTab": tab or "Stock Screener",
+        "lastPing": now_ts,
+        "lastPingStr": time.strftime("%I:%M:%S %p PKT", time.localtime(now_ts + 5*3600))
+    }
+
+    # Also update trial_db with last_active, visit_count, and location
+    try:
+        trial_db = get_trial_db()
+        for k in [v_key, f"email_{email_clean}" if email_clean else None, f"ip_{client_ip}" if client_ip else None]:
+            if k and k in trial_db and isinstance(trial_db[k], dict):
+                trial_db[k]["last_active"] = now_ts
+                trial_db[k]["location"] = loc
+                trial_db[k]["device_info"] = device_info
+                trial_db[k]["visit_count"] = trial_db[k].get("visit_count", 1) + 1
+                if email_clean and not trial_db[k].get("email"):
+                    trial_db[k]["email"] = email_clean
+        save_trial_db(trial_db)
+    except Exception:
+        pass
+
 def get_trial_db():
     if os.path.exists(TRIAL_FILE):
         try:
@@ -1295,7 +1470,7 @@ def save_trial_db(db):
     except Exception as e:
         print(f"[PSX] Error saving trial db: {e}")
 
-def check_trial_status(client_ip, device_id, host_header="", email=""):
+def check_trial_status(client_ip, device_id, host_header="", email="", user_agent=""):
     host_lower = (host_header or "").lower()
     is_local_host = any(h in host_lower for h in ["localhost", "127.0.0.1", "192.168.", "10."]) or \
                    any(ip in (client_ip or "") for ip in ["127.0.0.1", "192.168.", "10."])
@@ -1403,19 +1578,24 @@ def check_trial_status(client_ip, device_id, host_header="", email=""):
         "message": f"Online Mode — {days_left} Days Left in Free Trial"
     }
 
-def start_trial(client_ip, device_id, email, host_header=""):
+def start_trial(client_ip, device_id, email, host_header="", user_agent=""):
     email = (email or "").strip().lower()
-    if not email or "@" not in email:
-        return {"success": False, "error": "Please enter a valid email address."}
+    
+    # 1. Strict Anti-Fake Email Validation
+    is_valid, err_msg = validate_email_strict(email)
+    if not is_valid:
+        return {"success": False, "error": err_msg}
 
     db = get_trial_db()
     key = device_id or client_ip or "online_guest"
     ip_key = f"ip_{client_ip}" if client_ip else key
     now_ts = time.time()
 
+    loc = get_ip_location(client_ip)
+    device_info = parse_user_agent_details(user_agent)
     trial_duration = 120 if email == "videosupermacy@gmail.com" else (3 * 24 * 3600)
 
-    existing = db.get(key) or db.get(ip_key)
+    existing = db.get(key) or (db.get(f"email_{email}") if email else None) or db.get(ip_key)
     if existing:
         if existing.get("is_paid"):
             return {"success": True, "message": "Pro Account Active", "isPaid": True}
@@ -1424,6 +1604,7 @@ def start_trial(client_ip, device_id, email, host_header=""):
         if email == "videosupermacy@gmail.com" or existing.get("email") == "videosupermacy@gmail.com":
             existing["trial_end"] = now_ts + 120
             existing["email"] = "videosupermacy@gmail.com"
+            existing["last_active"] = now_ts
             save_trial_db(db)
             return {
                 "success": True,
@@ -1434,6 +1615,10 @@ def start_trial(client_ip, device_id, email, host_header=""):
 
         trial_end = existing.get("trial_end", now_ts)
         time_left = trial_end - now_ts
+        existing["last_active"] = now_ts
+        existing["visit_count"] = existing.get("visit_count", 1) + 1
+        save_trial_db(db)
+
         if time_left > 0:
             return {
                 "success": True,
@@ -1442,15 +1627,21 @@ def start_trial(client_ip, device_id, email, host_header=""):
                 "hoursLeft": round(time_left / 3600, 1)
             }
         else:
-            return {"success": False, "error": "Your 3-day free trial on this IP / Device has already expired. Please upgrade to Pro."}
+            return {"success": False, "error": "Your 3-day free trial on this account has expired. Please upgrade to Pro."}
 
     new_trial = {
         "email": email,
         "client_ip": client_ip,
         "device_id": device_id,
         "created_at": now_ts,
+        "first_seen": now_ts,
+        "last_active": now_ts,
+        "visit_count": 1,
         "trial_end": now_ts + trial_duration,
-        "is_paid": False
+        "is_paid": False,
+        "location": loc,
+        "device_info": device_info,
+        "user_agent": user_agent
     }
     db[key] = new_trial
     if email:
@@ -1461,7 +1652,7 @@ def start_trial(client_ip, device_id, email, host_header=""):
 
     return {
         "success": True,
-        "message": "3-Day Free Trial Started!",
+        "message": f"🎉 3-Day Free Trial Started! Welcome {loc.get('flag','')} {loc.get('city','')} visitor!",
         "daysLeft": 3,
         "hoursLeft": 72.0
     }
@@ -1726,6 +1917,14 @@ def get_admin_dashboard_data():
             expired_count += 1
             time_left_str = "🔒 Expired"
 
+        loc = u.get("location") or get_ip_location(u.get("client_ip"))
+        device_info = u.get("device_info") or parse_user_agent_details(u.get("user_agent"))
+        last_active = u.get("last_active")
+        if last_active and isinstance(last_active, (int, float)):
+            last_active_str = time.strftime("%d %b %Y, %I:%M %p PKT", time.localtime(last_active + 5*3600))
+        else:
+            last_active_str = created_str
+
         formatted_users.append({
             "email": email,
             "name": u.get("paid_name") or "User",
@@ -1736,12 +1935,41 @@ def get_admin_dashboard_data():
             "licenseKey": u.get("license_key") or "—",
             "clientIp": u.get("client_ip") or "—",
             "deviceId": u.get("device_id") or "—",
-            "createdAt": created_str
+            "createdAt": created_str,
+            "lastActive": last_active_str,
+            "visitCount": u.get("visit_count", 1),
+            "deviceInfo": device_info,
+            "location": loc,
+            "flag": loc.get("flag", "🌐"),
+            "city": loc.get("city", "Unknown"),
+            "country": loc.get("country", "Pakistan"),
+            "locationStr": f"{loc.get('flag', '🌐')} {loc.get('city', '')}, {loc.get('country', '')}"
         })
 
     # Sort users: Pro first, then active trials, then expired
     status_order = {"PRO": 0, "ACTIVE_TRIAL": 1, "EXPIRED": 2}
     formatted_users.sort(key=lambda x: (status_order.get(x["status"], 9), -x["secondsLeft"]))
+
+    # Filter live online visitors (active within last 120 seconds)
+    live_online = []
+    for vk, v in list(active_online_visitors.items()):
+        sec_since = now_ts - v.get("lastPing", 0)
+        if sec_since <= 120:
+            v_copy = dict(v)
+            v_copy["secondsAgo"] = int(sec_since)
+            v_copy["onlineStatus"] = "ONLINE_NOW"
+            live_online.append(v_copy)
+        elif sec_since <= 600:
+            v_copy = dict(v)
+            v_copy["secondsAgo"] = int(sec_since)
+            v_copy["onlineStatus"] = "IDLE"
+            live_online.append(v_copy)
+        else:
+            # Clean expired session after 10 min
+            if vk in active_online_visitors:
+                del active_online_visitors[vk]
+
+    live_online.sort(key=lambda x: x["secondsAgo"])
 
     # Aggregate License Inventory
     licenses_list = []
@@ -1768,6 +1996,8 @@ def get_admin_dashboard_data():
 
     return {
         "stats": {
+            "onlineNow": len([v for v in live_online if v["onlineStatus"] == "ONLINE_NOW"]),
+            "idleVisitors": len([v for v in live_online if v["onlineStatus"] == "IDLE"]),
             "totalUsers": len(formatted_users),
             "proUsers": pro_count,
             "activeTrials": active_trial_count,
@@ -1777,6 +2007,7 @@ def get_admin_dashboard_data():
             "usedLicenses": used_keys_count,
             "totalTrafficLogs": len(trial_db)
         },
+        "onlineVisitors": live_online,
         "users": formatted_users,
         "licenses": licenses_list,
         "serverTime": time.strftime("%d %b %Y, %I:%M:%S %p PKT", time.localtime(now_ts + 5*3600))
@@ -1946,13 +2177,24 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             if not self._check_auth(query): return
             symbol = query.get("symbol", [""])[0]
             self._handle_financial_statements(symbol)
+        elif parsed_path.path == "/api/heartbeat":
+            query = parse_qs(parsed_path.query)
+            device_id = query.get("deviceId", [""])[0]
+            email = query.get("email", [""])[0]
+            tab = query.get("tab", ["Stock Screener"])[0]
+            client_ip = self._get_client_ip()
+            user_agent = self.headers.get("User-Agent", "")
+            record_visitor_heartbeat(client_ip, device_id, email, tab, user_agent)
+            self._send_json({"success": True, "online": True})
         elif parsed_path.path == "/api/trial-status":
             query = parse_qs(parsed_path.query)
             device_id = query.get("deviceId", [""])[0]
             email = query.get("email", [""])[0]
             host_header = self.headers.get("Host", "")
             client_ip = self._get_client_ip()
-            res = check_trial_status(client_ip, device_id, host_header, email)
+            user_agent = self.headers.get("User-Agent", "")
+            record_visitor_heartbeat(client_ip, device_id, email, "Stock Screener", user_agent)
+            res = check_trial_status(client_ip, device_id, host_header, email, user_agent)
             self._send_json({"success": True, "data": res})
         elif parsed_path.path == "/api/start-trial":
             query = parse_qs(parsed_path.query)
@@ -1960,7 +2202,8 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             device_id = query.get("deviceId", [""])[0]
             host_header = self.headers.get("Host", "")
             client_ip = self._get_client_ip()
-            res = start_trial(client_ip, device_id, email, host_header)
+            user_agent = self.headers.get("User-Agent", "")
+            res = start_trial(client_ip, device_id, email, host_header, user_agent)
             self._send_json(res, 200 if res["success"] else 400)
         elif parsed_path.path == "/api/activate-license":
             query = parse_qs(parsed_path.query)

@@ -59,6 +59,17 @@
     "device_id": "dev_cloud_99",
     "created_at": 1786941901.171674,
     "trial_end": 1787201101.171674,
-    "is_paid": false
+    "is_paid": false,
+    "last_active": 1786953258.019142,
+    "visit_count": 3,
+    "location": {
+      "city": "Rawalpindi",
+      "country": "Pakistan",
+      "countryCode": "PK",
+      "region": "Punjab",
+      "flag": "\ud83c\uddf5\ud83c\uddf0",
+      "isp": "Triple Play Project SOUTH"
+    },
+    "device_info": "\ud83d\udcf1 Mobile (macOS Browser)"
   }
 }

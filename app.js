@@ -3748,6 +3748,24 @@ function initTermsCheck() {
     }
 }
 
+function startVisitorHeartbeat() {
+    const sendPing = () => {
+        try {
+            const deviceId = getDeviceId();
+            const email = localStorage.getItem("psx_user_email") || "";
+            const activeTabEl = document.querySelector(".nav-tab.active") || document.querySelector(".tab-btn.active");
+            const currentTab = activeTabEl ? activeTabEl.textContent.trim() : "Stock Screener";
+            const params = new URLSearchParams({ deviceId, email, tab: currentTab });
+            fetch(`/api/heartbeat?${params}`).catch(() => {});
+        } catch (e) {}
+    };
+    sendPing();
+    setInterval(sendPing, 25000);
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") sendPing();
+    });
+}
+
 // ─── Initialize ───
 document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("watchlist-count").textContent = watchlist.size;
@@ -3756,6 +3774,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initPWAAndMobile();
     initTermsCheck();
     initTrialSystem();
+    startVisitorHeartbeat();
     
     // Live Pakistan Clock Ticker
     updatePKTClock();

@@ -327,38 +327,63 @@
 
         <!-- Top Metric KPI Cards -->
         <div class="kpi-grid">
+            <div class="kpi-card" style="border-color: var(--accent-green); background: rgba(16, 185, 129, 0.06);">
+                <div class="kpi-label" style="display: flex; align-items: center; gap: 6px; color: var(--accent-green);">
+                    <span class="pulse-live"></span>
+                    <span>Active Online Right Now</span>
+                </div>
+                <div class="kpi-val" id="kpi-online-now" style="color: var(--accent-green);">0</div>
+                <div class="kpi-sub"><span id="kpi-idle-visitors">0</span> idle/in-background</div>
+            </div>
             <div class="kpi-card">
                 <div class="kpi-label">👥 Total Registered Users</div>
                 <div class="kpi-val" id="kpi-total-users" style="color: #38bdf8;">0</div>
-                <div class="kpi-sub">Total verified visitor accounts</div>
+                <div class="kpi-sub">Verified investor accounts</div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">⏳ Active 3-Day Trials</div>
                 <div class="kpi-val" id="kpi-active-trials" style="color: #a5b4fc;">0</div>
-                <div class="kpi-sub">Currently researching with active trial</div>
+                <div class="kpi-sub">Currently researching with trial</div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">🌟 Pro Paid Subscribers</div>
-                <div class="kpi-val" id="kpi-pro-users" style="color: var(--accent-green);">0</div>
+                <div class="kpi-val" id="kpi-pro-users" style="color: #facc15;">0</div>
                 <div class="kpi-sub">Unlimited Pro Access accounts</div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">🔑 Available License Keys</div>
                 <div class="kpi-val" id="kpi-available-keys" style="color: var(--accent-amber);">0</div>
-                <div class="kpi-sub"><span id="kpi-used-keys">0</span> redeemed by clients</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">🌐 Total Traffic Logs</div>
-                <div class="kpi-val" id="kpi-traffic-logs" style="color: #cbd5e1;">0</div>
-                <div class="kpi-sub">Device & IP records tracked</div>
+                <div class="kpi-sub"><span id="kpi-used-keys">0</span> keys redeemed</div>
             </div>
         </div>
 
         <!-- Dashboard Sub-Tabs -->
         <div class="admin-tabs">
-            <button class="tab-btn active" onclick="switchAdminTab('users', this)">👥 Visitors & Free Trials</button>
+            <button class="tab-btn active" onclick="switchAdminTab('live', this)">🟢 Live Active Visitors (<span id="tab-online-count">0</span>)</button>
+            <button class="tab-btn" onclick="switchAdminTab('users', this)">👥 All Registered Users</button>
             <button class="tab-btn" onclick="switchAdminTab('licenses', this)">🔑 License Key Manager</button>
-            <button class="tab-btn" onclick="switchAdminTab('upgrade', this)">⚡ Direct Account Upgrader</button>
+            <button class="tab-btn" onclick="switchAdminTab('upgrade', this)">⚡ Direct Pro Upgrader</button>
+        </div>
+
+        <!-- TAB 0: Live Online Visitors Right Now -->
+        <div id="tab-live" class="admin-tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="pulse-live"></span>
+                        <span>Real-Time Active Visitors (Live Presence)</span>
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                        Auto-updates every 5 seconds · <span style="color: var(--accent-green); font-weight: 600;" id="live-online-status-badge">🟢 Live</span>
+                    </div>
+                </div>
+
+                <div id="live-visitors-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 10px;">
+                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted);">
+                        Waiting for live visitors activity...
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- TAB 1: Registered Visitors & Trials -->
@@ -386,15 +411,17 @@
                             <tr>
                                 <th>Email / Account</th>
                                 <th>Status</th>
-                                <th>Time Remaining</th>
+                                <th>Time Left</th>
+                                <th>Location & City</th>
+                                <th>Device / Browser</th>
+                                <th>First Joined (PKT)</th>
+                                <th>Last Active (PKT)</th>
                                 <th>License Key</th>
-                                <th>Registered (PKT)</th>
-                                <th>IP & Device</th>
                                 <th>Quick Actions</th>
                             </tr>
                         </thead>
                         <tbody id="users-table-body">
-                            <tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">Loading visitors data...</td></tr>
+                            <tr><td colspan="9" style="text-align: center; padding: 30px; color: var(--text-muted);">Loading visitors data...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -573,6 +600,8 @@
             if (btn) btn.classList.add("active");
         }
 
+        let adminAutoPollTimer = null;
+
         function fetchAdminData() {
             if (!adminSecret) return;
 
@@ -593,23 +622,90 @@
                 .catch(err => {
                     console.error("fetchAdminData error:", err);
                 });
+
+            if (!adminAutoPollTimer) {
+                adminAutoPollTimer = setInterval(fetchAdminData, 5000);
+            }
         }
 
         function renderDashboard(data) {
             const stats = data.stats || {};
+            const onlineCount = stats.onlineNow || 0;
+            const idleCount = stats.idleVisitors || 0;
+
+            document.getElementById("kpi-online-now").textContent = onlineCount;
+            document.getElementById("kpi-idle-visitors").textContent = idleCount;
+            document.getElementById("tab-online-count").textContent = onlineCount;
             document.getElementById("kpi-total-users").textContent = stats.totalUsers || 0;
             document.getElementById("kpi-active-trials").textContent = stats.activeTrials || 0;
             document.getElementById("kpi-pro-users").textContent = stats.proUsers || 0;
             document.getElementById("kpi-available-keys").textContent = stats.availableLicenses || 0;
             document.getElementById("kpi-used-keys").textContent = stats.usedLicenses || 0;
-            document.getElementById("kpi-traffic-logs").textContent = stats.totalTrafficLogs || 0;
 
             if (data.serverTime) {
                 document.getElementById("server-time-display").textContent = data.serverTime;
             }
 
+            renderLiveOnlineVisitors();
             renderUsersTable();
             renderLicensesTable();
+        }
+
+        function renderLiveOnlineVisitors() {
+            if (!adminData) return;
+            const container = document.getElementById("live-visitors-container");
+            if (!container) return;
+
+            const onlineList = adminData.onlineVisitors || [];
+            if (onlineList.length === 0) {
+                container.innerHTML = `
+                <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted); background: var(--bg-primary); border-radius: 10px; border: 1px dashed var(--border-color);">
+                    <div style="font-size: 2rem; margin-bottom: 8px;">📡</div>
+                    <div style="font-weight: 600;">No active visitors browsing right now</div>
+                    <div style="font-size: 0.8rem; margin-top: 4px;">Live heartbeats will appear here in real-time as users open the app.</div>
+                </div>`;
+                return;
+            }
+
+            let html = "";
+            onlineList.forEach(v => {
+                const isLive = v.onlineStatus === "ONLINE_NOW";
+                const badgeColor = isLive ? "var(--accent-green)" : "#f59e0b";
+                const badgeBg = isLive ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)";
+                const badgeText = isLive ? `🟢 Online Now` : `🟡 Idle (${v.secondsAgo}s ago)`;
+
+                html += `
+                <div style="background: var(--bg-primary); border: 1px solid ${isLive ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-color)'}; border-radius: 10px; padding: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 0.95rem; color: #fff;">${v.email}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">${v.deviceInfo}</div>
+                        </div>
+                        <span style="background: ${badgeBg}; color: ${badgeColor}; font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 12px; border: 1px solid ${badgeColor};">
+                            ${badgeText}
+                        </span>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span>📍</span>
+                            <strong>${v.locationStr || v.city || 'Pakistan'}</strong>
+                            <span style="color: var(--text-muted); font-size: 0.72rem;">(${v.clientIp})</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span>🧭</span>
+                            <span>Currently on: <strong style="color: #38bdf8;">${v.currentTab || 'Stock Screener'}</strong></span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 0.75rem;">
+                            <span>⏱️</span>
+                            <span>Last Ping: <strong>${v.lastPingStr}</strong></span>
+                        </div>
+                    </div>
+                </div>
+                `;
+            });
+
+            container.innerHTML = html;
         }
 
         function renderUsersTable() {
@@ -650,17 +746,22 @@
                 <tr>
                     <td>
                         <div style="font-weight:700;">${u.email}</div>
-                        <div style="font-size:0.75rem; color:var(--text-muted);">${u.name}</div>
+                        <div style="font-size:0.75rem; color:var(--text-muted);">${u.name || 'User'} · <span style="color:#38bdf8;">${u.visitCount || 1} visits</span></div>
                     </td>
                     <td><span class="badge ${badgeClass}">${badgeLabel}</span></td>
                     <td style="font-weight:600;">${u.timeLeft}</td>
-                    <td>${u.licenseKey !== '—' ? `<code class="key-chip" onclick="copyText('${u.licenseKey}')">${u.licenseKey}</code>` : '<span style="color:var(--text-muted);">—</span>'}</td>
+                    <td>
+                        <div style="font-weight:600; font-size:0.85rem;">${u.flag || '🌐'} ${u.city || 'Unknown'}</div>
+                        <div style="font-size:0.75rem; color:var(--text-muted);">${u.country || 'Pakistan'} · <code style="font-size:0.7rem;">${u.clientIp}</code></div>
+                    </td>
+                    <td style="font-size:0.8rem; color:var(--text-secondary);">${u.deviceInfo || '💻 Desktop'}</td>
                     <td style="color:var(--text-secondary); font-size:0.8rem;">${u.createdAt}</td>
-                    <td style="font-size:0.75rem; color:var(--text-muted); font-family:monospace;">${u.clientIp}</td>
+                    <td style="color:#38bdf8; font-size:0.8rem; font-weight:500;">${u.lastActive || u.createdAt}</td>
+                    <td>${u.licenseKey !== '—' ? `<code class="key-chip" onclick="copyText('${u.licenseKey}')">${u.licenseKey}</code>` : '<span style="color:var(--text-muted);">—</span>'}</td>
                     <td>
                         <div style="display:flex; gap:6px;">
                             ${!u.isPaid ? `<button class="btn btn-primary btn-sm" onclick="quickMakePro('${u.email}')">🌟 Make Pro</button>` : ''}
-                            <button class="btn btn-ghost btn-sm" onclick="quickExtendTrial('${u.email}')">+3d Trial</button>
+                            <button class="btn btn-ghost btn-sm" onclick="quickExtendTrial('${u.email}')">+3d</button>
                             <button class="btn btn-danger btn-sm" onclick="quickDeleteUser('${u.email}')">🗑</button>
                         </div>
                     </td>
