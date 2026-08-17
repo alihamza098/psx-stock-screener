@@ -1655,11 +1655,14 @@ def activate_license(key, name, email, device_id, client_ip=""):
         return {"success": False, "error": "Invalid License Key. Please check the code or contact support via WhatsApp 0306 6400721."}
 
 # ─── Admin Dashboard Backend ───
-ADMIN_PASSWORDS = ["psx-admin-2026", "admin123", "03066400721"]
+ADMIN_PASSWORDS = [
+    "PSX#SuperAdmin@2026!kse100",
+    "PsxMaster!9982#Secured"
+]
 
 def verify_admin_secret(secret):
     sec = (secret or "").strip()
-    return sec in ADMIN_PASSWORDS or sec == os.environ.get("ADMIN_SECRET", "")
+    return sec in ADMIN_PASSWORDS or (os.environ.get("ADMIN_SECRET") and sec == os.environ.get("ADMIN_SECRET"))
 
 def get_admin_dashboard_data():
     trial_db = get_trial_db()
