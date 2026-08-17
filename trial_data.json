@@ -36,5 +36,29 @@
     "license_key": "PSX-PRO-5487-9321",
     "paid_until": 1789466666.420667,
     "activated_at": "2026-08-16 20:04:26 PKT"
+  },
+  "dev_cloud_99": {
+    "email": "test_user_psx_99@gmail.com",
+    "client_ip": "182.180.12.34",
+    "device_id": "dev_cloud_99",
+    "created_at": 1786941901.171674,
+    "trial_end": 1787201101.171674,
+    "is_paid": false
+  },
+  "email_test_user_psx_99@gmail.com": {
+    "email": "test_user_psx_99@gmail.com",
+    "client_ip": "182.180.12.34",
+    "device_id": "dev_cloud_99",
+    "created_at": 1786941901.171674,
+    "trial_end": 1787201101.171674,
+    "is_paid": false
+  },
+  "ip_182.180.12.34": {
+    "email": "test_user_psx_99@gmail.com",
+    "client_ip": "182.180.12.34",
+    "device_id": "dev_cloud_99",
+    "created_at": 1786941901.171674,
+    "trial_end": 1787201101.171674,
+    "is_paid": false
   }
 }

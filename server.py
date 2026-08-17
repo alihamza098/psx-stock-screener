@@ -1312,18 +1312,34 @@ def check_trial_status(client_ip, device_id, host_header="", email=""):
     db = get_trial_db()
     key = device_id or client_ip or "online_guest"
     ip_key = f"ip_{client_ip}" if client_ip else key
+    email_clean = (email or "").strip().lower()
+    dev_clean = (device_id or "").strip()
     now_ts = time.time()
 
-    user_info = db.get(key) or db.get(ip_key)
+    user_info = db.get(key) or (db.get(f"email_{email_clean}") if email_clean else None) or db.get(ip_key)
+
+    # Scan trial_db for existing matching email or device_id
+    if not user_info and (email_clean or dev_clean):
+        for k, v in db.items():
+            if isinstance(v, dict):
+                v_email = (v.get("email") or v.get("paid_email") or "").strip().lower()
+                v_dev = (v.get("device_id") or "").strip()
+                if (email_clean and v_email == email_clean) or (dev_clean and v_dev == dev_clean):
+                    user_info = v
+                    # Link current key
+                    if key: db[key] = v
+                    if email_clean: db[f"email_{email_clean}"] = v
+                    save_trial_db(db)
+                    break
 
     # Check licenses.json if no record exists yet
-    if not user_info and (email or device_id):
+    if not user_info and (email_clean or dev_clean):
         lic_db = get_license_db()
-        email_clean = (email or "").strip().lower()
-        dev_clean = (device_id or "").strip()
         for lk, ldata in lic_db.items():
             if ldata.get("used"):
-                if (email_clean and ldata.get("email") == email_clean) or (dev_clean and ldata.get("device_id") == dev_clean):
+                l_email = (ldata.get("email") or "").strip().lower()
+                l_dev = (ldata.get("device_id") or "").strip()
+                if (email_clean and l_email == email_clean) or (dev_clean and l_dev == dev_clean):
                     user_info = {
                         "email": ldata.get("email"),
                         "is_paid": True,
@@ -1332,6 +1348,7 @@ def check_trial_status(client_ip, device_id, host_header="", email=""):
                         "license_key": lk
                     }
                     db[key] = user_info
+                    if email_clean: db[f"email_{email_clean}"] = user_info
                     if client_ip: db[ip_key] = user_info
                     save_trial_db(db)
                     break
@@ -1436,6 +1453,8 @@ def start_trial(client_ip, device_id, email, host_header=""):
         "is_paid": False
     }
     db[key] = new_trial
+    if email:
+        db[f"email_{email}"] = new_trial
     if client_ip:
         db[ip_key] = new_trial
     save_trial_db(db)
@@ -1644,11 +1663,18 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         # Serve from current directory
         super().__init__(*args, directory=str(Path(__file__).parent), **kwargs)
 
+    def _get_client_ip(self):
+        forwarded = self.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        return self.client_address[0] if self.client_address else ""
+
     def _check_auth(self, query=None):
         host_header = self.headers.get("Host", "")
-        client_ip = self.client_address[0] if self.client_address else ""
+        client_ip = self._get_client_ip()
         device_id = query.get("deviceId", [""])[0] if query else ""
-        status = check_trial_status(client_ip, device_id, host_header)
+        email = query.get("email", [""])[0] if query else ""
+        status = check_trial_status(client_ip, device_id, host_header, email)
         if status.get("isLocal") or status.get("trialActive"):
             return True
         self._send_json({
@@ -1700,16 +1726,17 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed_path.path == "/api/trial-status":
             query = parse_qs(parsed_path.query)
             device_id = query.get("deviceId", [""])[0]
+            email = query.get("email", [""])[0]
             host_header = self.headers.get("Host", "")
-            client_ip = self.client_address[0] if self.client_address else ""
-            res = check_trial_status(client_ip, device_id, host_header)
+            client_ip = self._get_client_ip()
+            res = check_trial_status(client_ip, device_id, host_header, email)
             self._send_json({"success": True, "data": res})
         elif parsed_path.path == "/api/start-trial":
             query = parse_qs(parsed_path.query)
             email = query.get("email", [""])[0]
             device_id = query.get("deviceId", [""])[0]
             host_header = self.headers.get("Host", "")
-            client_ip = self.client_address[0] if self.client_address else ""
+            client_ip = self._get_client_ip()
             res = start_trial(client_ip, device_id, email, host_header)
             self._send_json(res, 200 if res["success"] else 400)
         elif parsed_path.path == "/api/activate-license":
@@ -1718,7 +1745,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             name = query.get("name", [""])[0]
             email = query.get("email", [""])[0]
             device_id = query.get("deviceId", [""])[0]
-            client_ip = self.client_address[0] if self.client_address else ""
+            client_ip = self._get_client_ip()
             res = activate_license(key, name, email, device_id, client_ip)
             self._send_json(res, 200 if res["success"] else 400)
         elif parsed_path.path.startswith('/api/stock-history/'):

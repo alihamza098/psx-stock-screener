@@ -150,9 +150,11 @@ async function fetchLiveData() {
 
     try {
         const deviceId = getDeviceId();
+        const savedEmail = localStorage.getItem("psx_user_email") || "";
+        const q = `deviceId=${deviceId}` + (savedEmail ? `&email=${encodeURIComponent(savedEmail)}` : '');
         const [stockRes, indexRes] = await Promise.all([
-            fetch(`/api/stocks?deviceId=${deviceId}`),
-            fetch(`/api/indices?deviceId=${deviceId}`),
+            fetch(`/api/stocks?${q}`),
+            fetch(`/api/indices?${q}`),
         ]);
 
         if (stockRes.status === 402 || indexRes.status === 402) {
@@ -3509,11 +3511,15 @@ function initTrialSystem() {
     if (licEmailInput && !licEmailInput.value && savedEmail) licEmailInput.value = savedEmail;
     if (licNameInput && !licNameInput.value && savedName) licNameInput.value = savedName;
 
-    fetch(`/api/trial-status?deviceId=${deviceId}`)
+    const q = `deviceId=${deviceId}` + (savedEmail ? `&email=${encodeURIComponent(savedEmail)}` : '');
+    fetch(`/api/trial-status?${q}`)
         .then(r => r.json())
         .then(res => {
             if (res.success && res.data) {
                 const info = res.data;
+                if (info.email) {
+                    localStorage.setItem("psx_user_email", info.email);
+                }
                 const banner = document.getElementById("online-trial-banner");
                 const bannerText = document.getElementById("online-trial-text");
                 const paywallModal = document.getElementById("trial-paywall-modal");
