@@ -2785,11 +2785,18 @@ function analyzePosition(symbol) {
                 renderPositionAnalysisModal(res.data, pos);
             } else {
                 modal.innerHTML = `<div class="pos-modal-box" style="text-align:center;padding:40px;">
-        .catch(() => {
-            modal.innerHTML = `<div class="pos-modal-box" style="text-align:center;padding:40px;">
-                <p style="color:#ef4444;">Network error. Please check your connection.</p>
-                <button class="btn btn-ghost" onclick="closePositionModal()">Close</button>
-            </div>`;
+                    <p style="color:#ef4444;">⚠ ${res.error || 'Could not load analysis for ' + symbol}</p>
+                    <button class="btn btn-ghost" onclick="closePositionModal()">Close</button>
+                </div>`;
+            }
+        })
+        .catch(err => {
+            if (err.message !== "Trial expired") {
+                modal.innerHTML = `<div class="pos-modal-box" style="text-align:center;padding:40px;">
+                    <p style="color:#ef4444;">Network error. Please check your connection.</p>
+                    <button class="btn btn-ghost" onclick="closePositionModal()">Close</button>
+                </div>`;
+            }
         });
 }
 
