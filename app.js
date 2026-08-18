@@ -4593,15 +4593,20 @@ function openFeedbackModal() {
     if (!modal) return;
 
     const emailInput = document.getElementById("feedback-email");
-    const savedEmail = localStorage.getItem("psx_user_email") || "";
-    if (emailInput && !emailInput.value && savedEmail) {
-        emailInput.value = savedEmail;
+    if (emailInput) {
+        emailInput.value = ""; // Keep empty so every user enters their own active email
+    }
+
+    const messageInput = document.getElementById("feedback-message");
+    if (messageInput) {
+        messageInput.value = "";
     }
 
     const msgEl = document.getElementById("feedback-status-msg");
     if (msgEl) msgEl.style.display = "none";
 
     selectStarRating(5);
+    setFeedbackTopic(document.querySelector(".feedback-tag"), "New Feature");
     modal.style.display = "flex";
 }
 
@@ -4733,6 +4738,7 @@ function submitFeedbackForm() {
                 msgEl.textContent = "🎉 Thank you! Your feedback has been sent. We'll reply to your email shortly.";
             }
             if (messageInput) messageInput.value = "";
+            if (emailInput) emailInput.value = "";
             setTimeout(() => {
                 closeFeedbackModal();
             }, 2000);
