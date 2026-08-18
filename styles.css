@@ -5449,5 +5449,328 @@ body {
     }
 }
 
+/* ═════════════════════════════════════════════════════════════════
+   PSX PRO TRADING INTELLIGENCE ENGINE (LOCAL ONLY) STYLES
+   ═════════════════════════════════════════════════════════════════ */
+.view-tab-ai-pro {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12)) !important;
+    border: 1px solid rgba(168, 85, 247, 0.4) !important;
+    color: #c084fc !important;
+    font-weight: 700 !important;
+}
+
+.view-tab-ai-pro:hover {
+    border-color: #c084fc !important;
+    box-shadow: 0 0 15px rgba(168, 85, 247, 0.3) !important;
+}
+
+.view-tab-ai-pro.active {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(168, 85, 247, 0.3)) !important;
+    border-color: #a855f7 !important;
+    color: #f3e8ff !important;
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.4) !important;
+}
+
+/* Intelligence View Container */
+.intel-view {
+    margin-top: var(--space-xl);
+}
+
+/* Intelligence Market Regime Banner */
+.intel-banner {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+    border: 1px solid rgba(168, 85, 247, 0.35);
+    border-radius: var(--radius-xl);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.intel-banner-left h2 {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.intel-banner-left p {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    max-width: 650px;
+}
+
+.intel-banner-stats {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.intel-regime-chip {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.intel-regime-label {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.intel-regime-val {
+    font-size: 1.05rem;
+    font-weight: 800;
+}
+
+/* Sub Navigation inside Intelligence */
+.intel-subtabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 24px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.intel-subtab-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.intel-subtab-btn:hover {
+    color: #f8fafc;
+    border-color: #6366f1;
+}
+
+.intel-subtab-btn.active {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    color: #ffffff;
+    border-color: #818cf8;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.35);
+}
+
+/* Opportunity Cards Grid */
+.intel-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.intel-card {
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 16px;
+    padding: 22px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.intel-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+}
+
+.intel-card.strong-buy {
+    border-color: rgba(16, 185, 129, 0.5);
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.04) 0%, #111827 100%);
+}
+
+.intel-card.buy {
+    border-color: rgba(59, 130, 246, 0.5);
+}
+
+.intel-card.avoid {
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Card Header */
+.intel-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 14px;
+}
+
+.intel-stock-title h3 {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #ffffff;
+}
+
+.intel-stock-title .sector {
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.intel-action-badge {
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-weight: 800;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+}
+
+.badge-strong-buy { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; }
+.badge-buy { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid #3b82f6; }
+.badge-pullback { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b; }
+.badge-avoid { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; }
+
+/* Score Gauge in Card */
+.intel-scores-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+.score-box .s-label { font-size: 0.68rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; }
+.score-box .s-val { font-size: 1.15rem; font-weight: 800; }
+
+/* Price Targets Row */
+.intel-targets-box {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+}
+
+.target-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.82rem;
+    padding: 3px 0;
+}
+
+.target-row.stop-loss { color: #f87171; font-weight: 600; border-top: 1px solid #1e293b; margin-top: 4px; padding-top: 6px; }
+.target-row.primary-target { color: #34d399; font-weight: 700; }
+
+/* Reasons and Risks */
+.intel-bullets {
+    margin-bottom: 14px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.intel-bullets h5 {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.intel-bullet-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-bottom: 2px;
+    color: #cbd5e1;
+}
+
+/* Position Size Calculator Box */
+.intel-calc-card {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 800px;
+    margin: 0 auto 30px auto;
+}
+
+.calc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.calc-result-box {
+    background: #1e293b;
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.calc-res-label { font-size: 0.75rem; color: #94a3b8; font-weight: 600; }
+.calc-res-val { font-size: 1.25rem; font-weight: 800; color: #f8fafc; }
+
+/* Portfolio Reassessment Cards */
+.reassess-card {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+}
+
+.reassess-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #1e293b;
+    padding-bottom: 10px;
+}
+
+.ath-atl-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.ath-box {
+    background: #0f172a;
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+    border: 1px solid #1e293b;
+}
+
+.ath-box .label { font-size: 0.68rem; color: #94a3b8; font-weight: 700; }
+.ath-box .val { font-size: 0.95rem; font-weight: 800; color: #f8fafc; }
+
+
 
 

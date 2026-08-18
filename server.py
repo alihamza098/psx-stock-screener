@@ -1470,7 +1470,7 @@ def save_trial_db(db):
     except Exception as e:
         print(f"[PSX] Error saving trial db: {e}")
 
-def check_trial_status(client_ip, device_id, host_header="", email="", user_agent=""):
+def check_trial_status(client_ip, device_id, host_header="", email="", user_agent="", orig_start_ts=0):
     host_lower = (host_header or "").lower()
     is_local_host = any(h in host_lower for h in ["localhost", "127.0.0.1", "192.168.", "10."]) or \
                    any(ip in (client_ip or "") for ip in ["127.0.0.1", "192.168.", "10."])
@@ -1501,7 +1501,6 @@ def check_trial_status(client_ip, device_id, host_header="", email="", user_agen
                 v_dev = (v.get("device_id") or "").strip()
                 if (email_clean and v_email == email_clean) or (dev_clean and v_dev == dev_clean):
                     user_info = v
-                    # Link current key
                     if key: db[key] = v
                     if email_clean: db[f"email_{email_clean}"] = v
                     save_trial_db(db)
@@ -1520,13 +1519,41 @@ def check_trial_status(client_ip, device_id, host_header="", email="", user_agen
                         "is_paid": True,
                         "paid_name": ldata.get("name"),
                         "paid_email": ldata.get("email"),
-                        "license_key": lk
+                        "license_key": lk,
+                        "created_at": now_ts - 86400,
+                        "last_active": now_ts,
+                        "visit_count": 1,
+                        "location": get_ip_location(client_ip),
+                        "device_info": parse_user_agent_details(user_agent)
                     }
                     db[key] = user_info
                     if email_clean: db[f"email_{email_clean}"] = user_info
                     if client_ip: db[ip_key] = user_info
                     save_trial_db(db)
                     break
+
+    # Restore trial if server restarted and client has saved email or start timestamp
+    if not user_info and email_clean:
+        created_at_val = float(orig_start_ts) if (orig_start_ts and float(orig_start_ts) > 0 and float(orig_start_ts) <= now_ts) else now_ts
+        trial_duration = 120 if email_clean == "videosupermacy@gmail.com" else (3 * 24 * 3600)
+        user_info = {
+            "email": email_clean,
+            "client_ip": client_ip,
+            "device_id": device_id,
+            "created_at": created_at_val,
+            "first_seen": created_at_val,
+            "last_active": now_ts,
+            "visit_count": 1,
+            "trial_end": created_at_val + trial_duration,
+            "is_paid": False,
+            "location": get_ip_location(client_ip),
+            "device_info": parse_user_agent_details(user_agent),
+            "user_agent": user_agent
+        }
+        db[key] = user_info
+        db[f"email_{email_clean}"] = user_info
+        if client_ip: db[ip_key] = user_info
+        save_trial_db(db)
 
     if not user_info:
         return {
@@ -1545,18 +1572,25 @@ def check_trial_status(client_ip, device_id, host_header="", email="", user_agen
             "email": user_info.get("email") or user_info.get("paid_email") or "",
             "name": user_info.get("paid_name") or "",
             "licenseKey": user_info.get("license_key") or "",
+            "createdAt": user_info.get("created_at") or now_ts,
+            "trialEnd": user_info.get("trial_end") or (now_ts + 3*86400),
             "secondsLeft": 99999999,
             "message": "Pro Account Active"
         }
 
     trial_end = user_info.get("trial_end", now_ts)
     time_left = trial_end - now_ts
+    user_info["last_active"] = now_ts
+    user_info["visit_count"] = user_info.get("visit_count", 1) + 1
+    save_trial_db(db)
 
     if time_left <= 0:
         return {
             "isLocal": False,
             "trialActive": False,
             "email": user_info.get("email") or "",
+            "createdAt": user_info.get("created_at") or now_ts,
+            "trialEnd": trial_end,
             "secondsLeft": 0,
             "hoursLeft": 0,
             "daysLeft": 0,
@@ -1572,6 +1606,8 @@ def check_trial_status(client_ip, device_id, host_header="", email="", user_agen
         "trialActive": True,
         "isPaid": False,
         "email": user_info.get("email") or "",
+        "createdAt": user_info.get("created_at") or (trial_end - (3*86400)),
+        "trialEnd": trial_end,
         "secondsLeft": seconds_left,
         "hoursLeft": hours_left,
         "daysLeft": days_left,
@@ -1598,7 +1634,13 @@ def start_trial(client_ip, device_id, email, host_header="", user_agent=""):
     existing = db.get(key) or (db.get(f"email_{email}") if email else None) or db.get(ip_key)
     if existing:
         if existing.get("is_paid"):
-            return {"success": True, "message": "Pro Account Active", "isPaid": True}
+            return {
+                "success": True,
+                "message": "Pro Account Active",
+                "isPaid": True,
+                "createdAt": existing.get("created_at") or now_ts,
+                "trialEnd": existing.get("trial_end") or (now_ts + 30*86400)
+            }
         
         # If test email videosupermacy@gmail.com, reset to 2 minutes (120 seconds) for testing
         if email == "videosupermacy@gmail.com" or existing.get("email") == "videosupermacy@gmail.com":
@@ -1609,6 +1651,8 @@ def start_trial(client_ip, device_id, email, host_header="", user_agent=""):
             return {
                 "success": True,
                 "message": "2-Minute Test Trial Started!",
+                "createdAt": now_ts,
+                "trialEnd": now_ts + 120,
                 "daysLeft": 1,
                 "hoursLeft": 0.03
             }
@@ -1623,6 +1667,8 @@ def start_trial(client_ip, device_id, email, host_header="", user_agent=""):
             return {
                 "success": True,
                 "message": "Trial Active",
+                "createdAt": existing.get("created_at") or (trial_end - trial_duration),
+                "trialEnd": trial_end,
                 "daysLeft": max(1, int(time_left // 86400) + 1),
                 "hoursLeft": round(time_left / 3600, 1)
             }
@@ -1653,6 +1699,8 @@ def start_trial(client_ip, device_id, email, host_header="", user_agent=""):
     return {
         "success": True,
         "message": f"🎉 3-Day Free Trial Started! Welcome {loc.get('flag','')} {loc.get('city','')} visitor!",
+        "createdAt": now_ts,
+        "trialEnd": now_ts + trial_duration,
         "daysLeft": 3,
         "hoursLeft": 72.0
     }
@@ -2190,11 +2238,12 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             query = parse_qs(parsed_path.query)
             device_id = query.get("deviceId", [""])[0]
             email = query.get("email", [""])[0]
+            orig_start_ts = query.get("origStartTs", [0])[0]
             host_header = self.headers.get("Host", "")
             client_ip = self._get_client_ip()
             user_agent = self.headers.get("User-Agent", "")
             record_visitor_heartbeat(client_ip, device_id, email, "Stock Screener", user_agent)
-            res = check_trial_status(client_ip, device_id, host_header, email, user_agent)
+            res = check_trial_status(client_ip, device_id, host_header, email, user_agent, orig_start_ts)
             self._send_json({"success": True, "data": res})
         elif parsed_path.path == "/api/start-trial":
             query = parse_qs(parsed_path.query)

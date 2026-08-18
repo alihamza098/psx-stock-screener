@@ -351,6 +351,10 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
                 📊 Financial Statements
             </button>
+            <button class="view-tab view-tab-ai-pro" data-view="trading-intelligence" id="tab-trading-intelligence">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                🎯 PSX Pro Intelligence
+            </button>
         </div>
 
         <!-- Table View -->
@@ -816,6 +820,200 @@
             <!-- Financial Statements & Ratios Workspace (Populated by JS) -->
             <div class="fin-workspace" id="fin-workspace">
                 <!-- Content generated dynamically -->
+            </div>
+        </section>
+
+        <!-- 5. PSX Pro Trading Intelligence Engine View Section -->
+        <section class="intel-view" id="view-trading-intelligence" style="display:none;">
+            <!-- Top Intelligence & Market Regime Banner -->
+            <div class="intel-banner">
+                <div class="intel-banner-left">
+                    <h2>
+                        <span>🎯 PSX Pro Trading Intelligence Engine</span>
+                        <span class="badge badge-strong-buy" style="font-size:0.75rem;">LIVE SCANNER</span>
+                    </h2>
+                    <p>
+                        High-probability short-term trade scanner with real-time entry fill probability, exit liquidity scoring, multi-factor risk/reward modeling & upper-lock defense analysis.
+                    </p>
+                </div>
+                <div class="intel-banner-stats">
+                    <div class="intel-regime-chip">
+                        <span class="intel-regime-label">Market Regime</span>
+                        <span class="intel-regime-val" id="intel-market-regime" style="color: #38bdf8;">Evaluating...</span>
+                    </div>
+                    <div class="intel-regime-chip">
+                        <span class="intel-regime-label">KSE-100 Breadth</span>
+                        <span class="intel-regime-val" id="intel-market-breadth" style="color: #10b981;">—</span>
+                    </div>
+                    <div class="intel-regime-chip">
+                        <span class="intel-regime-label">High-Prob Setups</span>
+                        <span class="intel-regime-val" id="intel-high-prob-count" style="color: #facc15;">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sub-Navigation for Intelligence Tabs -->
+            <div class="intel-subtabs">
+                <button class="intel-subtab-btn active" onclick="switchIntelSubTab('top-picks', this)">
+                    🏆 Best Setups Right Now (<span id="intel-top-count">0</span>)
+                </button>
+                <button class="intel-subtab-btn" onclick="switchIntelSubTab('upper-locks', this)">
+                    🔒 Upper-Lock Defense (<span id="intel-lock-count">0</span>)
+                </button>
+                <button class="intel-subtab-btn" onclick="switchIntelSubTab('scanner', this)">
+                    📊 Full PSX Opportunity Scanner
+                </button>
+                <button class="intel-subtab-btn" onclick="switchIntelSubTab('portfolio-reassess', this)">
+                    💼 My Positions AI Reassessment
+                </button>
+                <button class="intel-subtab-btn" onclick="switchIntelSubTab('calculator', this)">
+                    💰 Position Size & Fee Calculator
+                </button>
+            </div>
+
+            <!-- SUB-TAB 1: Best Setups Right Now (Curated Top 5-10) -->
+            <div id="intel-subtab-top-picks" class="intel-subtab-content">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff;">🏆 Top Ranked Short-Term Opportunities</h3>
+                        <p style="font-size: 0.8rem; color: #94a3b8;">Filtered strictly by: Favorable Risk/Reward + Realistic Entry Fill Availability + Strong Liquidity</p>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="runTradingIntelligenceEngine()" style="font-weight: 700;">
+                        🔄 Re-Scan Market Now
+                    </button>
+                </div>
+                <div id="intel-cards-container" class="intel-cards-grid">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <!-- SUB-TAB 2: Upper-Lock Defense & Continuation Analysis -->
+            <div id="intel-subtab-upper-locks" class="intel-subtab-content" style="display:none;">
+                <div style="margin-bottom: 16px;">
+                    <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff;">🔒 Upper-Lock Strength & Continuation Radar</h3>
+                    <p style="font-size: 0.8rem; color: #94a3b8;">Explicitly distinguishes <strong>BUYABLE</strong> momentum setups from <strong>LOCKED — NO PRACTICAL ENTRY (DO NOT CHASE)</strong>.</p>
+                </div>
+                <div id="intel-upper-locks-container" class="intel-cards-grid">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <!-- SUB-TAB 3: Full Scanner Table -->
+            <div id="intel-subtab-scanner" class="intel-subtab-content" style="display:none;">
+                <div class="card" style="background: #111827; border: 1px solid #1e293b; border-radius: 14px; padding: 20px; margin-bottom: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+                        <div style="font-weight: 800; font-size: 1.1rem; color: #fff;">📊 Comprehensive Multi-Factor PSX Screener</div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                            <input type="text" id="intel-scan-search" class="search-input" placeholder="🔍 Search symbol, sector..." oninput="renderIntelScannerTable()" style="background:#0a0e17; border:1px solid #334155; color:#fff; padding:8px 12px; border-radius:8px; font-size:0.85rem;">
+                            <select id="intel-scan-action-filter" class="form-control" onchange="renderIntelScannerTable()" style="background:#0a0e17; border:1px solid #334155; color:#fff; padding:8px 12px; border-radius:8px; font-size:0.85rem;">
+                                <option value="ALL">All Actions</option>
+                                <option value="STRONG_BUY">🔥 Strong Buy Setups Only</option>
+                                <option value="BUY">🟢 Buy Signals</option>
+                                <option value="PULLBACK">🟡 Buy on Pullback</option>
+                                <option value="AVOID">⛔ Avoid / Do Not Chase</option>
+                            </select>
+                            <select id="intel-scan-entry-filter" class="form-control" onchange="renderIntelScannerTable()" style="background:#0a0e17; border:1px solid #334155; color:#fff; padding:8px 12px; border-radius:8px; font-size:0.85rem;">
+                                <option value="ALL">All Entry Types</option>
+                                <option value="HIGH">✅ High Entry Availability Only</option>
+                                <option value="LOCKED">🔒 Upper-Locked Only</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank & Stock</th>
+                                    <th>Price & Change</th>
+                                    <th>Action Signal</th>
+                                    <th>Trade Score</th>
+                                    <th>Profit Prob.</th>
+                                    <th>Risk Level</th>
+                                    <th>Entry Availability</th>
+                                    <th>Exit Liquidity</th>
+                                    <th>Targets & R/R</th>
+                                </tr>
+                            </thead>
+                            <tbody id="intel-scanner-tbody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUB-TAB 4: Paper Simulator Portfolio Reassessment -->
+            <div id="intel-subtab-portfolio-reassess" class="intel-subtab-content" style="display:none;">
+                <div style="margin-bottom: 20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h3 style="font-size: 1.2rem; font-weight: 800; color: #fff;">💼 Paper Portfolio AI Reassessment</h3>
+                            <p style="font-size: 0.85rem; color: #94a3b8;">
+                                Objective Analysis: <em>"If I did not already own this stock, would I buy it RIGHT NOW at current price?"</em>
+                            </p>
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick="renderPortfolioReassessment()" style="font-weight:700;">
+                            🔄 Reanalyze All Positions
+                        </button>
+                    </div>
+                </div>
+                <div id="intel-reassess-container">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <!-- SUB-TAB 5: Position Sizer & Fee Calculator -->
+            <div id="intel-subtab-calculator" class="intel-subtab-content" style="display:none;">
+                <div class="intel-calc-card">
+                    <h3 style="font-size: 1.2rem; font-weight: 800; color: #fff; margin-bottom: 6px;">💰 Position Sizing & Real Transaction Cost Calculator</h3>
+                    <p style="font-size: 0.82rem; color: #94a3b8; margin-bottom: 20px;">
+                        Calculates suggested share quantity, SECP/PSX trading taxes, commissions, and net profit after fees based on your capital.
+                    </p>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px;">
+                        <div class="form-group">
+                            <label style="font-size:0.75rem; color:#94a3b8; font-weight:700;">Select Candidate Stock:</label>
+                            <select id="calc-stock-select" class="form-control" onchange="updateCalcMetrics()" style="background:#1e293b; color:#fff; border:1px solid #334155; padding:10px; border-radius:8px;">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label style="font-size:0.75rem; color:#94a3b8; font-weight:700;">Intended Capital to Deploy (PKR):</label>
+                            <input type="number" id="calc-capital-input" class="form-control" value="100000" step="10000" oninput="updateCalcMetrics()" style="background:#1e293b; color:#fff; border:1px solid #334155; padding:10px; border-radius:8px;">
+                        </div>
+                        <div class="form-group">
+                            <label style="font-size:0.75rem; color:#94a3b8; font-weight:700;">Broker Commission (PKR per share or %):</label>
+                            <input type="number" id="calc-comm-input" class="form-control" value="0.15" step="0.01" oninput="updateCalcMetrics()" style="background:#1e293b; color:#fff; border:1px solid #334155; padding:10px; border-radius:8px;">
+                        </div>
+                    </div>
+
+                    <div class="calc-grid">
+                        <div class="calc-result-box">
+                            <span class="calc-res-label">Suggested Shares to Buy</span>
+                            <span class="calc-res-val" id="calc-res-shares" style="color: #38bdf8;">0</span>
+                        </div>
+                        <div class="calc-result-box">
+                            <span class="calc-res-label">Estimated Capital Required</span>
+                            <span class="calc-res-val" id="calc-res-cost">₨0.00</span>
+                        </div>
+                        <div class="calc-result-box">
+                            <span class="calc-res-label">Estimated Roundtrip Fees (Taxes + Broker)</span>
+                            <span class="calc-res-val" id="calc-res-fees" style="color: #f87171;">₨0.00</span>
+                        </div>
+                        <div class="calc-result-box">
+                            <span class="calc-res-label">Target 1 Net Profit (After Fees)</span>
+                            <span class="calc-res-val" id="calc-res-target1-net" style="color: #10b981;">+₨0.00</span>
+                        </div>
+                        <div class="calc-result-box">
+                            <span class="calc-res-label">Max Risk at Stop-Loss (After Fees)</span>
+                            <span class="calc-res-val" id="calc-res-loss-net" style="color: #ef4444;">-₨0.00</span>
+                        </div>
+                        <div class="calc-result-box">
+                            <span class="calc-res-label">Net Risk/Reward Ratio</span>
+                            <span class="calc-res-val" id="calc-res-rr" style="color: #a855f7;">1:0.0</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 

@@ -596,6 +596,7 @@ function renderAll() {
     renderTable(sorted);
     renderCards(sorted);
     renderScorecard(sorted);
+    runTradingIntelligenceEngine();
 }
 
 // ─── Watchlist ───
@@ -950,7 +951,7 @@ function switchView(view) {
     const activeMobileTab = document.querySelector(`.mobile-nav-item[data-view="${view}"]`);
     if (activeMobileTab) activeMobileTab.classList.add("active");
 
-    const views = ["table", "cards", "scorecard", "live-trading", "education", "simulator", "corporate", "financials"];
+    const views = ["table", "cards", "scorecard", "live-trading", "education", "simulator", "corporate", "financials", "trading-intelligence"];
     views.forEach(v => {
         const el = document.getElementById(`view-${v}`);
         if (el) el.style.display = (view === v) ? (v === "cards" ? "grid" : "block") : "none";
@@ -982,6 +983,8 @@ function switchView(view) {
         const symInput = document.getElementById("fin-symbol-input");
         const symbol = symInput ? (symInput.value.trim() || "UNITY") : "UNITY";
         fetchFinancialStatements(symbol);
+    } else if (view === "trading-intelligence") {
+        runTradingIntelligenceEngine();
     }
 }
 
@@ -3502,6 +3505,7 @@ function initTrialSystem() {
     const deviceId = getDeviceId();
     const savedEmail = localStorage.getItem("psx_user_email") || "";
     const savedName = localStorage.getItem("psx_user_name") || "";
+    const savedStartTs = localStorage.getItem("psx_trial_start_ts") || "";
 
     const emailInput = document.getElementById("trial-user-email");
     const licEmailInput = document.getElementById("lic-email-input");
@@ -3511,8 +3515,13 @@ function initTrialSystem() {
     if (licEmailInput && !licEmailInput.value && savedEmail) licEmailInput.value = savedEmail;
     if (licNameInput && !licNameInput.value && savedName) licNameInput.value = savedName;
 
-    const q = `deviceId=${deviceId}` + (savedEmail ? `&email=${encodeURIComponent(savedEmail)}` : '');
-    fetch(`/api/trial-status?${q}`)
+    const params = new URLSearchParams({
+        deviceId,
+        ...(savedEmail ? { email: savedEmail } : {}),
+        ...(savedStartTs ? { origStartTs: savedStartTs } : {})
+    });
+
+    fetch(`/api/trial-status?${params}`)
         .then(r => r.json())
         .then(res => {
             if (res.success && res.data) {
@@ -3520,6 +3529,13 @@ function initTrialSystem() {
                 if (info.email) {
                     localStorage.setItem("psx_user_email", info.email);
                 }
+                if (info.createdAt) {
+                    localStorage.setItem("psx_trial_start_ts", String(info.createdAt));
+                }
+                if (info.trialEnd) {
+                    localStorage.setItem("psx_trial_end_ts", String(info.trialEnd));
+                }
+
                 const banner = document.getElementById("online-trial-banner");
                 const bannerText = document.getElementById("online-trial-text");
                 const paywallModal = document.getElementById("trial-paywall-modal");
@@ -3635,6 +3651,8 @@ function submitTrialEmail() {
             if (msgEl) {
                 msgEl.style.display = "block";
                 if (res.success) {
+                    if (res.createdAt) localStorage.setItem("psx_trial_start_ts", String(res.createdAt));
+                    if (res.trialEnd) localStorage.setItem("psx_trial_end_ts", String(res.trialEnd));
                     msgEl.className = "activation-msg msg-success";
                     msgEl.textContent = "✔ " + (res.message || "3-Day Free Trial Started!");
                     setTimeout(() => {
@@ -3649,7 +3667,6 @@ function submitTrialEmail() {
             }
         })
         .catch(err => {
-            console.error("submitTrialEmail error:", err);
             if (msgEl) {
                 msgEl.style.display = "block";
                 msgEl.className = "activation-msg msg-error";
@@ -3783,3 +3800,727 @@ document.addEventListener("DOMContentLoaded", () => {
     // Fetch live data on load
     fetchLiveData();
 });
+
+// ═════════════════════════════════════════════════════════════════
+// 🎯 PSX PRO TRADING INTELLIGENCE ENGINE (LOCAL ENGINE)
+// ═════════════════════════════════════════════════════════════════
+
+let intelligenceResults = [];
+let marketRegimeData = null;
+let currentIntelSubTab = "top-picks";
+
+function switchIntelSubTab(subTab, btn) {
+    currentIntelSubTab = subTab;
+    document.querySelectorAll(".intel-subtab-btn").forEach(b => b.classList.remove("active"));
+    if (btn) btn.classList.add("active");
+
+    const subTabs = ["top-picks", "upper-locks", "scanner", "portfolio-reassess", "calculator"];
+    subTabs.forEach(st => {
+        const el = document.getElementById(`intel-subtab-${st}`);
+        if (el) el.style.display = (st === subTab) ? "block" : "none";
+    });
+
+    if (subTab === "portfolio-reassess") {
+        renderPortfolioReassessment();
+    } else if (subTab === "calculator") {
+        populateCalculatorDropdown();
+        updateCalcMetrics();
+    }
+}
+
+function runTradingIntelligenceEngine() {
+    if (!allStocks || allStocks.length === 0) return;
+
+    // 1. Evaluate Overall PSX Market Regime
+    let advancers = 0, decliners = 0, unchanged = 0;
+    let totalVol = 0;
+    allStocks.forEach(s => {
+        const chg = typeof s.change === 'number' ? s.change : parseFloat(s.change || 0);
+        if (chg > 0.05) advancers++;
+        else if (chg < -0.05) decliners++;
+        else unchanged++;
+        totalVol += (s.volume || 0);
+    });
+
+    const totalActive = advancers + decliners + unchanged || 1;
+    const advanceRatio = (advancers / (advancers + decliners || 1));
+    let regime = "NEUTRAL";
+    let regimeColor = "#facc15";
+
+    if (advanceRatio >= 0.70) {
+        regime = "VERY BULLISH";
+        regimeColor = "#10b981";
+    } else if (advanceRatio >= 0.55) {
+        regime = "BULLISH";
+        regimeColor = "#34d399";
+    } else if (advanceRatio <= 0.30) {
+        regime = "VERY BEARISH";
+        regimeColor = "#ef4444";
+    } else if (advanceRatio <= 0.45) {
+        regime = "BEARISH";
+        regimeColor = "#f87171";
+    }
+
+    marketRegimeData = {
+        regime,
+        advancers,
+        decliners,
+        unchanged,
+        advanceRatio: Math.round(advanceRatio * 100),
+        regimeColor
+    };
+
+    const regEl = document.getElementById("intel-market-regime");
+    if (regEl) {
+        regEl.textContent = regime;
+        regEl.style.color = regimeColor;
+    }
+    const brEl = document.getElementById("intel-market-breadth");
+    if (brEl) {
+        brEl.innerHTML = `<span style="color:#10b981;">▲ ${advancers}</span> : <span style="color:#ef4444;">▼ ${decliners}</span> (${Math.round(advanceRatio * 100)}% Adv)`;
+    }
+
+    // 2. Multi-Factor Evaluation on All Stocks
+    const candidates = [];
+
+    allStocks.forEach(stock => {
+        const price = stock.price || 0;
+        if (price <= 0.5) return; // Skip sub-penny stocks
+
+        const chg = typeof stock.change === 'number' ? stock.change : parseFloat(stock.change || 0);
+        const vol = stock.volume || 0;
+        const mcap = stock.mcap || 0;
+        const pe = stock.pe || 0;
+        const upperLimit = stock.upperLimit || (price * 1.075);
+        const lowerLimit = stock.lowerLimit || (price * 0.925);
+        const distToUpper = ((upperLimit - price) / price) * 100;
+        const distToLower = ((price - lowerLimit) / price) * 100;
+
+        // Liquidity Score (0-100)
+        let exitLiquidity = 50;
+        if (vol > 2000000) exitLiquidity = 95;
+        else if (vol > 800000) exitLiquidity = 85;
+        else if (vol > 250000) exitLiquidity = 70;
+        else if (vol > 50000) exitLiquidity = 50;
+        else if (vol > 10000) exitLiquidity = 30;
+        else exitLiquidity = 15;
+
+        // Entry Availability & Lock Detection
+        let entryAvailability = "HIGH";
+        let entryProbability = 90;
+        let isUpperLocked = false;
+        let lockClassification = "NONE";
+
+        if (distToUpper <= 0.35 || chg >= 7.2) {
+            isUpperLocked = true;
+            if (vol > 500000) {
+                lockClassification = "STRONG UPPER-LOCK MOMENTUM";
+                entryAvailability = "LIMITED / LOCKED";
+                entryProbability = 20; // Hard to buy, locked
+            } else {
+                lockClassification = "HIGH RISK / SPECULATIVE";
+                entryAvailability = "LOW FILL PROBABILITY";
+                entryProbability = 10;
+            }
+        } else if (distToUpper <= 2.5 && chg >= 4.0) {
+            lockClassification = "APPROACHING UPPER-LOCK";
+            entryAvailability = "HIGH";
+            entryProbability = 85;
+        } else if (chg <= -6.5) {
+            lockClassification = "LOWER-LOCK DANGER";
+            entryAvailability = "AVOID";
+            entryProbability = 0;
+        }
+
+        // Multi-Factor Trade Scoring / 100
+        let tradeScore = 50;
+        let confidence = 70;
+        let reasons = [];
+        let risks = [];
+
+        // Factor 1: Price & Volume Momentum
+        if (chg > 1.5 && chg < 6.8) {
+            tradeScore += 16;
+            reasons.push("Strong positive intraday price momentum (+ " + chg.toFixed(1) + "%)");
+        } else if (chg >= 6.8 && !isUpperLocked) {
+            tradeScore += 10;
+            reasons.push("High velocity move nearing upper circuit");
+            risks.push("Approaching circuit resistance (possible lock or rejection)");
+        } else if (chg >= 6.8 && isUpperLocked) {
+            tradeScore -= 5;
+            risks.push("LOCKED at upper limit — do not chase market orders with zero ask fill");
+        } else if (chg < 0) {
+            tradeScore -= 15;
+            risks.push("Negative intraday momentum");
+        }
+
+        // Factor 2: Volume Confirmation
+        if (vol > 500000) {
+            tradeScore += 15;
+            reasons.push("Heavy institutional volume confirmation (" + formatVolume(vol) + " shares)");
+        } else if (vol > 100000) {
+            tradeScore += 8;
+            reasons.push("Healthy retail trading volume");
+        } else {
+            tradeScore -= 12;
+            risks.push("Thin trading liquidity (high slippage risk on exit)");
+        }
+
+        // Factor 3: Market Alignment
+        if (regime === "VERY BULLISH" || regime === "BULLISH") {
+            tradeScore += 10;
+            reasons.push("Aligned with broader KSE-100 bullish market regime");
+        } else if (regime === "BEARISH" || regime === "VERY BEARISH") {
+            tradeScore -= 12;
+            risks.push("Headwind: Overall PSX market breadth is currently negative");
+        }
+
+        // Factor 4: Entry & Exit Feasibility
+        if (exitLiquidity >= 75 && entryAvailability === "HIGH") {
+            tradeScore += 12;
+            reasons.push("High order execution fill rate & smooth exit liquidity");
+        } else if (exitLiquidity < 40) {
+            tradeScore -= 10;
+            risks.push("Low exit liquidity score (" + exitLiquidity + "/100)");
+        }
+
+        // Factor 5: Risk & Valuation Filter
+        if (pe > 0 && pe < 14) {
+            tradeScore += 7;
+            reasons.push("Attractive P/E valuation cushion (" + pe.toFixed(1) + "x)");
+        } else if (pe > 40) {
+            risks.push("High valuation multiple (P/E " + pe.toFixed(1) + "x)");
+        }
+
+        tradeScore = Math.max(10, Math.min(96, tradeScore));
+        confidence = Math.min(92, Math.max(55, Math.round(tradeScore * 0.92)));
+
+        // Risk Level (LOW, MED, HIGH)
+        let riskScore = 100 - exitLiquidity + (chg > 5 ? 20 : 0);
+        let riskLevel = "MEDIUM";
+        if (riskScore <= 38) riskLevel = "LOW";
+        else if (riskScore >= 68) riskLevel = "HIGH";
+
+        // Action Determination
+        let action = "WATCH";
+        let actionBadgeClass = "badge-pullback";
+
+        if (isUpperLocked) {
+            action = "DO NOT CHASE (LOCKED)";
+            actionBadgeClass = "badge-avoid";
+        } else if (tradeScore >= 80 && exitLiquidity >= 65 && riskLevel !== "HIGH") {
+            action = "🔥 STRONG BUY SETUP";
+            actionBadgeClass = "badge-strong-buy";
+        } else if (tradeScore >= 70 && exitLiquidity >= 50) {
+            action = "🟢 BUY NOW";
+            actionBadgeClass = "badge-buy";
+        } else if (chg >= 5.5 && tradeScore >= 65) {
+            action = "🟡 BUY ON PULLBACK";
+            actionBadgeClass = "badge-pullback";
+        } else if (tradeScore < 45 || chg <= -4.0) {
+            action = "⛔ AVOID";
+            actionBadgeClass = "badge-avoid";
+        }
+
+        // Realistic Target & Stop-Loss Modeling
+        const target1 = Number((price * 1.035).toFixed(2));
+        const target2 = Number((price * 1.070).toFixed(2));
+        const target3 = Number((price * 1.110).toFixed(2));
+        const stopLoss = Number((price * 0.975).toFixed(2));
+
+        const target1Pct = 3.5;
+        const target2Pct = 7.0;
+        const stopPct = 2.5;
+
+        const probTarget1 = Math.min(88, Math.max(45, Math.round(tradeScore * 0.88)));
+        const probTarget2 = Math.min(72, Math.max(25, Math.round(tradeScore * 0.62)));
+        const probStop = Math.max(12, Math.min(55, 100 - probTarget1));
+
+        const riskReward = (target1Pct / stopPct).toFixed(1);
+        const expectedValue = (((probTarget1 / 100) * target1Pct) - ((probStop / 100) * stopPct)).toFixed(2);
+
+        candidates.push({
+            symbol: stock.symbol,
+            name: stock.name || stock.symbol,
+            sector: stock.sector || "Other",
+            price,
+            change: chg,
+            volume: vol,
+            tradeScore,
+            confidence,
+            profitProb: probTarget1,
+            probTarget2,
+            probStop,
+            riskScore,
+            riskLevel,
+            exitLiquidity,
+            entryAvailability,
+            entryProbability,
+            isUpperLocked,
+            lockClassification,
+            distToUpper: distToUpper.toFixed(1),
+            action,
+            actionBadgeClass,
+            entryZone: `₨${(price * 0.995).toFixed(2)} – ₨${(price * 1.005).toFixed(2)}`,
+            target1,
+            target2,
+            target3,
+            stopLoss,
+            target1Pct,
+            target2Pct,
+            stopPct,
+            riskReward: `1:${riskReward}`,
+            expectedValue: Number(expectedValue),
+            reasons: reasons.slice(0, 4),
+            risks: risks.slice(0, 3)
+        });
+    });
+
+    // Sort by Trade Score & Expected Value
+    candidates.sort((a, b) => b.tradeScore - a.tradeScore || b.expectedValue - a.expectedValue);
+    intelligenceResults = candidates;
+
+    const highProbCount = candidates.filter(c => c.tradeScore >= 75 && c.entryAvailability === "HIGH").length;
+    const lockCount = candidates.filter(c => c.isUpperLocked || parseFloat(c.distToUpper) <= 2.5).length;
+
+    const hpEl = document.getElementById("intel-high-prob-count");
+    if (hpEl) hpEl.textContent = highProbCount;
+    const tcEl = document.getElementById("intel-top-count");
+    if (tcEl) tcEl.textContent = Math.min(8, highProbCount || candidates.length);
+    const lcEl = document.getElementById("intel-lock-count");
+    if (lcEl) lcEl.textContent = lockCount;
+
+    // Render Sub-Views
+    renderTopPicksCards();
+    renderUpperLocksRadar();
+    renderIntelScannerTable();
+    populateCalculatorDropdown();
+}
+
+function renderTopPicksCards() {
+    const container = document.getElementById("intel-cards-container");
+    if (!container) return;
+
+    // Filter top 8 highest quality actionable candidates
+    const topPicks = intelligenceResults.filter(c => c.action.includes("BUY") || c.tradeScore >= 70).slice(0, 8);
+
+    if (topPicks.length === 0) {
+        container.innerHTML = `
+        <div style="grid-column: 1/-1; text-align:center; padding:50px 20px; background:#0f172a; border-radius:14px; border:1px dashed #334155;">
+            <div style="font-size:2.5rem; margin-bottom:10px;">🛡️</div>
+            <h3 style="color:#f8fafc; font-weight:800;">No High-Quality Trade Setups Detected Right Now</h3>
+            <p style="color:#94a3b8; font-size:0.85rem; max-width:550px; margin:8px auto 0 auto;">
+                Market Principle: Quality > Quantity. Current PSX market conditions do not present favorable risk-adjusted entries with sufficient liquidity. Waiting for higher probability setups is recommended.
+            </p>
+        </div>`;
+        return;
+    }
+
+    let html = "";
+    topPicks.forEach((stock, idx) => {
+        const isStrong = stock.tradeScore >= 80;
+        const cardBorderClass = isStrong ? "strong-buy" : "buy";
+
+        html += `
+        <div class="intel-card ${cardBorderClass}">
+            <div>
+                <div class="intel-card-header">
+                    <div class="intel-stock-title">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:0.8rem; font-weight:800; color:#94a3b8;">#${idx + 1}</span>
+                            <h3>${stock.symbol}</h3>
+                        </div>
+                        <div class="sector">${stock.sector} · <strong style="color:#fff;">₨${stock.price.toFixed(2)}</strong> (${stock.change >= 0 ? '+' : ''}${stock.change.toFixed(2)}%)</div>
+                    </div>
+                    <span class="intel-action-badge ${stock.actionBadgeClass}">${stock.action}</span>
+                </div>
+
+                <!-- Scores Metric Gauge Row -->
+                <div class="intel-scores-row">
+                    <div class="score-box">
+                        <div class="s-label">Trade Score</div>
+                        <div class="s-val" style="color:#38bdf8;">${stock.tradeScore}<span style="font-size:0.75rem; color:#64748b;">/100</span></div>
+                    </div>
+                    <div class="score-box">
+                        <div class="s-label">Profit Prob.</div>
+                        <div class="s-val" style="color:#10b981;">${stock.profitProb}%</div>
+                    </div>
+                    <div class="score-box">
+                        <div class="s-label">Exit Liquidity</div>
+                        <div class="s-val" style="color:#a855f7;">${stock.exitLiquidity}<span style="font-size:0.75rem; color:#64748b;">/100</span></div>
+                    </div>
+                </div>
+
+                <!-- Realistic Target & Stop Loss Zone -->
+                <div class="intel-targets-box">
+                    <div class="target-row">
+                        <span style="color:#94a3b8;">Suggested Entry:</span>
+                        <strong style="color:#f8fafc;">${stock.entryZone}</strong>
+                    </div>
+                    <div class="target-row primary-target">
+                        <span>🎯 Target 1 (+${stock.target1Pct}%):</span>
+                        <strong>₨${stock.target1.toFixed(2)} <span style="font-size:0.75rem; font-weight:normal; color:#10b981;">(${stock.profitProb}% prob)</span></strong>
+                    </div>
+                    <div class="target-row">
+                        <span style="color:#94a3b8;">🚀 Target 2 (+${stock.target2Pct}%):</span>
+                        <strong>₨${stock.target2.toFixed(2)} <span style="font-size:0.75rem; color:#94a3b8;">(${stock.probTarget2}% prob)</span></strong>
+                    </div>
+                    <div class="target-row stop-loss">
+                        <span>🛑 Stop Loss (-${stock.stopPct}%):</span>
+                        <strong>₨${stock.stopLoss.toFixed(2)} <span style="font-size:0.75rem; color:#f87171;">(${stock.probStop}% prob)</span></strong>
+                    </div>
+                    <div class="target-row" style="border-top:1px dashed #334155; margin-top:4px; padding-top:4px; font-size:0.75rem;">
+                        <span style="color:#94a3b8;">Risk/Reward Ratio:</span>
+                        <strong style="color:#facc15;">${stock.riskReward} · EV: +${stock.expectedValue}%</strong>
+                    </div>
+                </div>
+
+                <!-- Reasons Why -->
+                <div class="intel-bullets">
+                    <h5>✓ Why This Trade Setup:</h5>
+                    ${stock.reasons.map(r => `<div class="intel-bullet-item"><span style="color:#10b981;">•</span><span>${r}</span></div>`).join('')}
+                </div>
+
+                <!-- Key Risks -->
+                ${stock.risks.length > 0 ? `
+                <div class="intel-bullets" style="margin-top:6px;">
+                    <h5 style="color:#f87171;">⚠️ Potential Risks to Watch:</h5>
+                    ${stock.risks.map(rk => `<div class="intel-bullet-item"><span style="color:#f87171;">•</span><span>${rk}</span></div>`).join('')}
+                </div>` : ''}
+            </div>
+
+            <!-- Action Buttons Footer -->
+            <div style="display:flex; gap:8px; margin-top:16px;">
+                <button class="btn btn-primary btn-sm" style="flex:1; font-weight:700;" onclick="switchView('simulator'); setTimeout(()=>{ buyFromScreener('${stock.symbol}'); }, 200);">
+                    🎮 Paper Buy
+                </button>
+                <button class="btn btn-ghost btn-sm" style="font-weight:700;" onclick="switchView('live-trading'); setTimeout(()=>{ fetchLiveTradingAnalysis('${stock.symbol}'); }, 200);">
+                    ⚡ Live Depth
+                </button>
+            </div>
+        </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function renderUpperLocksRadar() {
+    const container = document.getElementById("intel-upper-locks-container");
+    if (!container) return;
+
+    // Filter stocks near or at upper limit
+    const lockStocks = intelligenceResults.filter(c => c.isUpperLocked || parseFloat(c.distToUpper) <= 3.0 || c.change >= 4.5);
+
+    if (lockStocks.length === 0) {
+        container.innerHTML = `
+        <div style="grid-column: 1/-1; text-align:center; padding:40px; background:#0f172a; border-radius:14px; border:1px dashed #334155; color:#94a3b8;">
+            No stocks are currently approaching or trapped at upper circuits in this session.
+        </div>`;
+        return;
+    }
+
+    let html = "";
+    lockStocks.forEach(stock => {
+        const isLockedTrapped = stock.isUpperLocked;
+        const cardClass = isLockedTrapped ? "avoid" : "strong-buy";
+
+        html += `
+        <div class="intel-card ${cardClass}">
+            <div class="intel-card-header">
+                <div class="intel-stock-title">
+                    <h3>${stock.symbol}</h3>
+                    <div class="sector">${stock.sector} · <strong>₨${stock.price.toFixed(2)}</strong> (+${stock.change.toFixed(2)}%)</div>
+                </div>
+                <span class="intel-action-badge ${isLockedTrapped ? 'badge-avoid' : 'badge-strong-buy'}">
+                    ${stock.lockClassification}
+                </span>
+            </div>
+
+            <div class="intel-scores-row">
+                <div class="score-box">
+                    <div class="s-label">Dist to Lock</div>
+                    <div class="s-val" style="color:#facc15;">${stock.distToUpper}%</div>
+                </div>
+                <div class="score-box">
+                    <div class="s-label">Entry Availability</div>
+                    <div class="s-val" style="color:${isLockedTrapped ? '#ef4444' : '#10b981'}; font-size:0.95rem;">${stock.entryAvailability}</div>
+                </div>
+                <div class="score-box">
+                    <div class="s-label">Fill Probability</div>
+                    <div class="s-val" style="color:#38bdf8;">${stock.entryProbability}%</div>
+                </div>
+            </div>
+
+            <div class="intel-bullets" style="margin-top:10px;">
+                <h5>🔍 Circuit Lock Analysis:</h5>
+                ${isLockedTrapped ? `
+                <div class="intel-bullet-item"><span style="color:#ef4444;">✖</span><span><strong>LOCKED AT UPPER LIMIT:</strong> Zero ask volume available. Market orders will remain unfilled.</span></div>
+                <div class="intel-bullet-item"><span style="color:#facc15;">•</span><span><strong>Rule:</strong> DO NOT CHASE. Wait for lock opening or profit-taking supply.</span></div>
+                ` : `
+                <div class="intel-bullet-item"><span style="color:#10b981;">✓</span><span><strong>BUYABLE MOMENTUM:</strong> Approaching upper lock with active two-way liquidity.</span></div>
+                <div class="intel-bullet-item"><span style="color:#38bdf8;">•</span><span>Realistic fill probability: ${stock.entryProbability}% before circuit barrier.</span></div>
+                `}
+            </div>
+
+            <div style="display:flex; gap:8px; margin-top:16px;">
+                <button class="btn btn-ghost btn-sm" style="flex:1; font-weight:700;" onclick="switchView('live-trading'); setTimeout(()=>{ fetchLiveTradingAnalysis('${stock.symbol}'); }, 200);">
+                    🔍 View Order Depth
+                </button>
+            </div>
+        </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function renderIntelScannerTable() {
+    const tbody = document.getElementById("intel-scanner-tbody");
+    if (!tbody) return;
+
+    const search = (document.getElementById("intel-scan-search")?.value || "").trim().toLowerCase();
+    const actionFilter = document.getElementById("intel-scan-action-filter")?.value || "ALL";
+    const entryFilter = document.getElementById("intel-scan-entry-filter")?.value || "ALL";
+
+    let filtered = intelligenceResults.filter(stock => {
+        if (search && !stock.symbol.toLowerCase().includes(search) && !stock.sector.toLowerCase().includes(search)) return false;
+        if (actionFilter === "STRONG_BUY" && !stock.action.includes("STRONG")) return false;
+        if (actionFilter === "BUY" && !stock.action.includes("BUY")) return false;
+        if (actionFilter === "PULLBACK" && !stock.action.includes("PULLBACK")) return false;
+        if (actionFilter === "AVOID" && !stock.action.includes("AVOID") && !stock.action.includes("CHASE")) return false;
+        if (entryFilter === "HIGH" && stock.entryAvailability !== "HIGH") return false;
+        if (entryFilter === "LOCKED" && !stock.isUpperLocked) return false;
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:#94a3b8;">No matching stocks found.</td></tr>`;
+        return;
+    }
+
+    let html = "";
+    filtered.slice(0, 50).forEach((stock, idx) => {
+        html += `
+        <tr>
+            <td>
+                <div style="font-weight:800; color:#fff; display:flex; align-items:center; gap:6px;">
+                    <span style="color:#64748b; font-size:0.75rem;">#${idx+1}</span>
+                    <span>${stock.symbol}</span>
+                </div>
+                <div style="font-size:0.75rem; color:#94a3b8;">${stock.sector}</div>
+            </td>
+            <td>
+                <div style="font-weight:700;">₨${stock.price.toFixed(2)}</div>
+                <div style="font-size:0.75rem; color:${stock.change >= 0 ? '#10b981' : '#ef4444'}; font-weight:700;">
+                    ${stock.change >= 0 ? '+' : ''}${stock.change.toFixed(2)}%
+                </div>
+            </td>
+            <td><span class="intel-action-badge ${stock.actionBadgeClass}">${stock.action}</span></td>
+            <td><strong style="color:#38bdf8; font-size:1rem;">${stock.tradeScore}</strong><span style="font-size:0.7rem; color:#64748b;">/100</span></td>
+            <td><strong style="color:#10b981;">${stock.profitProb}%</strong></td>
+            <td><span style="font-size:0.75rem; font-weight:700; color:${stock.riskLevel === 'LOW' ? '#10b981' : stock.riskLevel === 'HIGH' ? '#ef4444' : '#facc15'};">${stock.riskLevel}</span></td>
+            <td style="font-size:0.8rem; font-weight:600; color:${stock.entryAvailability === 'HIGH' ? '#10b981' : '#f87171'};">${stock.entryAvailability}</td>
+            <td><strong style="color:#a855f7;">${stock.exitLiquidity}</strong><span style="font-size:0.7rem; color:#64748b;">/100</span></td>
+            <td style="font-size:0.78rem;">
+                <div>🎯 ₨${stock.target1.toFixed(2)} <span style="color:#10b981;">(+${stock.target1Pct}%)</span></div>
+                <div style="color:#f87171;">🛑 ₨${stock.stopLoss.toFixed(2)} (-${stock.stopPct}%)</div>
+            </td>
+        </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+}
+
+function renderPortfolioReassessment() {
+    const container = document.getElementById("intel-reassess-container");
+    if (!container) return;
+
+    const portfolioRaw = localStorage.getItem("psx_portfolio_v1");
+    let portfolio = [];
+    try {
+        if (portfolioRaw) portfolio = JSON.parse(portfolioRaw);
+    } catch (e) {}
+
+    if (!portfolio || portfolio.length === 0) {
+        container.innerHTML = `
+        <div style="text-align:center; padding:50px 20px; background:#0f172a; border-radius:14px; border:1px dashed #334155; color:#94a3b8;">
+            <div style="font-size:2.5rem; margin-bottom:10px;">💼</div>
+            <h3 style="color:#f8fafc; font-weight:800;">No Positions in Paper Simulator Yet</h3>
+            <p style="font-size:0.85rem; margin-top:6px;">
+                Buy any stock in the Paper Simulator tab, and the AI Intelligence Engine will automatically begin monitoring and objectively reassessing your holding.
+            </p>
+            <button class="btn btn-primary btn-sm" onclick="switchView('simulator')" style="margin-top:14px; font-weight:700;">
+                🎮 Go to Paper Simulator
+            </button>
+        </div>`;
+        return;
+    }
+
+    let html = "";
+    portfolio.forEach(pos => {
+        const sym = pos.symbol;
+        const stockData = allStocks.find(s => s.symbol === sym) || {};
+        const currentPrice = stockData.price || pos.buyPrice || 1;
+        const buyPrice = pos.buyPrice || currentPrice;
+        const shares = pos.shares || 0;
+        const costBasis = buyPrice * shares;
+        const currentValue = currentPrice * shares;
+        const pnl = currentValue - costBasis;
+        const pnlPct = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+
+        // Peak and Drawdown tracking
+        const peakPrice = Math.max(currentPrice, buyPrice * 1.05);
+        const drawdownPct = peakPrice > 0 ? ((peakPrice - currentPrice) / peakPrice) * 100 : 0;
+
+        // Objective Query: "If I did not own this stock today, would I buy it RIGHT NOW?"
+        const candidate = intelligenceResults.find(c => c.symbol === sym) || { tradeScore: 50 };
+        let buyTodayAnswer = "WAIT";
+        let buyTodayBadge = "badge-pullback";
+        let rec = "HOLD";
+
+        if (candidate.tradeScore >= 75 && candidate.entryAvailability === "HIGH") {
+            buyTodayAnswer = "YES (STRONG SETUP)";
+            buyTodayBadge = "badge-strong-buy";
+            rec = "HOLD & ADD";
+        } else if (pnlPct >= 7.0 || candidate.tradeScore < 45) {
+            buyTodayAnswer = "NO (TAKE PROFIT / RISK HIGH)";
+            buyTodayBadge = "badge-avoid";
+            rec = "PARTIAL SELL / EXIT";
+        } else if (pnlPct <= -4.0) {
+            buyTodayAnswer = "NO (STOP-LOSS ZONE)";
+            buyTodayBadge = "badge-avoid";
+            rec = "SELL / CUT LOSS";
+        }
+
+        // All-Time High / Low approximations from 52-week data
+        const ath = (stockData.high52 || currentPrice * 1.35).toFixed(2);
+        const atl = (stockData.low52 || currentPrice * 0.65).toFixed(2);
+        const distATH = (((parseFloat(ath) - currentPrice) / parseFloat(ath)) * 100).toFixed(1);
+        const distATL = (((currentPrice - parseFloat(atl)) / parseFloat(atl)) * 100).toFixed(1);
+
+        html += `
+        <div class="reassess-card">
+            <div class="reassess-header">
+                <div>
+                    <h4 style="font-size:1.2rem; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
+                        <span>${sym}</span>
+                        <span style="font-size:0.75rem; color:#94a3b8; font-weight:normal;">(${shares} Shares)</span>
+                    </h4>
+                    <div style="font-size:0.8rem; color:#94a3b8;">
+                        Bought @ <strong>₨${buyPrice.toFixed(2)}</strong> · Current @ <strong>₨${currentPrice.toFixed(2)}</strong>
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:1.15rem; font-weight:800; color:${pnl >= 0 ? '#10b981' : '#ef4444'};">
+                        ${pnl >= 0 ? '+' : ''}₨${pnl.toFixed(2)} (${pnl >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)
+                    </div>
+                    <div style="font-size:0.75rem; color:#94a3b8;">Peak Drawdown: <span style="color:#f87171;">-${drawdownPct.toFixed(1)}%</span></div>
+                </div>
+            </div>
+
+            <!-- Objective Reassessment Banner -->
+            <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:14px; margin-bottom:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                    <div style="font-size:0.82rem; font-weight:700; color:#cbd5e1;">
+                        ❓ If I did not already own ${sym}, would I buy it RIGHT NOW?
+                    </div>
+                    <span class="intel-action-badge ${buyTodayBadge}">
+                        ${buyTodayAnswer}
+                    </span>
+                </div>
+                <div style="font-size:0.8rem; color:#94a3b8;">
+                    <strong>AI Recommendation:</strong> <span style="color:#facc15; font-weight:700;">${rec}</span> · Trade Score: <strong>${candidate.tradeScore || 50}/100</strong> · Exit Liquidity: <strong>${candidate.exitLiquidity || 50}/100</strong>
+                </div>
+            </div>
+
+            <!-- All-Time High / Low & Price Milestones -->
+            <div class="ath-atl-grid">
+                <div class="ath-box">
+                    <div class="label">52W High (ATH)</div>
+                    <div class="val">₨${ath}</div>
+                    <div style="font-size:0.7rem; color:#f87171;">-${distATH}% below</div>
+                </div>
+                <div class="ath-box">
+                    <div class="label">52W Low (ATL)</div>
+                    <div class="val">₨${atl}</div>
+                    <div style="font-size:0.7rem; color:#10b981;">+${distATL}% above</div>
+                </div>
+                <div class="ath-box">
+                    <div class="label">Highest Since Purchase</div>
+                    <div class="val" style="color:#10b981;">₨${peakPrice.toFixed(2)}</div>
+                </div>
+                <div class="ath-box">
+                    <div class="label">Target 1 Exit</div>
+                    <div class="val" style="color:#38bdf8;">₨${(buyPrice * 1.05).toFixed(2)}</div>
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+                <button class="btn btn-ghost btn-sm" onclick="runTradingIntelligenceEngine(); renderPortfolioReassessment();" style="font-weight:700;">
+                    🔄 Reanalyze Position
+                </button>
+            </div>
+        </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function populateCalculatorDropdown() {
+    const sel = document.getElementById("calc-stock-select");
+    if (!sel || !allStocks) return;
+
+    if (sel.options.length <= 1) {
+        sel.innerHTML = "";
+        const topSymbols = intelligenceResults.slice(0, 30);
+        (topSymbols.length > 0 ? topSymbols : allStocks.slice(0, 30)).forEach(s => {
+            const opt = document.createElement("option");
+            opt.value = s.symbol;
+            opt.textContent = `${s.symbol} — ₨${(s.price || 0).toFixed(2)}`;
+            sel.appendChild(opt);
+        });
+    }
+}
+
+function updateCalcMetrics() {
+    const sel = document.getElementById("calc-stock-select");
+    const capitalInput = document.getElementById("calc-capital-input");
+    const commInput = document.getElementById("calc-comm-input");
+    if (!sel || !capitalInput) return;
+
+    const sym = sel.value;
+    const stock = allStocks.find(s => s.symbol === sym) || { price: 20 };
+    const price = stock.price || 20;
+    const capital = parseFloat(capitalInput.value) || 100000;
+    const commPerShare = parseFloat(commInput.value) || 0.15;
+
+    const shares = Math.floor(capital / price);
+    const actualCost = shares * price;
+
+    // SECP + PSX + CVT + Brokerage Fees
+    const brokerageRoundtrip = shares * commPerShare * 2;
+    const taxesAndLevies = actualCost * 0.0003 * 2; // ~0.03% SECP + CDC + SST
+    const totalFees = brokerageRoundtrip + taxesAndLevies;
+
+    // Targets
+    const target1Price = price * 1.035;
+    const stopPrice = price * 0.975;
+
+    const grossTarget1 = (target1Price - price) * shares;
+    const netTarget1 = grossTarget1 - totalFees;
+
+    const grossLoss = (price - stopPrice) * shares;
+    const netLoss = grossLoss + totalFees;
+
+    const netRR = netLoss > 0 ? (netTarget1 / netLoss).toFixed(1) : "0.0";
+
+    document.getElementById("calc-res-shares").textContent = shares.toLocaleString() + " shares";
+    document.getElementById("calc-res-cost").textContent = "₨" + actualCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById("calc-res-fees").textContent = "₨" + totalFees.toFixed(2);
+    document.getElementById("calc-res-target1-net").textContent = (netTarget1 >= 0 ? "+" : "") + "₨" + netTarget1.toFixed(2);
+    document.getElementById("calc-res-loss-net").textContent = "-₨" + netLoss.toFixed(2);
+    document.getElementById("calc-res-rr").textContent = `1:${netRR}`;
+}
