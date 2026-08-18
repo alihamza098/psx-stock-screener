@@ -186,26 +186,35 @@
         .search-input:focus { border-color: var(--accent-indigo); }
 
         /* Table Styling */
-        .table-responsive { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border-color); }
+        .table-responsive { 
+            width: 100%; 
+            overflow-x: auto; 
+            -webkit-overflow-scrolling: touch; 
+            border-radius: 8px; 
+            border: 1px solid var(--border-color); 
+        }
         .admin-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             text-align: left;
+            table-layout: auto;
         }
         .admin-table th {
             background: var(--bg-primary);
-            padding: 12px 16px;
+            padding: 10px 12px;
             color: var(--text-secondary);
             font-weight: 600;
             border-bottom: 1px solid var(--border-color);
-            white-space: nowrap;
+            white-space: normal;
         }
         .admin-table td {
-            padding: 12px 16px;
+            padding: 10px 12px;
             border-bottom: 1px solid var(--border-color);
             color: var(--text-primary);
-            white-space: nowrap;
+            white-space: normal;
+            vertical-align: middle;
+            word-break: break-word;
         }
         .admin-table tr:hover td { background: rgba(255, 255, 255, 0.02); }
 
@@ -220,6 +229,8 @@
             font-weight: 700;
         }
         .badge-pro { background: var(--accent-green-bg); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-source-admin { background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .badge-source-key { background: rgba(99, 102, 241, 0.12); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.3); }
         .badge-trial { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.3); }
         .badge-expired { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
         .badge-unused { background: rgba(245, 158, 11, 0.15); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.3); }
@@ -415,19 +426,17 @@
                     <table class="admin-table">
                         <thead>
                             <tr>
-                                <th>Email / Account</th>
-                                <th>Status</th>
-                                <th>Time Left</th>
-                                <th>Location & City</th>
-                                <th>Device / Browser</th>
-                                <th>First Joined (PKT)</th>
-                                <th>Last Active (PKT)</th>
-                                <th>License Key</th>
-                                <th>Quick Actions</th>
+                                <th style="width: 20%;">User & Email</th>
+                                <th style="width: 18%;">Subscription & Source</th>
+                                <th style="width: 12%;">Time Remaining</th>
+                                <th style="width: 16%;">Location & IP</th>
+                                <th style="width: 12%;">Device / OS</th>
+                                <th style="width: 12%;">Activity History</th>
+                                <th style="width: 10%;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="users-table-body">
-                            <tr><td colspan="9" style="text-align: center; padding: 30px; color: var(--text-muted);">Loading visitors data...</td></tr>
+                            <tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">Loading visitors data...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -563,18 +572,17 @@
                     <table class="admin-table">
                         <thead>
                             <tr>
-                                <th>Rating</th>
-                                <th>Category</th>
-                                <th>Feedback / Requested Feature</th>
-                                <th>Customer Email</th>
-                                <th>Location & City</th>
-                                <th>Device / OS</th>
-                                <th>Submitted (PKT)</th>
-                                <th>Direct Reply</th>
+                                <th style="width: 12%;">Rating</th>
+                                <th style="width: 14%;">Category</th>
+                                <th style="width: 32%;">Feedback & Requested Feature</th>
+                                <th style="width: 15%;">Customer</th>
+                                <th style="width: 15%;">Location & Device</th>
+                                <th style="width: 12%;">Date (PKT)</th>
+                                <th style="width: 10%;">Direct Reply</th>
                             </tr>
                         </thead>
                         <tbody id="feedbacks-table-body">
-                            <tr><td colspan="8" style="text-align: center; padding: 30px; color: var(--text-muted);">Loading feedback logs...</td></tr>
+                            <tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">Loading feedback logs...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -740,7 +748,7 @@
             if (!tbody) return;
 
             if (adminData.feedbacks.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 30px; color: var(--text-muted);">No user feedbacks submitted yet.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">No user feedbacks submitted yet.</td></tr>`;
                 return;
             }
 
@@ -748,13 +756,12 @@
             adminData.feedbacks.forEach(f => {
                 const starsDisplay = "⭐".repeat(f.rating || 5);
                 const hasEmail = f.email && f.email.includes("@");
-                const isReplied = Boolean(f.replied);
 
                 let replyActionHtml = "";
                 if (hasEmail) {
                     replyActionHtml = `
                         <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
-                            <button class="btn btn-primary btn-sm" style="font-size:0.75rem; padding:4px 8px;" onclick="openReplyModal('${f.id}')">
+                            <button class="btn btn-primary btn-sm" style="font-size:0.72rem; padding:4px 8px;" onclick="openReplyModal('${f.id}')">
                                 ✉️ Reply
                             </button>
                             ${f.replied ? `<span style="color:#10b981; font-size:0.7rem; font-weight:600;">✔ Replied</span>` : ''}
@@ -771,9 +778,9 @@
                         <div style="font-size: 0.72rem; color: var(--text-muted);">${f.rating || 5}/5 Stars</div>
                     </td>
                     <td>
-                        <span class="badge badge-pro" style="font-size: 0.75rem;">${f.topic || 'General'}</span>
+                        <span class="badge badge-pro" style="font-size: 0.72rem;">${f.topic || 'General'}</span>
                     </td>
-                    <td style="max-width: 300px; font-size: 0.85rem; color: #f8fafc; line-height: 1.4;">
+                    <td style="font-size: 0.82rem; color: #f8fafc; line-height: 1.4;">
                         ${f.message ? f.message.replace(/</g, "&lt;").replace(/>/g, "&gt;") : '<em>(No message)</em>'}
                         ${f.reply ? `<div style="margin-top:6px; padding:6px 8px; background:rgba(16,185,129,0.1); border-left:2px solid #10b981; border-radius:4px; font-size:0.75rem; color:#a7f3d0;"><strong>Your Reply:</strong> ${f.reply.message}</div>` : ''}
                     </td>
@@ -781,11 +788,10 @@
                         <div style="font-weight: 600; font-size: 0.82rem; color: #38bdf8;">${f.email || '<span style="color:var(--text-muted);">Anonymous</span>'}</div>
                     </td>
                     <td>
-                        <div style="font-size: 0.8rem; font-weight: 500;">${f.locationStr || 'Pakistan'}</div>
-                        <div style="font-size: 0.7rem; color: var(--text-muted);">${f.clientIp || ''}</div>
+                        <div style="font-size: 0.78rem; font-weight: 500;">${f.locationStr || 'Pakistan'}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">${f.deviceInfo || '—'}</div>
                     </td>
-                    <td style="font-size: 0.75rem; color: var(--text-secondary);">${f.deviceInfo || '—'}</td>
-                    <td style="font-size: 0.78rem; color: var(--text-secondary);">${f.dateStr || '—'}</td>
+                    <td style="font-size: 0.75rem; color: var(--text-secondary);">${f.dateStr || '—'}</td>
                     <td>${replyActionHtml}</td>
                 </tr>
                 `;
@@ -874,37 +880,56 @@
 
             let html = "";
             filtered.forEach(u => {
-                let badgeClass = "badge-expired";
-                let badgeLabel = "🔒 Expired";
+                let statusHtml = "";
                 if (u.status === "PRO") {
-                    badgeClass = "badge-pro";
-                    badgeLabel = "🌟 Pro Account";
+                    const isLicense = u.sourceType === "LICENSE" || (u.licenseKey && u.licenseKey !== "—" && !u.proSource.includes("Admin"));
+                    const sourceBadge = isLicense 
+                        ? `<div style="margin-top:4px;"><span class="badge badge-source-key" onclick="copyText('${u.licenseKey}')" style="cursor:pointer;" title="Click to copy key">🔑 ${u.licenseKey}</span></div>`
+                        : `<div style="margin-top:4px;"><span class="badge badge-source-admin">👑 Granted by Admin</span></div>`;
+
+                    statusHtml = `
+                        <div>
+                            <span class="badge badge-pro">🌟 Pro Member</span>
+                            ${sourceBadge}
+                        </div>
+                    `;
                 } else if (u.status === "ACTIVE_TRIAL") {
-                    badgeClass = "badge-trial";
-                    badgeLabel = "⏳ Active Trial";
+                    statusHtml = `
+                        <div>
+                            <span class="badge badge-trial">⏳ 3-Day Free Trial</span>
+                            <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Public Trial</div>
+                        </div>
+                    `;
+                } else {
+                    statusHtml = `
+                        <div>
+                            <span class="badge badge-expired">🔒 Trial Expired</span>
+                            <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Access Blocked</div>
+                        </div>
+                    `;
                 }
 
                 html += `
                 <tr>
                     <td>
-                        <div style="font-weight:700;">${u.email}</div>
-                        <div style="font-size:0.75rem; color:var(--text-muted);">${u.name || 'User'} · <span style="color:#38bdf8;">${u.visitCount || 1} visits</span></div>
+                        <div style="font-weight:700; color:#f8fafc; font-size:0.88rem;">${u.email}</div>
+                        <div style="font-size:0.74rem; color:var(--text-muted); margin-top:2px;">${u.name || 'Visitor'} · <span style="color:#38bdf8; font-weight:600;">${u.visitCount || 1} visits</span></div>
                     </td>
-                    <td><span class="badge ${badgeClass}">${badgeLabel}</span></td>
-                    <td style="font-weight:600;">${u.timeLeft}</td>
+                    <td>${statusHtml}</td>
+                    <td style="font-weight:600; font-size:0.82rem; color:${u.isPaid ? '#10b981' : '#f59e0b'};">${u.timeLeft}</td>
                     <td>
-                        <div style="font-weight:600; font-size:0.85rem;">${u.flag || '🌐'} ${u.city || 'Unknown'}</div>
-                        <div style="font-size:0.75rem; color:var(--text-muted);">${u.country || 'Pakistan'} · <code style="font-size:0.7rem;">${u.clientIp}</code></div>
+                        <div style="font-weight:600; font-size:0.82rem;">${u.flag || '🌐'} ${u.city || 'Unknown'}</div>
+                        <div style="font-size:0.72rem; color:var(--text-muted);">${u.country || 'Pakistan'} · <code style="font-size:0.7rem;">${u.clientIp}</code></div>
                     </td>
-                    <td style="font-size:0.8rem; color:var(--text-secondary);">${u.deviceInfo || '💻 Desktop'}</td>
-                    <td style="color:var(--text-secondary); font-size:0.8rem;">${u.createdAt}</td>
-                    <td style="color:#38bdf8; font-size:0.8rem; font-weight:500;">${u.lastActive || u.createdAt}</td>
-                    <td>${u.licenseKey !== '—' ? `<code class="key-chip" onclick="copyText('${u.licenseKey}')">${u.licenseKey}</code>` : '<span style="color:var(--text-muted);">—</span>'}</td>
+                    <td style="font-size:0.78rem; color:var(--text-secondary);">${u.deviceInfo || '💻 Desktop'}</td>
                     <td>
-                        <div style="display:flex; gap:6px;">
-                            ${!u.isPaid ? `<button class="btn btn-primary btn-sm" onclick="quickMakePro('${u.email}')">🌟 Make Pro</button>` : ''}
-                            <button class="btn btn-ghost btn-sm" onclick="quickExtendTrial('${u.email}')">+3d</button>
-                            <button class="btn btn-danger btn-sm" onclick="quickDeleteUser('${u.email}')">🗑</button>
+                        <div style="font-size:0.75rem; color:var(--text-secondary);">Joined: <strong>${u.createdAt}</strong></div>
+                        <div style="font-size:0.72rem; color:#38bdf8; margin-top:2px;">Active: <strong>${u.lastActive || u.createdAt}</strong></div>
+                    </td>
+                    <td>
+                        <div style="display:flex; gap:6px; align-items:center;">
+                            <button class="btn btn-ghost btn-sm" style="padding:4px 8px; font-size:0.72rem;" onclick="quickExtendTrial('${u.email}')" title="Extend Free Trial by 3 Days">+3d</button>
+                            <button class="btn btn-danger btn-sm" style="padding:4px 8px; font-size:0.72rem;" onclick="quickDeleteUser('${u.email}')" title="Remove Record">🗑</button>
                         </div>
                     </td>
                 </tr>

@@ -1970,6 +1970,8 @@ def get_admin_dashboard_data():
                     "created_at": ldata.get("activated_at") or ldata.get("generated_at") or now_ts,
                     "last_active": ldata.get("activated_at") or ldata.get("generated_at") or now_ts,
                     "visit_count": 1,
+                    "source": ldata.get("source", "LICENSE_KEY"),
+                    "note": ldata.get("note", ""),
                     "client_ip": ldata.get("client_ip") or "—",
                     "device_id": ldata.get("device_id") or "—",
                     "device_info": "💻 Desktop",
@@ -2023,11 +2025,29 @@ def get_admin_dashboard_data():
         else:
             last_active_str = created_str
 
+        # Determine Subscription Source
+        lic_key = u.get("license_key") or "—"
+        if is_paid:
+            if u.get("source") == "ADMIN_GRANT" or lic_key == "ADMIN-PRO-GRANT" or "Grant" in str(u.get("note", "")) or "Admin" in str(lic_key):
+                pro_source = "👑 Admin Direct Grant"
+                source_type = "ADMIN"
+            elif lic_key and lic_key != "—" and lic_key != "PSX-PRO-ACTIVE":
+                pro_source = f"🔑 License Key ({lic_key})"
+                source_type = "LICENSE"
+            else:
+                pro_source = "👑 Admin Direct Grant"
+                source_type = "ADMIN"
+        else:
+            pro_source = "—"
+            source_type = "TRIAL"
+
         formatted_users.append({
             "email": email,
             "name": u.get("paid_name") or "User",
             "status": status,
             "isPaid": is_paid,
+            "proSource": pro_source,
+            "sourceType": source_type,
             "timeLeft": time_left_str,
             "secondsLeft": int(time_left) if not is_paid else 99999999,
             "licenseKey": u.get("license_key") or "—",
@@ -2236,6 +2256,8 @@ def admin_upgrade_to_pro(email, name="", days=30):
             ldata["used"] = True
             ldata["days"] = days_valid
             ldata["name"] = name or ldata.get("name") or email_clean.split("@")[0]
+            ldata["source"] = "ADMIN_GRANT"
+            ldata["note"] = f"Admin Direct Grant ({days_valid} Days)"
             ldata["activated_at"] = time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_ts + 5*3600))
             break
 
@@ -2250,7 +2272,8 @@ def admin_upgrade_to_pro(email, name="", days=30):
             "used": True,
             "email": email_clean,
             "name": name or email_clean.split("@")[0],
-            "note": f"Admin Pro Grant ({days_valid} Days)",
+            "source": "ADMIN_GRANT",
+            "note": f"Admin Direct Grant ({days_valid} Days)",
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_ts + 5*3600)),
             "activated_at": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_ts + 5*3600))
         }
@@ -2274,6 +2297,7 @@ def admin_upgrade_to_pro(email, name="", days=30):
     paid_record = {
         "email": email_clean,
         "is_paid": True,
+        "source": "ADMIN_GRANT",
         "paid_name": name or email_clean.split("@")[0],
         "paid_email": email_clean,
         "license_key": assigned_key,
