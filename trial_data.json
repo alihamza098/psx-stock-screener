@@ -1,62 +1,82 @@
 {
-  "dev_test_persist_1": {
-    "email": "investor_ali@gmail.com",
-    "client_ip": "127.0.0.1",
-    "device_id": "dev_test_persist_1",
-    "created_at": 1787038910.931266,
-    "first_seen": 1787038910.931266,
-    "last_active": 1787038911.012896,
-    "visit_count": 2,
-    "trial_end": 1787298110.931266,
-    "is_paid": false,
+  "email_ali@example.com": {
+    "email": "ali@example.com",
+    "paid_name": "Ali Hamza",
+    "is_paid": true,
+    "license_key": "PSX-PRO-7569-2697",
+    "created_at": 1786888621.0,
+    "first_seen": 1786888621.0,
+    "last_active": 1787038910.0,
+    "visit_count": 18,
+    "client_ip": "182.180.12.34",
+    "device_id": "dev_ali_main",
+    "device_info": "💻 Desktop (macOS Chrome)",
     "location": {
-      "city": "Local Dev",
+      "city": "Karachi",
       "country": "Pakistan",
       "countryCode": "PK",
-      "flag": "\ud83c\uddf5\ud83c\uddf0",
-      "isp": "Localhost"
-    },
-    "device_info": "\ud83d\udcbb Desktop (Other OS Browser)",
-    "user_agent": "curl/8.7.1"
+      "flag": "🇵🇰",
+      "isp": "PTCL"
+    }
+  },
+  "email_user1@gmail.com": {
+    "email": "user1@gmail.com",
+    "paid_name": "User1",
+    "is_paid": true,
+    "license_key": "PSX-PRO-5487-9321",
+    "created_at": 1786889632.0,
+    "first_seen": 1786889632.0,
+    "last_active": 1787038910.0,
+    "visit_count": 8,
+    "client_ip": "39.40.18.22",
+    "device_id": "dev_user1",
+    "device_info": "📱 Mobile (Android Chrome)",
+    "location": {
+      "city": "Lahore",
+      "country": "Pakistan",
+      "countryCode": "PK",
+      "flag": "🇵🇰",
+      "isp": "Nayatel"
+    }
+  },
+  "email_videosupermacy@gmail.com": {
+    "email": "videosupermacy@gmail.com",
+    "paid_name": "Video Supremacy",
+    "is_paid": false,
+    "created_at": 1786950000.0,
+    "first_seen": 1786950000.0,
+    "last_active": 1787038910.0,
+    "trial_end": 1787298110.0,
+    "visit_count": 12,
+    "client_ip": "119.160.118.5",
+    "device_id": "dev_video_supremacy",
+    "device_info": "💻 Desktop (Windows Edge)",
+    "location": {
+      "city": "Islamabad",
+      "country": "Pakistan",
+      "countryCode": "PK",
+      "flag": "🇵🇰",
+      "isp": "StormFiber"
+    }
   },
   "email_investor_ali@gmail.com": {
     "email": "investor_ali@gmail.com",
-    "client_ip": "127.0.0.1",
-    "device_id": "dev_test_persist_1",
-    "created_at": 1787038910.931266,
-    "first_seen": 1787038910.931266,
-    "last_active": 1787038911.012896,
-    "visit_count": 2,
-    "trial_end": 1787298110.931266,
+    "paid_name": "Ali Investor",
     "is_paid": false,
+    "created_at": 1786952000.0,
+    "first_seen": 1786952000.0,
+    "last_active": 1787038910.0,
+    "trial_end": 1787298110.0,
+    "visit_count": 6,
+    "client_ip": "182.180.12.34",
+    "device_id": "dev_test_persist_1",
+    "device_info": "📱 Mobile (iPhone Safari)",
     "location": {
-      "city": "Local Dev",
+      "city": "Rawalpindi",
       "country": "Pakistan",
       "countryCode": "PK",
-      "flag": "\ud83c\uddf5\ud83c\uddf0",
-      "isp": "Localhost"
-    },
-    "device_info": "\ud83d\udcbb Desktop (Other OS Browser)",
-    "user_agent": "curl/8.7.1"
-  },
-  "ip_127.0.0.1": {
-    "email": "investor_ali@gmail.com",
-    "client_ip": "127.0.0.1",
-    "device_id": "dev_test_persist_1",
-    "created_at": 1787038910.931266,
-    "first_seen": 1787038910.931266,
-    "last_active": 1787038913.149168,
-    "visit_count": 3,
-    "trial_end": 1787298110.931266,
-    "is_paid": false,
-    "location": {
-      "city": "Local Dev",
-      "country": "Pakistan",
-      "countryCode": "PK",
-      "flag": "\ud83c\uddf5\ud83c\uddf0",
-      "isp": "Localhost"
-    },
-    "device_info": "\ud83d\udcbb Desktop (macOS Chrome)",
-    "user_agent": "curl/8.7.1"
+      "flag": "🇵🇰",
+      "isp": "Zong 4G"
+    }
   }
 }

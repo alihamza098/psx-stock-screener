@@ -1442,14 +1442,32 @@ def record_visitor_heartbeat(client_ip, device_id, email="", tab="Stock Screener
     # Also update trial_db with last_active, visit_count, and location
     try:
         trial_db = get_trial_db()
-        for k in [v_key, f"email_{email_clean}" if email_clean else None, f"ip_{client_ip}" if client_ip else None]:
-            if k and k in trial_db and isinstance(trial_db[k], dict):
-                trial_db[k]["last_active"] = now_ts
-                trial_db[k]["location"] = loc
-                trial_db[k]["device_info"] = device_info
-                trial_db[k]["visit_count"] = trial_db[k].get("visit_count", 1) + 1
-                if email_clean and not trial_db[k].get("email"):
-                    trial_db[k]["email"] = email_clean
+        if v_key not in trial_db:
+            trial_db[v_key] = {
+                "email": email_clean or "",
+                "client_ip": client_ip,
+                "device_id": device_id,
+                "created_at": now_ts,
+                "first_seen": now_ts,
+                "last_active": now_ts,
+                "visit_count": 1,
+                "trial_end": now_ts + (3 * 86400),
+                "is_paid": False,
+                "location": loc,
+                "device_info": device_info,
+                "user_agent": user_agent
+            }
+        else:
+            trial_db[v_key]["last_active"] = now_ts
+            trial_db[v_key]["location"] = loc
+            trial_db[v_key]["device_info"] = device_info
+            trial_db[v_key]["visit_count"] = trial_db[v_key].get("visit_count", 1) + 1
+            if email_clean:
+                trial_db[v_key]["email"] = email_clean
+
+        if email_clean:
+            trial_db[f"email_{email_clean}"] = trial_db[v_key]
+
         save_trial_db(trial_db)
     except Exception:
         pass
@@ -1458,12 +1476,16 @@ def get_trial_db():
     if os.path.exists(TRIAL_FILE):
         try:
             with open(TRIAL_FILE, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
         except Exception:
             return {}
     return {}
 
 def save_trial_db(db):
+    if not db or not isinstance(db, dict) or len(db) == 0:
+        return
     try:
         with open(TRIAL_FILE, "w") as f:
             json.dump(db, f, indent=2)
@@ -1908,9 +1930,8 @@ def get_admin_dashboard_data():
     lic_db = get_license_db()
     now_ts = time.time()
 
-    # Aggregate Unique Users from trial_db
+    # Aggregate Unique Users from trial_db & lic_db
     users_by_email = {}
-    guest_count = 0
 
     for k, v in trial_db.items():
         if not isinstance(v, dict):
@@ -1920,11 +1941,33 @@ def get_admin_dashboard_data():
             if email not in users_by_email:
                 users_by_email[email] = v
             else:
-                # Merge info, prefer paid status
                 if v.get("is_paid"):
                     users_by_email[email] = v
         else:
-            guest_count += 1
+            # Also track guest visitors
+            dev_id = v.get("device_id") or k
+            guest_label = f"Guest ({dev_id[:15]})"
+            if guest_label not in users_by_email:
+                users_by_email[guest_label] = v
+
+    # Merge activated license holders from licenses.json
+    for lk, ldata in lic_db.items():
+        if ldata.get("used"):
+            l_email = (ldata.get("email") or "").strip().lower()
+            if l_email and l_email not in users_by_email:
+                users_by_email[l_email] = {
+                    "email": l_email,
+                    "paid_name": ldata.get("name") or "Pro Investor",
+                    "is_paid": True,
+                    "license_key": lk,
+                    "created_at": ldata.get("activated_at") or ldata.get("generated_at") or now_ts,
+                    "last_active": ldata.get("activated_at") or ldata.get("generated_at") or now_ts,
+                    "visit_count": 1,
+                    "client_ip": ldata.get("client_ip") or "—",
+                    "device_id": ldata.get("device_id") or "—",
+                    "device_info": "💻 Desktop",
+                    "location": {"city": "Karachi", "country": "Pakistan", "countryCode": "PK", "flag": "🇵🇰"}
+                }
 
     formatted_users = []
     pro_count = 0
