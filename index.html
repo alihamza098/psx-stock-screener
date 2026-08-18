@@ -63,6 +63,10 @@
                     </svg>
                     Refresh
                 </button>
+                <button class="btn btn-alpha-opportunities" id="btn-alpha-opportunities-header" onclick="switchView('trading-intelligence')" title="⚡ Short-Term Alpha Opportunities">
+                    <span class="pulse-alpha-dot"></span>
+                    <span>⚡ Short-Term Opportunities</span>
+                </button>
                 <button class="btn btn-live-trading" id="btn-live-trading-header" title="Open Live Trading Analysis">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                     <span>⚡ Live Trading</span>
@@ -352,8 +356,9 @@
                 📊 Financial Statements
             </button>
             <button class="view-tab view-tab-ai-pro" data-view="trading-intelligence" id="tab-trading-intelligence">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                🎯 PSX Pro Intelligence
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                ⚡ Short-Term Opportunities
+                <span class="badge-tab-new">ALPHA</span>
             </button>
         </div>
 
@@ -823,34 +828,36 @@
             </div>
         </section>
 
-        <!-- 5. PSX Pro Trading Intelligence Engine View Section -->
+        <!-- 5. PSX Short-Term Opportunities (Alpha Engine) View Section -->
         <section class="intel-view" id="view-trading-intelligence" style="display:none;">
-            <!-- Top Intelligence & Market Regime Banner -->
-            <div class="intel-banner">
-                <div class="intel-banner-left">
-                    <h2>
-                        <span>🎯 PSX Pro Trading Intelligence Engine</span>
-                        <span class="badge badge-strong-buy" style="font-size:0.75rem;">LIVE SCANNER</span>
-                    </h2>
-                    <p>
-                        High-probability short-term trade scanner with real-time entry fill probability, exit liquidity scoring, multi-factor risk/reward modeling & upper-lock defense analysis.
-                    </p>
+            <!-- Live Local Workspace (Visible ONLY on Local Server) -->
+            <div id="intel-local-workspace">
+                <!-- Top Intelligence & Market Regime Banner -->
+                <div class="intel-banner">
+                    <div class="intel-banner-left">
+                        <h2>
+                            <span>⚡ Short-Term Alpha Opportunities</span>
+                            <span class="badge badge-strong-buy" style="font-size:0.75rem;">LIVE SCANNER</span>
+                        </h2>
+                        <p>
+                            High-probability short-term trade scanner with real-time entry fill probability, exit liquidity scoring, multi-factor risk/reward modeling & upper-lock defense analysis.
+                        </p>
+                    </div>
+                    <div class="intel-banner-stats">
+                        <div class="intel-regime-chip">
+                            <span class="intel-regime-label">Market Regime</span>
+                            <span class="intel-regime-val" id="intel-market-regime" style="color: #38bdf8;">Evaluating...</span>
+                        </div>
+                        <div class="intel-regime-chip">
+                            <span class="intel-regime-label">KSE-100 Breadth</span>
+                            <span class="intel-regime-val" id="intel-market-breadth" style="color: #10b981;">—</span>
+                        </div>
+                        <div class="intel-regime-chip">
+                            <span class="intel-regime-label">High-Prob Setups</span>
+                            <span class="intel-regime-val" id="intel-high-prob-count" style="color: #facc15;">0</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="intel-banner-stats">
-                    <div class="intel-regime-chip">
-                        <span class="intel-regime-label">Market Regime</span>
-                        <span class="intel-regime-val" id="intel-market-regime" style="color: #38bdf8;">Evaluating...</span>
-                    </div>
-                    <div class="intel-regime-chip">
-                        <span class="intel-regime-label">KSE-100 Breadth</span>
-                        <span class="intel-regime-val" id="intel-market-breadth" style="color: #10b981;">—</span>
-                    </div>
-                    <div class="intel-regime-chip">
-                        <span class="intel-regime-label">High-Prob Setups</span>
-                        <span class="intel-regime-val" id="intel-high-prob-count" style="color: #facc15;">0</span>
-                    </div>
-                </div>
-            </div>
 
             <!-- Sub-Navigation for Intelligence Tabs -->
             <div class="intel-subtabs">
@@ -1015,6 +1022,64 @@
                     </div>
                 </div>
             </div>
+            <!-- /intel-local-workspace -->
+
+            <!-- Coming Soon Workspace (Visible on Live Production Web App) -->
+            <div id="intel-coming-soon-workspace" style="display:none;">
+                <div class="intel-coming-soon-card">
+                    <div style="display:inline-flex; align-items:center; gap:8px; background:rgba(99,102,241,0.15); border:1px solid rgba(168,85,247,0.4); padding:6px 16px; border-radius:20px; color:#c084fc; font-size:0.8rem; font-weight:800; margin-bottom:18px;">
+                        <span>⚡ UNDER ACTIVE BETA & QUANT TESTING</span>
+                    </div>
+                    <h2 style="font-size:2.1rem; font-weight:800; color:#f8fafc; margin-bottom:12px; line-height:1.2;">
+                        ⚡ Short-Term Alpha Opportunities <span style="background: linear-gradient(135deg, #22d3ee, #a855f7); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">(V2.0)</span>
+                    </h2>
+                    <p style="font-size:0.95rem; color:#94a3b8; max-width:680px; margin:0 auto 20px auto; line-height:1.6;">
+                        An institutional-grade real-time PSX trading intelligence engine. Designed to identify high-probability intraday and swing trade opportunities while defending against circuit-lock slippage.
+                    </p>
+
+                    <div class="intel-preview-features-grid">
+                        <div class="intel-preview-feat">
+                            <div style="font-size:1.6rem; margin-bottom:8px;">🎯</div>
+                            <h4 style="font-size:1rem; font-weight:800; color:#fff; margin-bottom:4px;">Multi-Factor Alpha Scoring</h4>
+                            <p style="font-size:0.78rem; color:#94a3b8; line-height:1.4;">Combines price momentum, volume velocity, market breadth alignment & valuation cushion on a 100-point scale.</p>
+                        </div>
+                        <div class="intel-preview-feat">
+                            <div style="font-size:1.6rem; margin-bottom:8px;">🔒</div>
+                            <h4 style="font-size:1rem; font-weight:800; color:#fff; margin-bottom:4px;">Upper-Lock Defense Radar</h4>
+                            <p style="font-size:0.78rem; color:#94a3b8; line-height:1.4;">Distinguishes actionable buy momentum from zero-liquidity locked circuits to prevent trapped orders.</p>
+                        </div>
+                        <div class="intel-preview-feat">
+                            <div style="font-size:1.6rem; margin-bottom:8px;">💼</div>
+                            <h4 style="font-size:1rem; font-weight:800; color:#fff; margin-bottom:4px;">AI Position Reassessment</h4>
+                            <p style="font-size:0.78rem; color:#94a3b8; line-height:1.4;">Daily query: <em>"If I did not own this today, would I buy it right now?"</em> with 52W ATH/ATL distance tracking.</p>
+                        </div>
+                        <div class="intel-preview-feat">
+                            <div style="font-size:1.6rem; margin-bottom:8px;">💰</div>
+                            <h4 style="font-size:1rem; font-weight:800; color:#fff; margin-bottom:4px;">SECP/CDC Net Cost Calculator</h4>
+                            <p style="font-size:0.78rem; color:#94a3b8; line-height:1.4;">Accurately models capital allocation, broker commissions & roundtrip taxes for realistic profit/loss modeling.</p>
+                        </div>
+                    </div>
+
+                    <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:20px; max-width:650px; margin:0 auto 24px auto;">
+                        <div style="font-size:0.85rem; font-weight:700; color:#f8fafc; margin-bottom:6px;">
+                            🚀 Scheduled for Public Release in Next Update
+                        </div>
+                        <div style="font-size:0.8rem; color:#94a3b8;">
+                            This proprietary engine is running in private testing on local institutional terminals and will automatically unlock for all <strong>PSX Screener Pro</strong> subscribers upon launch.
+                        </div>
+                    </div>
+
+                    <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
+                        <a href="https://wa.me/923066400721?text=Hi%2C%20I%20would%20like%20VIP%20Early%20Access%20to%20the%20PSX%20Short-Term%20Opportunities%20Engine" target="_blank" class="btn btn-primary" style="font-weight:800; padding:10px 24px; font-size:0.9rem; background:linear-gradient(135deg, #25D366, #128C7E); border:none; text-decoration:none; display:inline-flex; align-items:center; gap:8px;">
+                            <span>💬 Request VIP Early Access on WhatsApp</span>
+                        </a>
+                        <button class="btn btn-ghost" onclick="switchView('table')" style="font-weight:700; padding:10px 20px;">
+                            ← Back to Stock Screener
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- /intel-coming-soon-workspace -->
         </section>
 
         <!-- Watchlist Modal -->

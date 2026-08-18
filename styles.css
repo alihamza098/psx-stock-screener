@@ -5450,8 +5450,57 @@ body {
 }
 
 /* ═════════════════════════════════════════════════════════════════
-   PSX PRO TRADING INTELLIGENCE ENGINE (LOCAL ONLY) STYLES
+   PSX SHORT-TERM OPPORTUNITIES (ALPHA ENGINE) STYLES
    ═════════════════════════════════════════════════════════════════ */
+.btn-alpha-opportunities {
+    background: linear-gradient(135deg, #4f46e5, #9333ea) !important;
+    border: 1px solid rgba(192, 132, 252, 0.5) !important;
+    color: #fff !important;
+    font-weight: 700 !important;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    box-shadow: 0 0 15px rgba(147, 51, 234, 0.35);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    white-space: nowrap;
+}
+
+.btn-alpha-opportunities:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 22px rgba(168, 85, 247, 0.65);
+    filter: brightness(1.1);
+}
+
+.pulse-alpha-dot {
+    width: 8px;
+    height: 8px;
+    background: #22d3ee;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #22d3ee;
+    animation: alphaPulse 1.6s infinite;
+}
+
+@keyframes alphaPulse {
+    0% { transform: scale(0.9); opacity: 0.8; }
+    50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 14px #22d3ee; }
+    100% { transform: scale(0.9); opacity: 0.8; }
+}
+
+.badge-tab-new {
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: #ec4899;
+    color: #fff;
+    letter-spacing: 0.5px;
+    margin-left: 4px;
+    box-shadow: 0 0 8px rgba(236, 72, 153, 0.5);
+}
+
 .view-tab-ai-pro {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12)) !important;
     border: 1px solid rgba(168, 85, 247, 0.4) !important;
@@ -5469,6 +5518,52 @@ body {
     border-color: #a855f7 !important;
     color: #f3e8ff !important;
     box-shadow: 0 0 20px rgba(168, 85, 247, 0.4) !important;
+}
+
+/* Coming Soon Container on Live Production */
+.intel-coming-soon-card {
+    background: linear-gradient(135deg, #090d16 0%, #17132c 50%, #0b0f19 100%);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    border-radius: var(--radius-2xl);
+    padding: 50px 30px;
+    text-align: center;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+    margin: 20px auto;
+    max-width: 950px;
+    position: relative;
+    overflow: hidden;
+}
+
+.intel-coming-soon-card::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(168, 85, 247, 0.12) 0%, transparent 65%);
+    pointer-events: none;
+}
+
+.intel-preview-features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin: 35px 0;
+    text-align: left;
+}
+
+.intel-preview-feat {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-lg);
+    padding: 18px 20px;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.intel-preview-feat:hover {
+    transform: translateY(-2px);
+    border-color: rgba(168, 85, 247, 0.4);
 }
 
 /* Intelligence View Container */

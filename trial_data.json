@@ -10,12 +10,12 @@
     "visit_count": 18,
     "client_ip": "182.180.12.34",
     "device_id": "dev_ali_main",
-    "device_info": "💻 Desktop (macOS Chrome)",
+    "device_info": "\ud83d\udcbb Desktop (macOS Chrome)",
     "location": {
       "city": "Karachi",
       "country": "Pakistan",
       "countryCode": "PK",
-      "flag": "🇵🇰",
+      "flag": "\ud83c\uddf5\ud83c\uddf0",
       "isp": "PTCL"
     }
   },
@@ -30,12 +30,12 @@
     "visit_count": 8,
     "client_ip": "39.40.18.22",
     "device_id": "dev_user1",
-    "device_info": "📱 Mobile (Android Chrome)",
+    "device_info": "\ud83d\udcf1 Mobile (Android Chrome)",
     "location": {
       "city": "Lahore",
       "country": "Pakistan",
       "countryCode": "PK",
-      "flag": "🇵🇰",
+      "flag": "\ud83c\uddf5\ud83c\uddf0",
       "isp": "Nayatel"
     }
   },
@@ -50,12 +50,12 @@
     "visit_count": 12,
     "client_ip": "119.160.118.5",
     "device_id": "dev_video_supremacy",
-    "device_info": "💻 Desktop (Windows Edge)",
+    "device_info": "\ud83d\udcbb Desktop (Windows Edge)",
     "location": {
       "city": "Islamabad",
       "country": "Pakistan",
       "countryCode": "PK",
-      "flag": "🇵🇰",
+      "flag": "\ud83c\uddf5\ud83c\uddf0",
       "isp": "StormFiber"
     }
   },
@@ -70,13 +70,33 @@
     "visit_count": 6,
     "client_ip": "182.180.12.34",
     "device_id": "dev_test_persist_1",
-    "device_info": "📱 Mobile (iPhone Safari)",
+    "device_info": "\ud83d\udcf1 Mobile (iPhone Safari)",
     "location": {
       "city": "Rawalpindi",
       "country": "Pakistan",
       "countryCode": "PK",
-      "flag": "🇵🇰",
+      "flag": "\ud83c\uddf5\ud83c\uddf0",
       "isp": "Zong 4G"
     }
+  },
+  "dev_mw02ym3fgmsvlipqh": {
+    "email": "",
+    "client_ip": "127.0.0.1",
+    "device_id": "dev_mw02ym3fgmsvlipqh",
+    "created_at": 1787039546.4922729,
+    "first_seen": 1787039546.4922729,
+    "last_active": 1787039740.118948,
+    "visit_count": 11,
+    "trial_end": 1787298746.4922729,
+    "is_paid": false,
+    "location": {
+      "city": "Local Dev",
+      "country": "Pakistan",
+      "countryCode": "PK",
+      "flag": "\ud83c\uddf5\ud83c\uddf0",
+      "isp": "Localhost"
+    },
+    "device_info": "\ud83d\udcbb Desktop (macOS Chrome)",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
   }
 }

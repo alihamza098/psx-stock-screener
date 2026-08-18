@@ -984,7 +984,25 @@ function switchView(view) {
         const symbol = symInput ? (symInput.value.trim() || "UNITY") : "UNITY";
         fetchFinancialStatements(symbol);
     } else if (view === "trading-intelligence") {
-        runTradingIntelligenceEngine();
+        const isLocalHost = window.location.hostname === "localhost" || 
+                            window.location.hostname === "127.0.0.1" || 
+                            window.location.hostname === "0.0.0.0" || 
+                            window.location.hostname.startsWith("192.168.");
+        const localWs = document.getElementById("intel-local-workspace");
+        const comingWs = document.getElementById("intel-coming-soon-workspace");
+
+        if (localWs && comingWs) {
+            if (isLocalHost) {
+                localWs.style.display = "block";
+                comingWs.style.display = "none";
+                runTradingIntelligenceEngine();
+            } else {
+                localWs.style.display = "none";
+                comingWs.style.display = "block";
+            }
+        } else {
+            runTradingIntelligenceEngine();
+        }
     }
 }
 
@@ -3829,12 +3847,13 @@ function switchIntelSubTab(subTab, btn) {
 }
 
 function runTradingIntelligenceEngine() {
-    if (!allStocks || allStocks.length === 0) return;
+    const stockList = (typeof STOCKS !== "undefined" && STOCKS && STOCKS.length > 0) ? STOCKS : [];
+    if (stockList.length === 0) return;
 
     // 1. Evaluate Overall PSX Market Regime
     let advancers = 0, decliners = 0, unchanged = 0;
     let totalVol = 0;
-    allStocks.forEach(s => {
+    stockList.forEach(s => {
         const chg = typeof s.change === 'number' ? s.change : parseFloat(s.change || 0);
         if (chg > 0.05) advancers++;
         else if (chg < -0.05) decliners++;
@@ -3842,7 +3861,6 @@ function runTradingIntelligenceEngine() {
         totalVol += (s.volume || 0);
     });
 
-    const totalActive = advancers + decliners + unchanged || 1;
     const advanceRatio = (advancers / (advancers + decliners || 1));
     let regime = "NEUTRAL";
     let regimeColor = "#facc15";
@@ -3883,13 +3901,12 @@ function runTradingIntelligenceEngine() {
     // 2. Multi-Factor Evaluation on All Stocks
     const candidates = [];
 
-    allStocks.forEach(stock => {
+    stockList.forEach(stock => {
         const price = stock.price || 0;
         if (price <= 0.5) return; // Skip sub-penny stocks
 
         const chg = typeof stock.change === 'number' ? stock.change : parseFloat(stock.change || 0);
         const vol = stock.volume || 0;
-        const mcap = stock.mcap || 0;
         const pe = stock.pe || 0;
         const upperLimit = stock.upperLimit || (price * 1.075);
         const lowerLimit = stock.lowerLimit || (price * 0.925);
@@ -4094,6 +4111,7 @@ function runTradingIntelligenceEngine() {
     renderTopPicksCards();
     renderUpperLocksRadar();
     renderIntelScannerTable();
+    renderPortfolioReassessment();
     populateCalculatorDropdown();
 }
 
@@ -4337,13 +4355,21 @@ function renderPortfolioReassessment() {
     const container = document.getElementById("intel-reassess-container");
     if (!container) return;
 
-    const portfolioRaw = localStorage.getItem("psx_portfolio_v1");
-    let portfolio = [];
+    // Load actual positions from Paper Simulator
+    let positions = {};
     try {
-        if (portfolioRaw) portfolio = JSON.parse(portfolioRaw);
+        if (typeof simPositions !== "undefined" && Object.keys(simPositions).length > 0) {
+            positions = simPositions;
+        } else {
+            const raw = localStorage.getItem("psx_sim_positions");
+            if (raw) positions = JSON.parse(raw);
+        }
     } catch (e) {}
 
-    if (!portfolio || portfolio.length === 0) {
+    const stockList = (typeof STOCKS !== "undefined" && STOCKS && STOCKS.length > 0) ? STOCKS : [];
+    const entries = Object.entries(positions);
+
+    if (!entries || entries.length === 0) {
         container.innerHTML = `
         <div style="text-align:center; padding:50px 20px; background:#0f172a; border-radius:14px; border:1px dashed #334155; color:#94a3b8;">
             <div style="font-size:2.5rem; margin-bottom:10px;">💼</div>
@@ -4359,11 +4385,10 @@ function renderPortfolioReassessment() {
     }
 
     let html = "";
-    portfolio.forEach(pos => {
-        const sym = pos.symbol;
-        const stockData = allStocks.find(s => s.symbol === sym) || {};
-        const currentPrice = stockData.price || pos.buyPrice || 1;
-        const buyPrice = pos.buyPrice || currentPrice;
+    entries.forEach(([sym, pos]) => {
+        const stockData = stockList.find(s => s.symbol === sym) || {};
+        const buyPrice = pos.avgPrice || pos.buyPrice || stockData.price || 1;
+        const currentPrice = stockData.price || buyPrice;
         const shares = pos.shares || 0;
         const costBasis = buyPrice * shares;
         const currentValue = currentPrice * shares;
@@ -4471,12 +4496,13 @@ function renderPortfolioReassessment() {
 
 function populateCalculatorDropdown() {
     const sel = document.getElementById("calc-stock-select");
-    if (!sel || !allStocks) return;
+    const stockList = (typeof STOCKS !== "undefined" && STOCKS && STOCKS.length > 0) ? STOCKS : [];
+    if (!sel || stockList.length === 0) return;
 
     if (sel.options.length <= 1) {
         sel.innerHTML = "";
         const topSymbols = intelligenceResults.slice(0, 30);
-        (topSymbols.length > 0 ? topSymbols : allStocks.slice(0, 30)).forEach(s => {
+        (topSymbols.length > 0 ? topSymbols : stockList.slice(0, 30)).forEach(s => {
             const opt = document.createElement("option");
             opt.value = s.symbol;
             opt.textContent = `${s.symbol} — ₨${(s.price || 0).toFixed(2)}`;
@@ -4489,10 +4515,11 @@ function updateCalcMetrics() {
     const sel = document.getElementById("calc-stock-select");
     const capitalInput = document.getElementById("calc-capital-input");
     const commInput = document.getElementById("calc-comm-input");
+    const stockList = (typeof STOCKS !== "undefined" && STOCKS && STOCKS.length > 0) ? STOCKS : [];
     if (!sel || !capitalInput) return;
 
     const sym = sel.value;
-    const stock = allStocks.find(s => s.symbol === sym) || { price: 20 };
+    const stock = stockList.find(s => s.symbol === sym) || { price: 20 };
     const price = stock.price || 20;
     const capital = parseFloat(capitalInput.value) || 100000;
     const commPerShare = parseFloat(commInput.value) || 0.15;
