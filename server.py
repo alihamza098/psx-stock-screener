@@ -1322,9 +1322,9 @@ def validate_email_strict(email):
     if len(username) < 2:
         return False, "Email username is too short."
 
-    # 3. Block generic fake usernames
-    fake_usernames = {"test", "admin", "fake", "asdf", "12345", "user", "demo", "sample", "temp", "noemail", "random"}
-    if username in fake_usernames and domain not in POPULAR_TRUSTED_DOMAINS:
+    # 3. Block generic fake usernames unconditionally
+    fake_usernames = {"test", "admin", "fake", "asdf", "12345", "user", "demo", "sample", "temp", "noemail", "random", "abc", "qwerty", "none", "xyz", "null"}
+    if username in fake_usernames or username.startswith("test") or username.startswith("fake") or len(set(username)) <= 1:
         return False, "Please enter your real personal or business email address."
 
     # 4. Disposable Domain Check
@@ -1492,7 +1492,7 @@ def save_trial_db(db):
     except Exception as e:
         print(f"[PSX] Error saving trial db: {e}")
 
-def check_trial_status(client_ip, device_id, host_header="", email="", user_agent="", orig_start_ts=0):
+def check_trial_status(client_ip, device_id, host_header="", email="", user_agent="", orig_start_ts=0, license_key=""):
     host_lower = (host_header or "").lower()
     is_local_host = any(h in host_lower for h in ["localhost", "127.0.0.1", "192.168.", "10."]) or \
                    any(ip in (client_ip or "") for ip in ["127.0.0.1", "192.168.", "10."])
@@ -1506,76 +1506,57 @@ def check_trial_status(client_ip, device_id, host_header="", email="", user_agen
             "message": "Local Mode — Unlimited Access (No Trial Needed)"
         }
 
-    db = get_trial_db()
-    key = device_id or client_ip or "online_guest"
-    ip_key = f"ip_{client_ip}" if client_ip else key
+    now_ts = time.time()
     email_clean = (email or "").strip().lower()
     dev_clean = (device_id or "").strip()
-    now_ts = time.time()
+    key_clean = (license_key or "").strip().upper()
+    ip_clean = (client_ip or "").strip()
 
-    user_info = db.get(key) or (db.get(f"email_{email_clean}") if email_clean else None) or db.get(ip_key)
+    # ── CHECK 1: License Database Verification ──
+    lic_db = get_license_db()
+    for lk, ldata in lic_db.items():
+        if ldata.get("used") or ldata.get("valid"):
+            l_email = (ldata.get("email") or "").strip().lower()
+            l_dev = (ldata.get("device_id") or "").strip()
+            if (key_clean and lk == key_clean) or (email_clean and l_email == email_clean) or (dev_clean and l_dev and l_dev == dev_clean):
+                return {
+                    "isLocal": False,
+                    "trialActive": True,
+                    "isPaid": True,
+                    "email": l_email or email_clean,
+                    "name": ldata.get("name") or "Pro Member",
+                    "licenseKey": lk,
+                    "secondsLeft": 99999999,
+                    "message": "🌟 Pro Membership Active"
+                }
 
-    # Scan trial_db for existing matching email or device_id
-    if not user_info and (email_clean or dev_clean):
-        for k, v in db.items():
-            if isinstance(v, dict):
-                v_email = (v.get("email") or v.get("paid_email") or "").strip().lower()
-                v_dev = (v.get("device_id") or "").strip()
-                if (email_clean and v_email == email_clean) or (dev_clean and v_dev == dev_clean):
-                    user_info = v
-                    if key: db[key] = v
-                    if email_clean: db[f"email_{email_clean}"] = v
-                    save_trial_db(db)
-                    break
-
-    # Check licenses.json if no record exists yet
-    if not user_info and (email_clean or dev_clean):
-        lic_db = get_license_db()
-        for lk, ldata in lic_db.items():
-            if ldata.get("used"):
-                l_email = (ldata.get("email") or "").strip().lower()
-                l_dev = (ldata.get("device_id") or "").strip()
-                if (email_clean and l_email == email_clean) or (dev_clean and l_dev == dev_clean):
-                    user_info = {
-                        "email": ldata.get("email"),
-                        "is_paid": True,
-                        "paid_name": ldata.get("name"),
-                        "paid_email": ldata.get("email"),
-                        "license_key": lk,
-                        "created_at": now_ts - 86400,
-                        "last_active": now_ts,
-                        "visit_count": 1,
-                        "location": get_ip_location(client_ip),
-                        "device_info": parse_user_agent_details(user_agent)
+    # ── CHECK 2: Trial Database Pro Check ──
+    trial_db = get_trial_db()
+    for k, v in trial_db.items():
+        if isinstance(v, dict) and v.get("is_paid"):
+            v_email = (v.get("email") or v.get("paid_email") or "").strip().lower()
+            v_dev = (v.get("device_id") or "").strip()
+            v_ip = (v.get("client_ip") or "").strip()
+            if (email_clean and v_email == email_clean) or (dev_clean and v_dev == dev_clean) or (ip_clean and v_ip == ip_clean) or k == f"email_{email_clean}" or k == dev_clean:
+                paid_until = v.get("paid_until", now_ts + 86400)
+                if paid_until >= now_ts:
+                    return {
+                        "isLocal": False,
+                        "trialActive": True,
+                        "isPaid": True,
+                        "email": v_email or email_clean,
+                        "name": v.get("paid_name") or "Pro Member",
+                        "licenseKey": v.get("license_key") or "PSX-PRO-ACTIVE",
+                        "secondsLeft": 99999999,
+                        "message": "🌟 Pro Membership Active"
                     }
-                    db[key] = user_info
-                    if email_clean: db[f"email_{email_clean}"] = user_info
-                    if client_ip: db[ip_key] = user_info
-                    save_trial_db(db)
-                    break
 
-    # Restore trial if server restarted and client has saved email or start timestamp
-    if not user_info and email_clean:
-        created_at_val = float(orig_start_ts) if (orig_start_ts and float(orig_start_ts) > 0 and float(orig_start_ts) <= now_ts) else now_ts
-        trial_duration = 120 if email_clean == "videosupermacy@gmail.com" else (3 * 24 * 3600)
-        user_info = {
-            "email": email_clean,
-            "client_ip": client_ip,
-            "device_id": device_id,
-            "created_at": created_at_val,
-            "first_seen": created_at_val,
-            "last_active": now_ts,
-            "visit_count": 1,
-            "trial_end": created_at_val + trial_duration,
-            "is_paid": False,
-            "location": get_ip_location(client_ip),
-            "device_info": parse_user_agent_details(user_agent),
-            "user_agent": user_agent
-        }
-        db[key] = user_info
-        db[f"email_{email_clean}"] = user_info
-        if client_ip: db[ip_key] = user_info
-        save_trial_db(db)
+    # ── CHECK 3: Active or Expired Trial ──
+    user_info = trial_db.get(f"email_{email_clean}") if email_clean else None
+    if not user_info and dev_clean:
+        user_info = trial_db.get(dev_clean)
+    if not user_info and ip_clean:
+        user_info = trial_db.get(f"ip_{ip_clean}")
 
     if not user_info:
         return {
@@ -1586,33 +1567,17 @@ def check_trial_status(client_ip, device_id, host_header="", email="", user_agen
             "message": "Registration Required to Start 3-Day Free Trial"
         }
 
-    if user_info.get("is_paid"):
-        return {
-            "isLocal": False,
-            "trialActive": True,
-            "isPaid": True,
-            "email": user_info.get("email") or user_info.get("paid_email") or "",
-            "name": user_info.get("paid_name") or "",
-            "licenseKey": user_info.get("license_key") or "",
-            "createdAt": user_info.get("created_at") or now_ts,
-            "trialEnd": user_info.get("trial_end") or (now_ts + 3*86400),
-            "secondsLeft": 99999999,
-            "message": "Pro Account Active"
-        }
-
     trial_end = user_info.get("trial_end", now_ts)
     time_left = trial_end - now_ts
     user_info["last_active"] = now_ts
-    user_info["visit_count"] = user_info.get("visit_count", 1) + 1
-    save_trial_db(db)
+    save_trial_db(trial_db)
 
     if time_left <= 0:
         return {
             "isLocal": False,
             "trialActive": False,
-            "email": user_info.get("email") or "",
-            "createdAt": user_info.get("created_at") or now_ts,
-            "trialEnd": trial_end,
+            "isPaid": False,
+            "email": user_info.get("email") or email_clean,
             "secondsLeft": 0,
             "hoursLeft": 0,
             "daysLeft": 0,
@@ -1627,7 +1592,7 @@ def check_trial_status(client_ip, device_id, host_header="", email="", user_agen
         "isLocal": False,
         "trialActive": True,
         "isPaid": False,
-        "email": user_info.get("email") or "",
+        "email": user_info.get("email") or email_clean,
         "createdAt": user_info.get("created_at") or (trial_end - (3*86400)),
         "trialEnd": trial_end,
         "secondsLeft": seconds_left,
@@ -1645,57 +1610,63 @@ def start_trial(client_ip, device_id, email, host_header="", user_agent=""):
         return {"success": False, "error": err_msg}
 
     db = get_trial_db()
+    lic_db = get_license_db()
+    now_ts = time.time()
     key = device_id or client_ip or "online_guest"
     ip_key = f"ip_{client_ip}" if client_ip else key
-    now_ts = time.time()
+    dev_clean = (device_id or "").strip()
+    client_ip_clean = (client_ip or "").strip()
 
-    loc = get_ip_location(client_ip)
-    device_info = parse_user_agent_details(user_agent)
-    trial_duration = 120 if email == "videosupermacy@gmail.com" else (3 * 24 * 3600)
+    # Check if PRO already in licenses
+    for lk, ldata in lic_db.items():
+        if ldata.get("used") and (ldata.get("email") or "").strip().lower() == email:
+            return {"success": True, "message": "Pro Account Active", "isPaid": True, "licenseKey": lk}
 
-    existing = db.get(key) or (db.get(f"email_{email}") if email else None) or db.get(ip_key)
-    if existing:
-        if existing.get("is_paid"):
-            return {
-                "success": True,
-                "message": "Pro Account Active",
-                "isPaid": True,
-                "createdAt": existing.get("created_at") or now_ts,
-                "trialEnd": existing.get("trial_end") or (now_ts + 30*86400)
-            }
-        
-        # If test email videosupermacy@gmail.com, reset to 2 minutes (120 seconds) for testing
-        if email == "videosupermacy@gmail.com" or existing.get("email") == "videosupermacy@gmail.com":
-            existing["trial_end"] = now_ts + 120
-            existing["email"] = "videosupermacy@gmail.com"
-            existing["last_active"] = now_ts
-            save_trial_db(db)
-            return {
-                "success": True,
-                "message": "2-Minute Test Trial Started!",
-                "createdAt": now_ts,
-                "trialEnd": now_ts + 120,
-                "daysLeft": 1,
-                "hoursLeft": 0.03
-            }
-
-        trial_end = existing.get("trial_end", now_ts)
-        time_left = trial_end - now_ts
-        existing["last_active"] = now_ts
-        existing["visit_count"] = existing.get("visit_count", 1) + 1
-        save_trial_db(db)
-
+    # Anti-Abuse Check 1: Has this exact EMAIL already had a trial?
+    existing_email_record = db.get(f"email_{email}")
+    if existing_email_record:
+        if existing_email_record.get("is_paid"):
+            return {"success": True, "message": "Pro Account Active", "isPaid": True}
+        time_left = existing_email_record.get("trial_end", 0) - now_ts
         if time_left > 0:
             return {
                 "success": True,
-                "message": "Trial Active",
-                "createdAt": existing.get("created_at") or (trial_end - trial_duration),
-                "trialEnd": trial_end,
+                "message": f"Welcome back! {max(1, int(time_left // 86400) + 1)} Days remaining in your trial.",
+                "createdAt": existing_email_record.get("created_at"),
+                "trialEnd": existing_email_record.get("trial_end"),
                 "daysLeft": max(1, int(time_left // 86400) + 1),
                 "hoursLeft": round(time_left / 3600, 1)
             }
         else:
-            return {"success": False, "error": "Your 3-day free trial on this account has expired. Please upgrade to Pro."}
+            return {
+                "success": False,
+                "error": "✖ The 3-Day Free Trial for this email has already expired. Please upgrade to Pro to continue."
+            }
+
+    # Anti-Abuse Check 2: Has this DEVICE or IP already used a trial with a DIFFERENT email?
+    existing_dev_record = db.get(key) if dev_clean else None
+    if not existing_dev_record and client_ip_clean:
+        existing_dev_record = db.get(ip_key)
+
+    if existing_dev_record:
+        rec_email = (existing_dev_record.get("email") or "").strip().lower()
+        if rec_email and rec_email != email:
+            time_left = existing_dev_record.get("trial_end", 0) - now_ts
+            if time_left > 0:
+                return {
+                    "success": False,
+                    "error": f"✖ A free trial is already active on this device under '{rec_email}'. Multiple trials per device are not permitted."
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": f"✖ The free trial for this device has already expired (previously used by '{rec_email}'). Please upgrade to Pro."
+                }
+
+    # Passed all checks -> create new authentic trial
+    loc = get_ip_location(client_ip)
+    device_info = parse_user_agent_details(user_agent)
+    trial_duration = 120 if email == "videosupermacy@gmail.com" else (3 * 24 * 3600)
 
     new_trial = {
         "email": email,
@@ -1712,15 +1683,14 @@ def start_trial(client_ip, device_id, email, host_header="", user_agent=""):
         "user_agent": user_agent
     }
     db[key] = new_trial
-    if email:
-        db[f"email_{email}"] = new_trial
+    db[f"email_{email}"] = new_trial
     if client_ip:
         db[ip_key] = new_trial
     save_trial_db(db)
 
     return {
         "success": True,
-        "message": f"🎉 3-Day Free Trial Started! Welcome {loc.get('flag','')} {loc.get('city','')} visitor!",
+        "message": f"🎉 3-Day Free Trial Started! Welcome {loc.get('flag','')} {loc.get('city','')} investor!",
         "createdAt": now_ts,
         "trialEnd": now_ts + trial_duration,
         "daysLeft": 3,
@@ -2139,27 +2109,80 @@ def admin_upgrade_to_pro(email, name="", days=30):
     if not email_clean or "@" not in email_clean:
         return {"success": False, "error": "Invalid email address."}
 
-    trial_db = get_trial_db()
-    now_ts = time.time()
     days_valid = int(days) if days else 30
+    now_ts = time.time()
+    paid_until = now_ts + (days_valid * 86400)
 
-    record = {
+    # 1. Create or update license in licenses.json
+    lic_db = get_license_db()
+    assigned_key = None
+    for lk, ldata in lic_db.items():
+        if (ldata.get("email") or "").strip().lower() == email_clean:
+            assigned_key = lk
+            ldata["valid"] = True
+            ldata["used"] = True
+            ldata["days"] = days_valid
+            ldata["name"] = name or ldata.get("name") or email_clean.split("@")[0]
+            ldata["activated_at"] = time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_ts + 5*3600))
+            break
+
+    if not assigned_key:
+        import random
+        part1 = f"{random.randint(1000, 9999)}"
+        part2 = f"{random.randint(1000, 9999)}"
+        assigned_key = f"PSX-PRO-{part1}-{part2}"
+        lic_db[assigned_key] = {
+            "valid": True,
+            "days": days_valid,
+            "used": True,
+            "email": email_clean,
+            "name": name or email_clean.split("@")[0],
+            "note": f"Admin Pro Grant ({days_valid} Days)",
+            "generated_at": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_ts + 5*3600)),
+            "activated_at": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_ts + 5*3600))
+        }
+    save_license_db(lic_db)
+
+    # 2. Update trial_db across ALL keys linked to this email, device, or IP
+    trial_db = get_trial_db()
+    linked_dev_ids = set()
+    linked_ips = set()
+
+    for k, v in trial_db.items():
+        if isinstance(v, dict) and (v.get("email") == email_clean or v.get("paid_email") == email_clean or k == f"email_{email_clean}"):
+            if v.get("device_id"): linked_dev_ids.add(v.get("device_id"))
+            if v.get("client_ip"): linked_ips.add(v.get("client_ip"))
+
+    for vk, v in active_online_visitors.items():
+        if (v.get("email") or "").strip().lower() == email_clean:
+            if v.get("deviceId"): linked_dev_ids.add(v.get("deviceId"))
+            if v.get("clientIp"): linked_ips.add(v.get("clientIp"))
+
+    paid_record = {
         "email": email_clean,
         "is_paid": True,
         "paid_name": name or email_clean.split("@")[0],
         "paid_email": email_clean,
-        "license_key": "ADMIN-PRO-GRANT",
-        "paid_until": now_ts + (days_valid * 86400),
+        "license_key": assigned_key,
+        "paid_until": paid_until,
+        "trial_end": paid_until,
+        "created_at": now_ts,
+        "last_active": now_ts,
         "activated_at": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_ts + 5*3600))
     }
 
-    trial_db[f"email_{email_clean}"] = record
-    for k, v in list(trial_db.items()):
-        if isinstance(v, dict) and (v.get("email") == email_clean or v.get("paid_email") == email_clean):
-            trial_db[k] = record
+    trial_db[f"email_{email_clean}"] = paid_record
+    for dev in linked_dev_ids:
+        if dev: trial_db[dev] = paid_record
+    for ip in linked_ips:
+        if ip: trial_db[f"ip_{ip}"] = paid_record
 
     save_trial_db(trial_db)
-    return {"success": True, "message": f"Successfully upgraded {email_clean} to Pro ({days_valid} days)!"}
+    return {
+        "success": True, 
+        "message": f"Successfully upgraded {email_clean} to Pro for {days_valid} days! (License: {assigned_key})", 
+        "licenseKey": assigned_key
+    }
 
 def admin_extend_trial_days(email, extra_days=3):
     email_clean = (email or "").strip().lower()

@@ -988,21 +988,11 @@ function switchView(view) {
                             window.location.hostname === "127.0.0.1" || 
                             window.location.hostname === "0.0.0.0" || 
                             window.location.hostname.startsWith("192.168.");
-        const localWs = document.getElementById("intel-local-workspace");
-        const comingWs = document.getElementById("intel-coming-soon-workspace");
-
-        if (localWs && comingWs) {
-            if (isLocalHost) {
-                localWs.style.display = "block";
-                comingWs.style.display = "none";
-                runTradingIntelligenceEngine();
-            } else {
-                localWs.style.display = "none";
-                comingWs.style.display = "block";
-            }
-        } else {
-            runTradingIntelligenceEngine();
+        if (!isLocalHost) {
+            switchView("table");
+            return;
         }
+        runTradingIntelligenceEngine();
     }
 }
 
@@ -3524,6 +3514,26 @@ function initTrialSystem() {
     const savedEmail = localStorage.getItem("psx_user_email") || "";
     const savedName = localStorage.getItem("psx_user_name") || "";
     const savedStartTs = localStorage.getItem("psx_trial_start_ts") || "";
+    const savedKey = localStorage.getItem("psx_user_key") || "";
+
+    const isLocalHost = window.location.hostname === "localhost" || 
+                        window.location.hostname === "127.0.0.1" || 
+                        window.location.hostname === "0.0.0.0" || 
+                        window.location.hostname.startsWith("192.168.");
+
+    // Hide opportunities tab and header button completely on online version
+    const headerAlphaBtn = document.getElementById("btn-alpha-opportunities-header");
+    const tabAlpha = document.getElementById("tab-trading-intelligence");
+    const viewAlpha = document.getElementById("view-trading-intelligence");
+
+    if (!isLocalHost) {
+        if (headerAlphaBtn) headerAlphaBtn.style.display = "none";
+        if (tabAlpha) tabAlpha.style.display = "none";
+        if (viewAlpha) viewAlpha.style.display = "none";
+    } else {
+        if (headerAlphaBtn) headerAlphaBtn.style.display = "inline-flex";
+        if (tabAlpha) tabAlpha.style.display = "inline-flex";
+    }
 
     const emailInput = document.getElementById("trial-user-email");
     const licEmailInput = document.getElementById("lic-email-input");
@@ -3536,6 +3546,7 @@ function initTrialSystem() {
     const params = new URLSearchParams({
         deviceId,
         ...(savedEmail ? { email: savedEmail } : {}),
+        ...(savedKey ? { licenseKey: savedKey } : {}),
         ...(savedStartTs ? { origStartTs: savedStartTs } : {})
     });
 
@@ -3546,6 +3557,10 @@ function initTrialSystem() {
                 const info = res.data;
                 if (info.email) {
                     localStorage.setItem("psx_user_email", info.email);
+                }
+                if (info.isPaid) {
+                    localStorage.setItem("psx_is_pro", "true");
+                    if (info.licenseKey) localStorage.setItem("psx_user_key", info.licenseKey);
                 }
                 if (info.createdAt) {
                     localStorage.setItem("psx_trial_start_ts", String(info.createdAt));
@@ -3570,6 +3585,23 @@ function initTrialSystem() {
                     return;
                 }
 
+                if (info.isPaid) {
+                    if (trialEmailModal) trialEmailModal.style.display = "none";
+                    if (paywallModal) paywallModal.style.display = "none";
+                    if (banner) {
+                        banner.style.display = "flex";
+                        banner.style.background = "linear-gradient(90deg, #064e3b, #047857)";
+                        banner.style.borderColor = "#10b981";
+                        banner.style.color = "#a7f3d0";
+                        if (bannerText) bannerText.textContent = "🌟 PSX Screener Pro Member (Unlimited Lifetime Access)";
+                    }
+                    const upgradeBtn = document.querySelector(".btn-upgrade-top");
+                    if (upgradeBtn) upgradeBtn.style.display = "none";
+                    if (trialPollTimer) clearInterval(trialPollTimer);
+                    if (trialCountdownTimer) clearInterval(trialCountdownTimer);
+                    return;
+                }
+
                 if (info.needsEmail) {
                     showLoading(false);
                     if (banner) banner.style.display = "none";
@@ -3583,27 +3615,15 @@ function initTrialSystem() {
                     if (trialPollTimer) { clearInterval(trialPollTimer); trialPollTimer = null; }
                     if (trialCountdownTimer) { clearInterval(trialCountdownTimer); trialCountdownTimer = null; }
                 } else {
-                    // Trial active or Pro Account
+                    // Trial active
                     if (trialEmailModal) trialEmailModal.style.display = "none";
                     if (paywallModal) paywallModal.style.display = "none";
                     if (banner) banner.style.display = "flex";
 
                     const upgradeBtn = document.querySelector(".btn-upgrade-top");
-
                     currentSecondsLeft = info.secondsLeft || 0;
 
                     const updateCountdownUI = () => {
-                        if (info.isPaid) {
-                            if (bannerText) bannerText.textContent = "🌟 PSX Screener Pro (Unlimited Access)";
-                            if (upgradeBtn) upgradeBtn.style.display = "none";
-                            if (banner) {
-                                banner.style.background = "linear-gradient(90deg, #064e3b, #047857)";
-                                banner.style.borderColor = "#10b981";
-                                banner.style.color = "#a7f3d0";
-                            }
-                            return;
-                        }
-
                         if (upgradeBtn) upgradeBtn.style.display = "inline-block";
 
                         if (currentSecondsLeft <= 0) {
@@ -3619,9 +3639,13 @@ function initTrialSystem() {
                                 const s = currentSecondsLeft % 60;
                                 bannerText.textContent = `🚨 Free Trial Ending Soon: ${m}m ${s}s remaining!`;
                             } else {
-                                bannerText.textContent = `⏳ Online 3-Day Free Trial: ${info.daysLeft} days (${info.hoursLeft} hrs) remaining`;
+                                const d = Math.floor(currentSecondsLeft / 86400);
+                                const h = Math.floor((currentSecondsLeft % 86400) / 3600);
+                                const m = Math.floor((currentSecondsLeft % 3600) / 60);
+                                bannerText.textContent = `⏳ 3-Day Free Trial: ${d}d ${h}h ${m}m left · Enjoy full live PSX access`;
                             }
                         }
+                        currentSecondsLeft--;
                     };
 
                     updateCountdownUI();
