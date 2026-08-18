@@ -1439,9 +1439,29 @@ def record_visitor_heartbeat(client_ip, device_id, email="", tab="Stock Screener
         "lastPingStr": time.strftime("%I:%M:%S %p PKT", time.localtime(now_ts + 5*3600))
     }
 
-    # Also update trial_db with last_active, visit_count, and location
+    # Check if this user is a Pro member in licenses.json or trial_db
+    is_pro = False
+    lic_db = get_license_db()
+    assigned_lic_key = None
+    for lk, ldata in lic_db.items():
+        if (ldata.get("used") or ldata.get("valid")) and email_clean and (ldata.get("email") or "").strip().lower() == email_clean:
+            is_pro = True
+            assigned_lic_key = lk
+            break
+
+    # Also check trial_db with last_active, visit_count, and location
     try:
         trial_db = get_trial_db()
+        existing_email_entry = trial_db.get(f"email_{email_clean}") if email_clean else None
+        if existing_email_entry and existing_email_entry.get("is_paid"):
+            is_pro = True
+            if existing_email_entry.get("license_key"): assigned_lic_key = existing_email_entry.get("license_key")
+
+        existing_dev_entry = trial_db.get(v_key)
+        if existing_dev_entry and existing_dev_entry.get("is_paid"):
+            is_pro = True
+            if existing_dev_entry.get("license_key"): assigned_lic_key = existing_dev_entry.get("license_key")
+
         if v_key not in trial_db:
             trial_db[v_key] = {
                 "email": email_clean or "",
@@ -1451,8 +1471,9 @@ def record_visitor_heartbeat(client_ip, device_id, email="", tab="Stock Screener
                 "first_seen": now_ts,
                 "last_active": now_ts,
                 "visit_count": 1,
-                "trial_end": now_ts + (3 * 86400),
-                "is_paid": False,
+                "trial_end": (now_ts + 365*86400) if is_pro else (now_ts + 3*86400),
+                "is_paid": is_pro,
+                "license_key": assigned_lic_key or ("PSX-PRO-ACTIVE" if is_pro else "—"),
                 "location": loc,
                 "device_info": device_info,
                 "user_agent": user_agent
@@ -1462,11 +1483,27 @@ def record_visitor_heartbeat(client_ip, device_id, email="", tab="Stock Screener
             trial_db[v_key]["location"] = loc
             trial_db[v_key]["device_info"] = device_info
             trial_db[v_key]["visit_count"] = trial_db[v_key].get("visit_count", 1) + 1
+            if is_pro:
+                trial_db[v_key]["is_paid"] = True
+                if assigned_lic_key: trial_db[v_key]["license_key"] = assigned_lic_key
             if email_clean:
                 trial_db[v_key]["email"] = email_clean
 
         if email_clean:
-            trial_db[f"email_{email_clean}"] = trial_db[v_key]
+            if f"email_{email_clean}" not in trial_db:
+                trial_db[f"email_{email_clean}"] = dict(trial_db[v_key])
+                trial_db[f"email_{email_clean}"]["email"] = email_clean
+                if is_pro:
+                    trial_db[f"email_{email_clean}"]["is_paid"] = True
+                    if assigned_lic_key: trial_db[f"email_{email_clean}"]["license_key"] = assigned_lic_key
+            else:
+                trial_db[f"email_{email_clean}"]["last_active"] = now_ts
+                trial_db[f"email_{email_clean}"]["visit_count"] = trial_db[f"email_{email_clean}"].get("visit_count", 1) + 1
+                trial_db[f"email_{email_clean}"]["client_ip"] = client_ip
+                trial_db[f"email_{email_clean}"]["device_id"] = device_id
+                if is_pro:
+                    trial_db[f"email_{email_clean}"]["is_paid"] = True
+                    if assigned_lic_key: trial_db[f"email_{email_clean}"]["license_key"] = assigned_lic_key
 
         save_trial_db(trial_db)
     except Exception:
@@ -2127,6 +2164,29 @@ def record_feedback(rating=5, topic="General", message="", email="", client_ip="
     save_feedback_db(feedbacks)
     return {"success": True, "message": "Thank you! Your feedback has been received.", "data": entry}
 
+def admin_reply_feedback(feedback_id, reply_message, admin_email="admin@psxscreener.com"):
+    feedbacks = get_feedback_db()
+    target = next((f for f in feedbacks if f.get("id") == feedback_id), None)
+    if not target:
+        return {"success": False, "error": "Feedback item not found."}
+
+    now_ts = time.time()
+    reply_entry = {
+        "message": (reply_message or "").strip(),
+        "sentAt": now_ts,
+        "dateStr": time.strftime("%d %b %Y, %I:%M %p PKT", time.localtime(now_ts + 5*3600)),
+        "from": admin_email
+    }
+    target["reply"] = reply_entry
+    target["replied"] = True
+    save_feedback_db(feedbacks)
+
+    return {
+        "success": True, 
+        "message": f"Reply successfully recorded for {target.get('email') or 'user'}!", 
+        "reply": reply_entry
+    }
+
 def admin_generate_licenses(count=1, days=30, note=""):
     lic_db = get_license_db()
     count = max(1, min(50, int(count)))
@@ -2443,6 +2503,19 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
+            email = query.get("email", [""])[0]
+            res = admin_delete_user_record(email)
+            self._send_json(res, 200 if res["success"] else 400)
+        elif parsed_path.path == "/api/admin/reply-feedback":
+            query = parse_qs(parsed_path.query)
+            secret = query.get("secret", [""])[0]
+            if not verify_admin_secret(secret):
+                self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                return
+            feedback_id = query.get("id", [""])[0]
+            reply_msg = query.get("reply", [""])[0]
+            res = admin_reply_feedback(feedback_id, reply_msg)
+            self._send_json(res, 200 if res["success"] else 400)
         elif parsed_path.path == "/api/feedback":
             query = parse_qs(parsed_path.query)
             rating = query.get("rating", ["5"])[0]
@@ -2481,6 +2554,19 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 user_agent = self.headers.get("User-Agent", "")
                 res = record_feedback(rating, topic, message, email, client_ip, device_id, user_agent)
                 self._send_json(res)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/admin/reply-feedback":
+            try:
+                body = json.loads(post_data.decode('utf-8'))
+                secret = body.get('secret', '')
+                if not verify_admin_secret(secret):
+                    self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                    return
+                feedback_id = body.get('id', '')
+                reply_msg = body.get('reply', '')
+                res = admin_reply_feedback(feedback_id, reply_msg)
+                self._send_json(res, 200 if res["success"] else 400)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 400)
         else:

@@ -42,12 +42,14 @@
   "email_videosupermacy@gmail.com": {
     "email": "videosupermacy@gmail.com",
     "paid_name": "Video Supremacy",
-    "is_paid": false,
+    "is_paid": true,
+    "license_key": "PSX-PRO-VIDEOSUPREMACY",
+    "paid_until": 1818500000.0,
+    "trial_end": 1818500000.0,
     "created_at": 1786950000.0,
     "first_seen": 1786950000.0,
-    "last_active": 1787038910.0,
-    "trial_end": 1787298110.0,
-    "visit_count": 12,
+    "last_active": 1787045268.004439,
+    "visit_count": 13,
     "client_ip": "119.160.118.5",
     "device_id": "dev_video_supremacy",
     "device_info": "\ud83d\udcbb Desktop (Windows Edge)",
@@ -85,8 +87,8 @@
     "device_id": "dev_mw02ym3fgmsvlipqh",
     "created_at": 1787039546.4922729,
     "first_seen": 1787039546.4922729,
-    "last_active": 1787042586.5028028,
-    "visit_count": 120,
+    "last_active": 1787045299.966293,
+    "visit_count": 176,
     "trial_end": 1787298746.4922729,
     "is_paid": false,
     "location": {
@@ -170,6 +172,28 @@
       "region": "New South Wales",
       "flag": "\ud83c\udde6\ud83c\uddfa",
       "isp": "Netregistry"
+    },
+    "device_info": "\ud83d\udcbb Desktop (Other OS Browser)",
+    "user_agent": ""
+  },
+  "dev_video_supremacy": {
+    "email": "videosupermacy@gmail.com",
+    "client_ip": "119.160.118.5",
+    "device_id": "dev_video_supremacy",
+    "created_at": 1787045268.004439,
+    "first_seen": 1787045268.004439,
+    "last_active": 1787045268.004439,
+    "visit_count": 1,
+    "trial_end": 1818581268.004439,
+    "is_paid": true,
+    "license_key": "PSX-PRO-VIDEOSUPREMACY",
+    "location": {
+      "city": "Karachi",
+      "country": "Pakistan",
+      "countryCode": "PK",
+      "region": "Sindh",
+      "flag": "\ud83c\uddf5\ud83c\uddf0",
+      "isp": "Mobilink GSM"
     },
     "device_info": "\ud83d\udcbb Desktop (Other OS Browser)",
     "user_agent": ""

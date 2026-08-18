@@ -1,4 +1,15 @@
 {
+  "PSX-PRO-VIDEOSUPREMACY": {
+    "valid": true,
+    "days": 365,
+    "used": true,
+    "email": "videosupermacy@gmail.com",
+    "name": "Video Supremacy",
+    "generated_at": "2026-08-18 14:20:00 PKT",
+    "activated_at": "2026-08-18 14:20:00 PKT",
+    "device_id": "dev_video_supremacy",
+    "client_ip": "119.160.118.5"
+  },
   "PSX-PRO-7569-2697": {
     "valid": true,
     "days": 30,

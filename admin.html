@@ -570,10 +570,11 @@
                                 <th>Location & City</th>
                                 <th>Device / OS</th>
                                 <th>Submitted (PKT)</th>
+                                <th>Direct Reply</th>
                             </tr>
                         </thead>
                         <tbody id="feedbacks-table-body">
-                            <tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">Loading feedback logs...</td></tr>
+                            <tr><td colspan="8" style="text-align: center; padding: 30px; color: var(--text-muted);">Loading feedback logs...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -581,6 +582,43 @@
         </div>
 
     </main>
+
+    <!-- Reply to User Feedback Modal -->
+    <div id="reply-modal" class="login-overlay" style="display:none;">
+        <div class="login-card" style="max-width: 540px; text-align: left;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                <h3 style="margin:0; font-size:1.15rem; color:#fff; display:flex; align-items:center; gap:8px;">
+                    <span>✉️ Reply to Customer Feedback</span>
+                </h3>
+                <button onclick="closeReplyModal()" style="background:transparent; border:none; color:#94a3b8; font-size:1.3rem; cursor:pointer; padding:2px 8px;">✕</button>
+            </div>
+            
+            <div id="reply-user-context" style="background:#0f172a; border:1px solid var(--border-color); border-radius:8px; padding:12px; margin-bottom:14px; font-size:0.82rem; line-height:1.5;">
+            </div>
+
+            <div class="form-group" style="margin-bottom:12px;">
+                <label>To (User Email):</label>
+                <input type="email" id="reply-to-email" class="form-control" readonly style="opacity:0.85; background:#0b0f19;">
+            </div>
+
+            <div class="form-group" style="margin-bottom:12px;">
+                <label>Subject:</label>
+                <input type="text" id="reply-subject" class="form-control" value="PSX Screener Pro: Regarding your feedback / feature request">
+            </div>
+
+            <div class="form-group" style="margin-bottom:16px;">
+                <label>Your Response Message:</label>
+                <textarea id="reply-text" rows="5" class="form-control" style="resize:vertical; font-family:inherit; line-height:1.5;" placeholder="Write your response message here..."></textarea>
+            </div>
+
+            <div id="reply-status-msg" style="display:none; padding:10px 12px; border-radius:6px; font-size:0.82rem; margin-bottom:14px;"></div>
+
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button class="btn btn-ghost btn-sm" onclick="sendViaMailto()">📧 Open in Mail App</button>
+                <button class="btn btn-primary btn-sm" id="btn-send-admin-reply" onclick="submitAdminReply()">🚀 Save & Send Reply</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         let adminSecret = sessionStorage.getItem("psx_admin_secret") || "";
@@ -702,13 +740,30 @@
             if (!tbody) return;
 
             if (adminData.feedbacks.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">No user feedbacks submitted yet.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 30px; color: var(--text-muted);">No user feedbacks submitted yet.</td></tr>`;
                 return;
             }
 
             let html = "";
             adminData.feedbacks.forEach(f => {
                 const starsDisplay = "⭐".repeat(f.rating || 5);
+                const hasEmail = f.email && f.email.includes("@");
+                const isReplied = Boolean(f.replied);
+
+                let replyActionHtml = "";
+                if (hasEmail) {
+                    replyActionHtml = `
+                        <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+                            <button class="btn btn-primary btn-sm" style="font-size:0.75rem; padding:4px 8px;" onclick="openReplyModal('${f.id}')">
+                                ✉️ Reply
+                            </button>
+                            ${f.replied ? `<span style="color:#10b981; font-size:0.7rem; font-weight:600;">✔ Replied</span>` : ''}
+                        </div>
+                    `;
+                } else {
+                    replyActionHtml = `<span style="color:var(--text-muted); font-size:0.75rem;">No Email</span>`;
+                }
+
                 html += `
                 <tr>
                     <td>
@@ -718,8 +773,9 @@
                     <td>
                         <span class="badge badge-pro" style="font-size: 0.75rem;">${f.topic || 'General'}</span>
                     </td>
-                    <td style="max-width: 320px; font-size: 0.85rem; color: #f8fafc; line-height: 1.4;">
+                    <td style="max-width: 300px; font-size: 0.85rem; color: #f8fafc; line-height: 1.4;">
                         ${f.message ? f.message.replace(/</g, "&lt;").replace(/>/g, "&gt;") : '<em>(No message)</em>'}
+                        ${f.reply ? `<div style="margin-top:6px; padding:6px 8px; background:rgba(16,185,129,0.1); border-left:2px solid #10b981; border-radius:4px; font-size:0.75rem; color:#a7f3d0;"><strong>Your Reply:</strong> ${f.reply.message}</div>` : ''}
                     </td>
                     <td>
                         <div style="font-weight: 600; font-size: 0.82rem; color: #38bdf8;">${f.email || '<span style="color:var(--text-muted);">Anonymous</span>'}</div>
@@ -730,6 +786,7 @@
                     </td>
                     <td style="font-size: 0.75rem; color: var(--text-secondary);">${f.deviceInfo || '—'}</td>
                     <td style="font-size: 0.78rem; color: var(--text-secondary);">${f.dateStr || '—'}</td>
+                    <td>${replyActionHtml}</td>
                 </tr>
                 `;
             });
@@ -1032,6 +1089,142 @@
         function copyText(text) {
             navigator.clipboard.writeText(text).then(() => {
                 alert(`Copied "${text}" to clipboard!`);
+            });
+        }
+
+        let activeReplyFeedbackId = null;
+
+        function openReplyModal(feedbackId) {
+            if (!adminData || !adminData.feedbacks) return;
+            const item = adminData.feedbacks.find(f => f.id === feedbackId);
+            if (!item || !item.email) return;
+
+            activeReplyFeedbackId = feedbackId;
+            const modal = document.getElementById("reply-modal");
+            const emailInput = document.getElementById("reply-to-email");
+            const subjectInput = document.getElementById("reply-subject");
+            const msgInput = document.getElementById("reply-text");
+            const contextEl = document.getElementById("reply-user-context");
+            const statusMsg = document.getElementById("reply-status-msg");
+
+            if (statusMsg) statusMsg.style.display = "none";
+            if (emailInput) emailInput.value = item.email;
+            if (subjectInput) subjectInput.value = `PSX Screener Pro: Regarding your ${item.topic || 'Feedback'}`;
+            
+            const starsDisplay = "⭐".repeat(item.rating || 5);
+            if (contextEl) {
+                contextEl.innerHTML = `
+                    <div style="font-weight: 700; color: #facc15; margin-bottom: 4px;">${starsDisplay} · Category: <span style="color:#c7d2fe;">${item.topic || 'General'}</span></div>
+                    <div style="color: #cbd5e1; font-style: italic;">"${item.message || '(No message content)'}"</div>
+                    <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">Submitted by ${item.email} on ${item.dateStr || ''} (${item.locationStr || ''})</div>
+                `;
+            }
+
+            if (msgInput) {
+                const userName = item.email.split("@")[0];
+                msgInput.value = `Hi ${userName},\n\nThank you for reaching out with your feedback regarding PSX Screener Pro!\n\nWe have reviewed your request regarding "${item.topic || 'your feedback'}" and wanted to let you know that...\n\nBest regards,\nPSX Screener Team`;
+            }
+
+            if (modal) modal.style.display = "flex";
+        }
+
+        function closeReplyModal() {
+            const modal = document.getElementById("reply-modal");
+            if (modal) modal.style.display = "none";
+            activeReplyFeedbackId = null;
+        }
+
+        function sendViaMailto() {
+            const email = document.getElementById("reply-to-email").value.trim();
+            const subject = document.getElementById("reply-subject").value.trim();
+            const body = document.getElementById("reply-text").value.trim();
+
+            if (!email) {
+                alert("No recipient email specified.");
+                return;
+            }
+
+            const mailtoUrl = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            window.open(mailtoUrl, "_blank");
+
+            // Also record reply in dashboard
+            if (activeReplyFeedbackId) {
+                submitAdminReply(false);
+            }
+        }
+
+        function submitAdminReply(showCloseDelay = true) {
+            if (!activeReplyFeedbackId) return;
+            const email = document.getElementById("reply-to-email").value.trim();
+            const msg = document.getElementById("reply-text").value.trim();
+            const statusEl = document.getElementById("reply-status-msg");
+            const btn = document.getElementById("btn-send-admin-reply");
+
+            if (!msg) {
+                if (statusEl) {
+                    statusEl.style.display = "block";
+                    statusEl.style.background = "rgba(239, 68, 68, 0.15)";
+                    statusEl.style.color = "#fca5a5";
+                    statusEl.textContent = "Please enter a response message.";
+                }
+                return;
+            }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = "Saving...";
+            }
+
+            const payload = {
+                secret: adminSecret,
+                id: activeReplyFeedbackId,
+                reply: msg
+            };
+
+            fetch("/api/admin/reply-feedback", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = "🚀 Save & Send Reply";
+                }
+                if (res.success) {
+                    if (statusEl) {
+                        statusEl.style.display = "block";
+                        statusEl.style.background = "rgba(16, 185, 129, 0.15)";
+                        statusEl.style.color = "#a7f3d0";
+                        statusEl.textContent = "✔ Reply saved & recorded successfully!";
+                    }
+                    fetchAdminData();
+                    if (showCloseDelay) {
+                        setTimeout(() => {
+                            closeReplyModal();
+                        }, 1500);
+                    }
+                } else {
+                    if (statusEl) {
+                        statusEl.style.display = "block";
+                        statusEl.style.background = "rgba(239, 68, 68, 0.15)";
+                        statusEl.style.color = "#fca5a5";
+                        statusEl.textContent = res.error || "Failed to save reply.";
+                    }
+                }
+            })
+            .catch(err => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = "🚀 Save & Send Reply";
+                }
+                if (statusEl) {
+                    statusEl.style.display = "block";
+                    statusEl.style.background = "rgba(239, 68, 68, 0.15)";
+                    statusEl.style.color = "#fca5a5";
+                    statusEl.textContent = "Error: " + err.message;
+                }
             });
         }
     </script>
