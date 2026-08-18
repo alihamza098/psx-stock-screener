@@ -25,24 +25,30 @@
     <!-- Header -->
     <header id="app-header">
         <div class="header-content">
-            <!-- Brand Left: Small & Compact -->
-            <div class="logo-group" onclick="switchView('table')" style="cursor: pointer;" title="PSX Screener Home">
-                <div class="logo-icon">
-                    <svg viewBox="0 0 40 40" fill="none">
-                        <rect x="2" y="2" width="36" height="36" rx="8" stroke="url(#logoGrad)" stroke-width="2.5"/>
-                        <path d="M12 28L12 18L16 14L20 20L24 12L28 16L28 28" stroke="url(#logoGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                        <defs>
-                            <linearGradient id="logoGrad" x1="0" y1="0" x2="40" y2="40">
-                                <stop stop-color="#22d3ee"/>
-                                <stop offset="1" stop-color="#a78bfa"/>
-                            </linearGradient>
-                        </defs>
-                    </svg>
+            <!-- Brand Left: Small & Compact + Feedback Button -->
+            <div class="logo-group-wrap">
+                <div class="logo-group" onclick="switchView('table')" style="cursor: pointer;" title="PSX Screener Home">
+                    <div class="logo-icon">
+                        <svg viewBox="0 0 40 40" fill="none">
+                            <rect x="2" y="2" width="36" height="36" rx="8" stroke="url(#logoGrad)" stroke-width="2.5"/>
+                            <path d="M12 28L12 18L16 14L20 20L24 12L28 16L28 28" stroke="url(#logoGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <defs>
+                                <linearGradient id="logoGrad" x1="0" y1="0" x2="40" y2="40">
+                                    <stop stop-color="#22d3ee"/>
+                                    <stop offset="1" stop-color="#a78bfa"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                    </div>
+                    <div class="logo-text-wrap">
+                        <h1>PSX Screener</h1>
+                        <span class="header-subtitle">Live Data</span>
+                    </div>
                 </div>
-                <div class="logo-text-wrap">
-                    <h1>PSX Screener</h1>
-                    <span class="header-subtitle">Live Data</span>
-                </div>
+                <button class="btn btn-feedback-mini" id="btn-feedback-mini" onclick="openFeedbackModal()" title="Share feedback or request a new feature">
+                    <span>⭐</span>
+                    <span>Feedback</span>
+                </button>
             </div>
 
             <!-- Header Actions: Perfectly Aligned & Arranged -->
@@ -1387,6 +1393,65 @@
                 <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.82rem; color: #94a3b8;">
                     Already paid or have a key? <a href="#" onclick="switchToPaywallModal(); return false;" style="color: #818cf8; font-weight: 600; text-decoration: underline;">Enter License Key →</a>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feedback & Feature Request Modal -->
+    <div id="feedback-modal" class="terms-modal-overlay" style="display:none;">
+        <div class="terms-modal-box" style="max-width: 480px; border: 1px solid rgba(129, 140, 248, 0.4); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85); background: #0f172a; position: relative;">
+            <button class="modal-close-btn" onclick="closeFeedbackModal()" style="position: absolute; top: 14px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 1.25rem; cursor: pointer; padding: 4px 8px; border-radius: 4px;" title="Close">✕</button>
+            
+            <div class="terms-header" style="justify-content: flex-start; text-align: left; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 18px 24px 14px;">
+                <span class="terms-header-icon" style="font-size: 1.4rem;">⭐</span>
+                <div>
+                    <h2 style="color: #f8fafc; font-size: 1.2rem; font-weight: 800; margin: 0;">Feedback & Feature Request</h2>
+                    <p style="font-size: 0.78rem; color: #94a3b8; margin: 2px 0 0;">Help us build features and indicators you need</p>
+                </div>
+            </div>
+
+            <div class="terms-body" style="padding: 20px 24px;">
+                <!-- Star Rating -->
+                <div style="margin-bottom: 16px; text-align: center;">
+                    <div style="font-size: 0.82rem; font-weight: 600; color: #cbd5e1; margin-bottom: 8px;">Rate your experience:</div>
+                    <div class="star-rating-container" id="feedback-star-container">
+                        <span class="feedback-star active" data-rating="1" onclick="selectStarRating(1)" onmouseenter="hoverStarRating(1)" onmouseleave="resetStarHover()">★</span>
+                        <span class="feedback-star active" data-rating="2" onclick="selectStarRating(2)" onmouseenter="hoverStarRating(2)" onmouseleave="resetStarHover()">★</span>
+                        <span class="feedback-star active" data-rating="3" onclick="selectStarRating(3)" onmouseenter="hoverStarRating(3)" onmouseleave="resetStarHover()">★</span>
+                        <span class="feedback-star active" data-rating="4" onclick="selectStarRating(4)" onmouseenter="hoverStarRating(4)" onmouseleave="resetStarHover()">★</span>
+                        <span class="feedback-star active" data-rating="5" onclick="selectStarRating(5)" onmouseenter="hoverStarRating(5)" onmouseleave="resetStarHover()">★</span>
+                    </div>
+                    <div id="star-rating-label" style="font-size: 0.78rem; color: #facc15; font-weight: 700; margin-top: 6px; min-height: 18px;">⭐⭐⭐⭐⭐ Excellent (5 Stars)</div>
+                </div>
+
+                <!-- Category selection -->
+                <div style="margin-bottom: 14px;">
+                    <label style="font-size: 0.78rem; font-weight: 600; color: #94a3b8; display: block; margin-bottom: 6px;">Category:</label>
+                    <div class="feedback-tags-row">
+                        <button type="button" class="feedback-tag active" data-topic="New Feature" onclick="setFeedbackTopic(this, 'New Feature')">💡 Request New Feature</button>
+                        <button type="button" class="feedback-tag" data-topic="Indicator Request" onclick="setFeedbackTopic(this, 'Indicator Request')">📊 Add Indicator / Data</button>
+                        <button type="button" class="feedback-tag" data-topic="Bug Report" onclick="setFeedbackTopic(this, 'Bug Report')">🐛 Report Bug</button>
+                        <button type="button" class="feedback-tag" data-topic="General" onclick="setFeedbackTopic(this, 'General')">💬 General Feedback</button>
+                    </div>
+                </div>
+
+                <!-- Message Textarea -->
+                <div style="margin-bottom: 14px;">
+                    <label style="font-size: 0.78rem; font-weight: 600; color: #94a3b8; display: block; margin-bottom: 6px;">What features or improvements would you like us to add?</label>
+                    <textarea id="feedback-message" rows="3" class="lic-input" placeholder="Tell us what new feature, technical indicator, or changes you would like to see..." style="width: 100%; padding: 10px 12px; font-size: 0.85rem; background: #1e293b; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: #fff; resize: vertical; box-sizing: border-box; font-family: inherit;"></textarea>
+                </div>
+
+                <!-- Email (optional) -->
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.78rem; font-weight: 600; color: #94a3b8; display: block; margin-bottom: 6px;">Your Email (Optional):</label>
+                    <input type="email" id="feedback-email" class="lic-input" placeholder="your@email.com" style="width: 100%; padding: 9px 12px; font-size: 0.85rem; background: #1e293b; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: #fff; box-sizing: border-box;">
+                </div>
+
+                <div id="feedback-status-msg" style="display:none; padding: 10px 12px; border-radius: 6px; font-size: 0.82rem; margin-bottom: 12px; text-align: center;"></div>
+
+                <button class="btn btn-primary" onclick="submitFeedbackForm()" id="btn-submit-feedback" style="width: 100%; min-height: 42px; font-weight: 700; font-size: 0.92rem; border-radius: 8px; justify-content: center;">
+                    🚀 Send Feedback
+                </button>
             </div>
         </div>
     </div>

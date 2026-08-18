@@ -355,6 +355,11 @@
                 <div class="kpi-val" id="kpi-available-keys" style="color: var(--accent-amber);">0</div>
                 <div class="kpi-sub"><span id="kpi-used-keys">0</span> keys redeemed</div>
             </div>
+            <div class="kpi-card">
+                <div class="kpi-label">💬 Feedback & Requests</div>
+                <div class="kpi-val" id="kpi-total-feedbacks" style="color: #f472b6;">0</div>
+                <div class="kpi-sub">User ratings & feature ideas</div>
+            </div>
         </div>
 
         <!-- Dashboard Sub-Tabs -->
@@ -363,6 +368,7 @@
             <button class="tab-btn" onclick="switchAdminTab('users', this)">👥 All Registered Users</button>
             <button class="tab-btn" onclick="switchAdminTab('licenses', this)">🔑 License Key Manager</button>
             <button class="tab-btn" onclick="switchAdminTab('upgrade', this)">⚡ Direct Pro Upgrader</button>
+            <button class="tab-btn" onclick="switchAdminTab('feedbacks', this)">💬 Feedback & Requests (<span id="tab-feedback-count">0</span>)</button>
         </div>
 
         <!-- TAB 0: Live Online Visitors Right Now -->
@@ -541,6 +547,39 @@
             </div>
         </div>
 
+        <!-- TAB 4: User Feedback & Feature Requests -->
+        <div id="tab-feedbacks" class="admin-tab-content" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span>💬 User Feedback, Star Ratings & Feature Requests</span>
+                    </div>
+                    <div class="filter-bar">
+                        <button class="btn btn-ghost btn-sm" onclick="fetchAdminData()">🔄 Refresh</button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Rating</th>
+                                <th>Category</th>
+                                <th>Feedback / Requested Feature</th>
+                                <th>Customer Email</th>
+                                <th>Location & City</th>
+                                <th>Device / OS</th>
+                                <th>Submitted (PKT)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="feedbacks-table-body">
+                            <tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">Loading feedback logs...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
     </main>
 
     <script>
@@ -632,6 +671,7 @@
             const stats = data.stats || {};
             const onlineCount = stats.onlineNow || 0;
             const idleCount = stats.idleVisitors || 0;
+            const fbCount = stats.totalFeedbacks || (data.feedbacks ? data.feedbacks.length : 0);
 
             document.getElementById("kpi-online-now").textContent = onlineCount;
             document.getElementById("kpi-idle-visitors").textContent = idleCount;
@@ -641,6 +681,10 @@
             document.getElementById("kpi-pro-users").textContent = stats.proUsers || 0;
             document.getElementById("kpi-available-keys").textContent = stats.availableLicenses || 0;
             document.getElementById("kpi-used-keys").textContent = stats.usedLicenses || 0;
+            const kpiFb = document.getElementById("kpi-total-feedbacks");
+            if (kpiFb) kpiFb.textContent = fbCount;
+            const tabFb = document.getElementById("tab-feedback-count");
+            if (tabFb) tabFb.textContent = fbCount;
 
             if (data.serverTime) {
                 document.getElementById("server-time-display").textContent = data.serverTime;
@@ -649,6 +693,47 @@
             renderLiveOnlineVisitors();
             renderUsersTable();
             renderLicensesTable();
+            renderFeedbacksTable();
+        }
+
+        function renderFeedbacksTable() {
+            if (!adminData || !adminData.feedbacks) return;
+            const tbody = document.getElementById("feedbacks-table-body");
+            if (!tbody) return;
+
+            if (adminData.feedbacks.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">No user feedbacks submitted yet.</td></tr>`;
+                return;
+            }
+
+            let html = "";
+            adminData.feedbacks.forEach(f => {
+                const starsDisplay = "⭐".repeat(f.rating || 5);
+                html += `
+                <tr>
+                    <td>
+                        <div style="font-size: 1.05rem; font-weight: 700; color: #facc15;">${starsDisplay}</div>
+                        <div style="font-size: 0.72rem; color: var(--text-muted);">${f.rating || 5}/5 Stars</div>
+                    </td>
+                    <td>
+                        <span class="badge badge-pro" style="font-size: 0.75rem;">${f.topic || 'General'}</span>
+                    </td>
+                    <td style="max-width: 320px; font-size: 0.85rem; color: #f8fafc; line-height: 1.4;">
+                        ${f.message ? f.message.replace(/</g, "&lt;").replace(/>/g, "&gt;") : '<em>(No message)</em>'}
+                    </td>
+                    <td>
+                        <div style="font-weight: 600; font-size: 0.82rem; color: #38bdf8;">${f.email || '<span style="color:var(--text-muted);">Anonymous</span>'}</div>
+                    </td>
+                    <td>
+                        <div style="font-size: 0.8rem; font-weight: 500;">${f.locationStr || 'Pakistan'}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">${f.clientIp || ''}</div>
+                    </td>
+                    <td style="font-size: 0.75rem; color: var(--text-secondary);">${f.deviceInfo || '—'}</td>
+                    <td style="font-size: 0.78rem; color: var(--text-secondary);">${f.dateStr || '—'}</td>
+                </tr>
+                `;
+            });
+            tbody.innerHTML = html;
         }
 
         function renderLiveOnlineVisitors() {

@@ -4575,3 +4575,149 @@ function updateCalcMetrics() {
     document.getElementById("calc-res-loss-net").textContent = "-₨" + netLoss.toFixed(2);
     document.getElementById("calc-res-rr").textContent = `1:${netRR}`;
 }
+
+// ─── Feedback & Feature Request System ───
+let currentFeedbackRating = 5;
+let currentFeedbackTopic = "New Feature";
+
+const ratingLabels = {
+    1: "★☆☆☆☆ Poor (1 Star)",
+    2: "★★☆☆☆ Fair (2 Stars)",
+    3: "★★★☆☆ Good (3 Stars)",
+    4: "★★★★☆ Very Good (4 Stars)",
+    5: "⭐⭐⭐⭐⭐ Excellent (5 Stars)"
+};
+
+function openFeedbackModal() {
+    const modal = document.getElementById("feedback-modal");
+    if (!modal) return;
+
+    const emailInput = document.getElementById("feedback-email");
+    const savedEmail = localStorage.getItem("psx_user_email") || "";
+    if (emailInput && !emailInput.value && savedEmail) {
+        emailInput.value = savedEmail;
+    }
+
+    const msgEl = document.getElementById("feedback-status-msg");
+    if (msgEl) msgEl.style.display = "none";
+
+    selectStarRating(5);
+    modal.style.display = "flex";
+}
+
+function closeFeedbackModal() {
+    const modal = document.getElementById("feedback-modal");
+    if (modal) modal.style.display = "none";
+}
+
+function selectStarRating(val) {
+    currentFeedbackRating = val;
+    const stars = document.querySelectorAll(".feedback-star");
+    stars.forEach(s => {
+        const r = parseInt(s.getAttribute("data-rating"), 10);
+        if (r <= val) {
+            s.classList.add("active");
+        } else {
+            s.classList.remove("active");
+        }
+    });
+
+    const lbl = document.getElementById("star-rating-label");
+    if (lbl) lbl.textContent = ratingLabels[val] || `${val} Stars`;
+}
+
+function hoverStarRating(val) {
+    const stars = document.querySelectorAll(".feedback-star");
+    stars.forEach(s => {
+        const r = parseInt(s.getAttribute("data-rating"), 10);
+        if (r <= val) {
+            s.classList.add("hover");
+        } else {
+            s.classList.remove("hover");
+        }
+    });
+}
+
+function resetStarHover() {
+    const stars = document.querySelectorAll(".feedback-star");
+    stars.forEach(s => s.classList.remove("hover"));
+}
+
+function setFeedbackTopic(btn, topic) {
+    currentFeedbackTopic = topic;
+    document.querySelectorAll(".feedback-tag").forEach(t => t.classList.remove("active"));
+    if (btn) btn.classList.add("active");
+}
+
+function submitFeedbackForm() {
+    const messageInput = document.getElementById("feedback-message");
+    const emailInput = document.getElementById("feedback-email");
+    const msgEl = document.getElementById("feedback-status-msg");
+    const submitBtn = document.getElementById("btn-submit-feedback");
+
+    const message = messageInput ? messageInput.value.trim() : "";
+    const email = emailInput ? emailInput.value.trim() : (localStorage.getItem("psx_user_email") || "");
+    const deviceId = getDeviceId();
+
+    if (!message && currentFeedbackRating <= 3) {
+        if (msgEl) {
+            msgEl.style.display = "block";
+            msgEl.style.background = "rgba(239, 68, 68, 0.15)";
+            msgEl.style.color = "#fca5a5";
+            msgEl.style.border = "1px solid rgba(239, 68, 68, 0.3)";
+            msgEl.textContent = "Please enter a brief description of what we can improve.";
+        }
+        return;
+    }
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Sending...";
+    }
+
+    const payload = {
+        rating: currentFeedbackRating,
+        topic: currentFeedbackTopic,
+        message: message || "Rating submission",
+        email: email,
+        deviceId: deviceId
+    };
+
+    fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "🚀 Send Feedback";
+        }
+        if (msgEl) {
+            msgEl.style.display = "block";
+            msgEl.style.background = "rgba(16, 185, 129, 0.15)";
+            msgEl.style.color = "#a7f3d0";
+            msgEl.style.border = "1px solid rgba(16, 185, 129, 0.3)";
+            msgEl.textContent = "🎉 Thank you! Your feedback & feature request has been sent.";
+        }
+        if (messageInput) messageInput.value = "";
+        setTimeout(() => {
+            closeFeedbackModal();
+        }, 1800);
+    })
+    .catch(err => {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "🚀 Send Feedback";
+        }
+        if (msgEl) {
+            msgEl.style.display = "block";
+            msgEl.style.background = "rgba(239, 68, 68, 0.15)";
+            msgEl.style.color = "#fca5a5";
+            msgEl.style.border = "1px solid rgba(239, 68, 68, 0.3)";
+            msgEl.textContent = "Error sending feedback. Please try again.";
+        }
+    });
+}
+

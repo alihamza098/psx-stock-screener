@@ -2053,7 +2053,8 @@ def get_admin_dashboard_data():
         })
 
     # Sort licenses: unused first
-    licenses_list.sort(key=lambda x: (x["used"], x["key"]))
+    # Aggregate Feedbacks
+    feedbacks_list = get_feedback_db()[:50]
 
     return {
         "stats": {
@@ -2066,13 +2067,65 @@ def get_admin_dashboard_data():
             "totalLicenses": len(licenses_list),
             "availableLicenses": available_keys_count,
             "usedLicenses": used_keys_count,
+            "totalFeedbacks": len(feedbacks_list),
             "totalTrafficLogs": len(trial_db)
         },
         "onlineVisitors": live_online,
         "users": formatted_users,
         "licenses": licenses_list,
+        "feedbacks": feedbacks_list,
         "serverTime": time.strftime("%d %b %Y, %I:%M:%S %p PKT", time.localtime(now_ts + 5*3600))
     }
+
+FEEDBACK_FILE = str(Path(__file__).parent / "feedback.json")
+
+def get_feedback_db():
+    if os.path.exists(FEEDBACK_FILE):
+        try:
+            with open(FEEDBACK_FILE, "r") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+        except Exception:
+            return []
+    return []
+
+def save_feedback_db(feedbacks):
+    try:
+        with open(FEEDBACK_FILE, "w") as f:
+            json.dump(feedbacks, f, indent=2)
+    except Exception as e:
+        print(f"[PSX] Error saving feedback db: {e}")
+
+def record_feedback(rating=5, topic="General", message="", email="", client_ip="", device_id="", user_agent=""):
+    feedbacks = get_feedback_db()
+    now_ts = time.time()
+    loc = get_ip_location(client_ip)
+    device_info = parse_user_agent_details(user_agent)
+
+    import random
+    r_val = int(rating) if str(rating).isdigit() else 5
+    r_val = max(1, min(5, r_val))
+
+    entry = {
+        "id": f"fb_{int(now_ts)}_{random.randint(100, 999)}",
+        "rating": r_val,
+        "stars": "⭐" * r_val,
+        "topic": (topic or "General").strip(),
+        "message": (message or "").strip(),
+        "email": (email or "").strip().lower(),
+        "clientIp": client_ip,
+        "deviceId": device_id,
+        "deviceInfo": device_info,
+        "location": loc,
+        "locationStr": f"{loc.get('flag', '🌐')} {loc.get('city', 'Unknown')}, {loc.get('country', 'Pakistan')}",
+        "timestamp": now_ts,
+        "dateStr": time.strftime("%d %b %Y, %I:%M %p PKT", time.localtime(now_ts + 5*3600))
+    }
+    feedbacks.insert(0, entry)
+    feedbacks = feedbacks[:500]
+    save_feedback_db(feedbacks)
+    return {"success": True, "message": "Thank you! Your feedback has been received.", "data": entry}
 
 def admin_generate_licenses(count=1, days=30, note=""):
     lic_db = get_license_db()
@@ -2390,9 +2443,17 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
+        elif parsed_path.path == "/api/feedback":
+            query = parse_qs(parsed_path.query)
+            rating = query.get("rating", ["5"])[0]
+            topic = query.get("topic", ["General"])[0]
+            message = query.get("message", [""])[0]
             email = query.get("email", [""])[0]
-            res = admin_delete_user_record(email)
-            self._send_json(res, 200 if res["success"] else 400)
+            device_id = query.get("deviceId", [""])[0]
+            client_ip = self._get_client_ip()
+            user_agent = self.headers.get("User-Agent", "")
+            res = record_feedback(rating, topic, message, email, client_ip, device_id, user_agent)
+            self._send_json(res)
         else:
             # Serve static files
             super().do_GET()
@@ -2406,6 +2467,20 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 body = json.loads(post_data.decode('utf-8'))
                 symbol = body.get('symbol', '')
                 self._handle_company(symbol)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/feedback":
+            try:
+                body = json.loads(post_data.decode('utf-8'))
+                rating = body.get('rating', 5)
+                topic = body.get('topic', 'General')
+                message = body.get('message', '')
+                email = body.get('email', '')
+                device_id = body.get('deviceId', '')
+                client_ip = self._get_client_ip()
+                user_agent = self.headers.get("User-Agent", "")
+                res = record_feedback(rating, topic, message, email, client_ip, device_id, user_agent)
+                self._send_json(res)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 400)
         else:

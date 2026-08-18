@@ -5940,6 +5940,92 @@ body {
 .ath-box .label { font-size: 0.68rem; color: #94a3b8; font-weight: 700; }
 .ath-box .val { font-size: 0.95rem; font-weight: 800; color: #f8fafc; }
 
+/* --- Feedback Mini Button & Modal Styles --- */
+.logo-group-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-feedback-mini {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(234, 179, 8, 0.12);
+    color: #facc15;
+    border: 1px solid rgba(234, 179, 8, 0.35);
+    padding: 0 9px;
+    height: 26px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.btn-feedback-mini:hover {
+    background: rgba(234, 179, 8, 0.22);
+    border-color: #facc15;
+    transform: translateY(-1px);
+    box-shadow: 0 0 12px rgba(234, 179, 8, 0.3);
+}
+
+.star-rating-container {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    font-size: 2rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.feedback-star {
+    color: #334155;
+    transition: color 0.15s ease, transform 0.15s ease;
+    display: inline-block;
+    cursor: pointer;
+}
+
+.feedback-star.active,
+.feedback-star.hover {
+    color: #facc15;
+    transform: scale(1.18);
+    text-shadow: 0 0 10px rgba(250, 204, 21, 0.6);
+}
+
+.feedback-tags-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.feedback-tag {
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #94a3b8;
+    padding: 6px 11px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.15s ease;
+}
+
+.feedback-tag:hover {
+    border-color: #818cf8;
+    color: #f8fafc;
+}
+
+.feedback-tag.active {
+    background: rgba(99, 102, 241, 0.22);
+    border-color: #818cf8;
+    color: #c7d2fe;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+}
+
+
 
 
 
