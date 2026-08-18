@@ -25,7 +25,8 @@
     <!-- Header -->
     <header id="app-header">
         <div class="header-content">
-            <div class="logo-group">
+            <!-- Brand Left: Small & Compact -->
+            <div class="logo-group" onclick="switchView('table')" style="cursor: pointer;" title="PSX Screener Home">
                 <div class="logo-icon">
                     <svg viewBox="0 0 40 40" fill="none">
                         <rect x="2" y="2" width="36" height="36" rx="8" stroke="url(#logoGrad)" stroke-width="2.5"/>
@@ -38,63 +39,71 @@
                         </defs>
                     </svg>
                 </div>
-                <div>
+                <div class="logo-text-wrap">
                     <h1>PSX Screener</h1>
-                    <span class="header-subtitle">Live Pakistan Stock Exchange Data</span>
+                    <span class="header-subtitle">Live Data</span>
                 </div>
             </div>
+
+            <!-- Header Actions: Perfectly Aligned & Arranged -->
             <div class="header-actions">
-                <div class="live-indicator" id="live-indicator">
-                    <span class="live-dot"></span>
-                    <span class="live-text">LIVE</span>
+                <!-- Status Group: Live, Market Status, PKT Clock -->
+                <div class="header-status-group">
+                    <div class="live-indicator" id="live-indicator">
+                        <span class="live-dot"></span>
+                        <span class="live-text">LIVE</span>
+                    </div>
+                    <div class="market-status" id="market-status">
+                        <span class="status-dot"></span>
+                        <span>Market Closed</span>
+                    </div>
+                    <div class="pkt-clock-badge" id="pkt-clock-badge" title="Pakistan Standard Time (PKT)">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        <span id="pkt-clock-text">--:-- PKT</span>
+                    </div>
                 </div>
-                <div class="market-status" id="market-status">
-                    <span class="status-dot"></span>
-                    <span>Market Closed</span>
-                </div>
-                <div class="pkt-clock-badge" id="pkt-clock-badge" title="Pakistan Standard Time (PKT)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    <span id="pkt-clock-text">--:--:-- PKT</span>
-                </div>
-                <button class="btn btn-refresh" id="btn-refresh" title="Refresh Data">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="refresh-icon">
+
+                <!-- Navigation & Feature Buttons -->
+                <button class="btn btn-alpha-opportunities" id="btn-alpha-opportunities-header" onclick="switchView('trading-intelligence')" title="⚡ Short-Term Alpha Opportunities">
+                    <span class="pulse-alpha-dot"></span>
+                    <span>⚡ Opportunities</span>
+                </button>
+                <button class="btn btn-live-trading" id="btn-live-trading-header" title="Open Live Trading Analysis">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    <span>⚡ Live Depth</span>
+                </button>
+                <button class="btn btn-upper-lock" id="btn-upper-lock" title="Upper Lock Analysis">
+                    <svg class="lock-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                    <span>Upper Lock</span>
+                </button>
+                <button class="btn btn-stock-history" id="btn-stock-history" title="Stock History & Trends">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    <span>Trends</span>
+                </button>
+                <button class="btn btn-refresh" id="btn-refresh" title="Refresh Live Market Data">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="refresh-icon">
                         <path d="M1 4v6h6M23 20v-6h-6"/>
                         <path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/>
                     </svg>
-                    Refresh
-                </button>
-                <button class="btn btn-alpha-opportunities" id="btn-alpha-opportunities-header" onclick="switchView('trading-intelligence')" title="⚡ Short-Term Alpha Opportunities">
-                    <span class="pulse-alpha-dot"></span>
-                    <span>⚡ Short-Term Opportunities</span>
-                </button>
-                <button class="btn btn-live-trading" id="btn-live-trading-header" title="Open Live Trading Analysis">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    <span>⚡ Live Trading</span>
-                </button>
-                <button class="btn btn-upper-lock" id="btn-upper-lock" title="Upper Lock Analysis">
-                    <svg class="lock-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-                    Upper Lock
-                </button>
-                <button class="btn btn-stock-history" id="btn-stock-history" title="Stock History & Trends">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                    <span>📊 Stock Trends</span>
+                    <span>Refresh</span>
                 </button>
                 <button class="btn btn-ghost" id="btn-watchlist-toggle" title="View Watchlist">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
                     <span class="watchlist-count" id="watchlist-count">0</span>
                 </button>
-                <button class="btn btn-primary" id="btn-export" title="Export Results">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                    Export CSV
+                <button class="btn btn-primary" id="btn-export" title="Export Results to CSV">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                    <span>Export</span>
                 </button>
+
                 <!-- User Account Status Badge & Dropdown -->
                 <div class="account-badge-container" id="account-badge-container" style="display:inline-block; position:relative;">
-                    <button class="btn btn-account-badge" id="btn-account-badge" onclick="toggleAccountMenu()" style="display:flex; align-items:center; gap:6px; padding:6px 12px; font-size:0.8rem; font-weight:700; border-radius:20px; cursor:pointer; background:rgba(30, 41, 59, 0.8); border:1px solid rgba(255,255,255,0.18); color:#fff;">
+                    <button class="btn btn-account-badge" id="btn-account-badge" onclick="toggleAccountMenu()">
                         <span id="account-badge-icon">👤</span>
                         <span id="account-badge-text">Account</span>
                     </button>
                     <!-- Account Details Dropdown Box -->
-                    <div id="account-dropdown-menu" class="account-dropdown" style="display:none; position:absolute; right:0; top:42px; width:270px; background:#0f172a; border:1px solid rgba(99, 102, 241, 0.4); border-radius:12px; box-shadow:0 20px 40px rgba(0,0,0,0.85); padding:14px 16px; z-index:10000; text-align:left;">
+                    <div id="account-dropdown-menu" class="account-dropdown" style="display:none; position:absolute; right:0; top:38px; width:270px; background:#0f172a; border:1px solid rgba(99, 102, 241, 0.4); border-radius:12px; box-shadow:0 20px 40px rgba(0,0,0,0.85); padding:14px 16px; z-index:10000; text-align:left;">
                         <div style="font-size:0.75rem; color:#94a3b8; text-transform:uppercase; font-weight:700; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:6px;">👤 Account Information</div>
                         <div style="margin-bottom:8px;">
                             <span style="font-size:0.75rem; color:#cbd5e1; display:block;">Email Address:</span>
