@@ -1441,10 +1441,13 @@
                     <textarea id="feedback-message" rows="3" class="lic-input" placeholder="Tell us what new feature, technical indicator, or changes you would like to see..." style="width: 100%; padding: 10px 12px; font-size: 0.85rem; background: #1e293b; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: #fff; resize: vertical; box-sizing: border-box; font-family: inherit;"></textarea>
                 </div>
 
-                <!-- Email (optional) -->
+                <!-- Email (Mandatory) -->
                 <div style="margin-bottom: 16px;">
-                    <label style="font-size: 0.78rem; font-weight: 600; color: #94a3b8; display: block; margin-bottom: 6px;">Your Email (Optional):</label>
-                    <input type="email" id="feedback-email" class="lic-input" placeholder="your@email.com" style="width: 100%; padding: 9px 12px; font-size: 0.85rem; background: #1e293b; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: #fff; box-sizing: border-box;">
+                    <label style="font-size: 0.8rem; font-weight: 700; color: #fff; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span>Your Email Address <span style="color: #ef4444;">*</span></span>
+                        <span style="font-size: 0.7rem; color: #94a3b8; font-weight: normal;">Required for direct response</span>
+                    </label>
+                    <input type="email" id="feedback-email" class="lic-input" required placeholder="Enter your active email (e.g. name@gmail.com)" style="width: 100%; padding: 10px 12px; font-size: 0.85rem; background: #1e293b; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; color: #fff; box-sizing: border-box;">
                 </div>
 
                 <div id="feedback-status-msg" style="display:none; padding: 10px 12px; border-radius: 6px; font-size: 0.82rem; margin-bottom: 12px; text-align: center;"></div>

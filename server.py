@@ -2155,6 +2155,15 @@ def save_feedback_db(feedbacks):
         print(f"[PSX] Error saving feedback db: {e}")
 
 def record_feedback(rating=5, topic="General", message="", email="", client_ip="", device_id="", user_agent=""):
+    email_clean = (email or "").strip().lower()
+    if not email_clean or "@" not in email_clean:
+        return {"success": False, "error": "A legitimate email address is required so our team can reply to you."}
+
+    # Validate email legitimacy strictly
+    is_valid, err_msg = validate_email_strict(email_clean)
+    if not is_valid:
+        return {"success": False, "error": err_msg or "Please enter a valid personal or business email address."}
+
     feedbacks = get_feedback_db()
     now_ts = time.time()
     loc = get_ip_location(client_ip)
@@ -2170,7 +2179,7 @@ def record_feedback(rating=5, topic="General", message="", email="", client_ip="
         "stars": "⭐" * r_val,
         "topic": (topic or "General").strip(),
         "message": (message or "").strip(),
-        "email": (email or "").strip().lower(),
+        "email": email_clean,
         "clientIp": client_ip,
         "deviceId": device_id,
         "deviceInfo": device_info,

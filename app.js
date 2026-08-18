@@ -4656,17 +4656,47 @@ function submitFeedbackForm() {
     const submitBtn = document.getElementById("btn-submit-feedback");
 
     const message = messageInput ? messageInput.value.trim() : "";
-    const email = emailInput ? emailInput.value.trim() : (localStorage.getItem("psx_user_email") || "");
+    const email = emailInput ? emailInput.value.trim().toLowerCase() : "";
     const deviceId = getDeviceId();
 
-    if (!message && currentFeedbackRating <= 3) {
+    // 1. Validate Message
+    if (!message) {
         if (msgEl) {
             msgEl.style.display = "block";
             msgEl.style.background = "rgba(239, 68, 68, 0.15)";
             msgEl.style.color = "#fca5a5";
             msgEl.style.border = "1px solid rgba(239, 68, 68, 0.3)";
-            msgEl.textContent = "Please enter a brief description of what we can improve.";
+            msgEl.textContent = "Please describe what features, indicators, or feedback you have.";
         }
+        if (messageInput) messageInput.focus();
+        return;
+    }
+
+    // 2. Validate Legitimate Email (Strict & Required)
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!email || !emailRegex.test(email)) {
+        if (msgEl) {
+            msgEl.style.display = "block";
+            msgEl.style.background = "rgba(239, 68, 68, 0.15)";
+            msgEl.style.color = "#fca5a5";
+            msgEl.style.border = "1px solid rgba(239, 68, 68, 0.3)";
+            msgEl.textContent = "Please enter your valid, active email address so we can reply directly to you.";
+        }
+        if (emailInput) emailInput.focus();
+        return;
+    }
+
+    const emailUser = email.split("@")[0].toLowerCase();
+    const blockedNames = ["test", "fake", "temp", "asdf", "123", "12345", "admin", "null", "none", "demo", "sample"];
+    if (blockedNames.includes(emailUser) || emailUser.length < 3 || /^([a-z0-9])\1+$/.test(emailUser)) {
+        if (msgEl) {
+            msgEl.style.display = "block";
+            msgEl.style.background = "rgba(239, 68, 68, 0.15)";
+            msgEl.style.color = "#fca5a5";
+            msgEl.style.border = "1px solid rgba(239, 68, 68, 0.3)";
+            msgEl.textContent = "Please enter your legitimate personal or business email address.";
+        }
+        if (emailInput) emailInput.focus();
         return;
     }
 
@@ -4678,7 +4708,7 @@ function submitFeedbackForm() {
     const payload = {
         rating: currentFeedbackRating,
         topic: currentFeedbackTopic,
-        message: message || "Rating submission",
+        message: message,
         email: email,
         deviceId: deviceId
     };
@@ -4694,17 +4724,27 @@ function submitFeedbackForm() {
             submitBtn.disabled = false;
             submitBtn.textContent = "🚀 Send Feedback";
         }
-        if (msgEl) {
-            msgEl.style.display = "block";
-            msgEl.style.background = "rgba(16, 185, 129, 0.15)";
-            msgEl.style.color = "#a7f3d0";
-            msgEl.style.border = "1px solid rgba(16, 185, 129, 0.3)";
-            msgEl.textContent = "🎉 Thank you! Your feedback & feature request has been sent.";
+        if (res.success) {
+            if (msgEl) {
+                msgEl.style.display = "block";
+                msgEl.style.background = "rgba(16, 185, 129, 0.15)";
+                msgEl.style.color = "#a7f3d0";
+                msgEl.style.border = "1px solid rgba(16, 185, 129, 0.3)";
+                msgEl.textContent = "🎉 Thank you! Your feedback has been sent. We'll reply to your email shortly.";
+            }
+            if (messageInput) messageInput.value = "";
+            setTimeout(() => {
+                closeFeedbackModal();
+            }, 2000);
+        } else {
+            if (msgEl) {
+                msgEl.style.display = "block";
+                msgEl.style.background = "rgba(239, 68, 68, 0.15)";
+                msgEl.style.color = "#fca5a5";
+                msgEl.style.border = "1px solid rgba(239, 68, 68, 0.3)";
+                msgEl.textContent = res.error || "Please enter a valid personal or business email.";
+            }
         }
-        if (messageInput) messageInput.value = "";
-        setTimeout(() => {
-            closeFeedbackModal();
-        }, 1800);
     })
     .catch(err => {
         if (submitBtn) {
