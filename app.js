@@ -158,10 +158,15 @@ async function fetchLiveData(isAutoRefresh = false, isForce = false) {
             q += `&force=1`;
         }
 
+        const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const timeoutId = controller ? setTimeout(() => controller.abort(), 8000) : null;
+
+        const fetchOpts = controller ? { signal: controller.signal } : {};
         const [stockRes, indexRes] = await Promise.all([
-            fetch(`/api/stocks?${q}`),
-            fetch(`/api/indices?${q}`),
+            fetch(`/api/stocks?${q}`, fetchOpts),
+            fetch(`/api/indices?${q}`, fetchOpts),
         ]);
+        if (timeoutId) clearTimeout(timeoutId);
 
         if (stockRes.status === 402 || indexRes.status === 402) {
             initTrialSystem();
@@ -217,7 +222,7 @@ function showLoading(show) {
         if (loadingTimeoutTimer) clearTimeout(loadingTimeoutTimer);
         loadingTimeoutTimer = setTimeout(() => {
             if (overlay) overlay.style.display = 'none';
-        }, 8000);
+        }, 3500);
     } else {
         if (loadingTimeoutTimer) clearTimeout(loadingTimeoutTimer);
     }
@@ -5637,9 +5642,9 @@ function populateCalculatorDropdown() {
     const stockList = (typeof STOCKS !== "undefined" && STOCKS && STOCKS.length > 0) ? STOCKS : [];
     if (!sel || stockList.length === 0) return;
 
-    if (sel.options.length <= 1) {
+    if (!sel.options || sel.options.length <= 1) {
         sel.innerHTML = "";
-        const topSymbols = intelligenceResults.slice(0, 30);
+        const topSymbols = (intelligenceResults || []).slice(0, 30);
         (topSymbols.length > 0 ? topSymbols : stockList.slice(0, 30)).forEach(s => {
             const opt = document.createElement("option");
             opt.value = s.symbol;

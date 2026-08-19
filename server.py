@@ -552,18 +552,12 @@ def _start_continuous_poller():
 
 
 def fetch_stock_data(force=False):
-    """Return live stock data immediately. Refresh in background if stale or forced."""
-    is_stale = False
-    now = time.time()
-
+    """Return live stock data immediately from memory cache without blocking."""
     if force:
         _trigger_background_refresh()
 
     if stock_cache.get("data"):
-        if (now - stock_cache.get("timestamp", 0)) > CACHE_DURATION:
-            is_stale = True
-            _trigger_background_refresh()
-        return stock_cache["data"], is_stale
+        return stock_cache["data"], False
 
     if SNAPSHOT_FILE.exists():
         try:
@@ -571,9 +565,8 @@ def fetch_stock_data(force=False):
                 snap = json.load(f)
                 if snap.get("data"):
                     stock_cache["data"] = snap["data"]
-                    stock_cache["timestamp"] = now
-                    _trigger_background_refresh()
-                    return snap["data"], True
+                    stock_cache["timestamp"] = time.time()
+                    return snap["data"], False
         except Exception:
             pass
 
@@ -581,23 +574,14 @@ def fetch_stock_data(force=False):
 
 
 def fetch_index_data(force=False):
-    """Return live index data immediately. Refresh in background if stale or forced."""
-    is_stale = False
-    now = time.time()
-
+    """Return live index data immediately from memory cache without blocking."""
     if force:
         _trigger_background_refresh()
 
     if index_cache.get("data"):
-        if (now - index_cache.get("timestamp", 0)) > CACHE_DURATION:
-            is_stale = True
-            _trigger_background_refresh()
-        return index_cache["data"], is_stale
+        return index_cache["data"], False
 
-    index_cache["data"] = DEFAULT_INDEX_FALLBACK
-    index_cache["timestamp"] = now
-    _trigger_background_refresh()
-    return DEFAULT_INDEX_FALLBACK, True
+    return DEFAULT_INDEX_FALLBACK, False
 
 
 # ─── Fetch helpers ───
@@ -1794,7 +1778,7 @@ COUNTRY_FLAGS = {
 }
 
 def get_ip_location(ip):
-    """Lookup real City, Country, Flag, and ISP from client IP with caching."""
+    """Lookup real City, Country, Flag, and ISP from client IP with non-blocking background resolution."""
     ip = (ip or "").strip()
     if not ip or ip in ["127.0.0.1", "localhost", "::1"] or ip.startswith("192.168.") or ip.startswith("10."):
         return {"city": "Local Dev", "country": "Pakistan", "countryCode": "PK", "flag": "🇵🇰", "isp": "Localhost"}
@@ -1802,29 +1786,30 @@ def get_ip_location(ip):
     if ip in geo_cache:
         return geo_cache[ip]
 
-    try:
-        url = f"http://ip-api.com/json/{ip}?fields=status,country,countryCode,regionName,city,isp"
-        req = urllib.request.Request(url, headers={"User-Agent": "PSX-Screener/1.0"})
-        with urllib.request.urlopen(req, timeout=2.5) as resp:
-            data = json.load(resp)
-            if data.get("status") == "success":
-                cc = data.get("countryCode", "")
-                flag = COUNTRY_FLAGS.get(cc, "🌐")
-                loc = {
-                    "city": data.get("city", "Unknown City"),
-                    "country": data.get("country", "Unknown Country"),
-                    "countryCode": cc,
-                    "region": data.get("regionName", ""),
-                    "flag": flag,
-                    "isp": data.get("isp", "")
-                }
-                geo_cache[ip] = loc
-                return loc
-    except Exception:
-        pass
-
-    fallback = {"city": "Unknown", "country": "Pakistan", "countryCode": "PK", "flag": "🇵🇰", "isp": "Unknown"}
+    fallback = {"city": "Pakistan", "country": "Pakistan", "countryCode": "PK", "flag": "🇵🇰", "isp": "Internet Provider"}
     geo_cache[ip] = fallback
+
+    def _async_geo():
+        try:
+            url = f"http://ip-api.com/json/{ip}?fields=status,country,countryCode,regionName,city,isp"
+            req = urllib.request.Request(url, headers={"User-Agent": "PSX-Screener/1.0"})
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                data = json.load(resp)
+                if data.get("status") == "success":
+                    cc = data.get("countryCode", "")
+                    flag = COUNTRY_FLAGS.get(cc, "🌐")
+                    geo_cache[ip] = {
+                        "city": data.get("city", "Unknown City"),
+                        "country": data.get("country", "Unknown Country"),
+                        "countryCode": cc,
+                        "region": data.get("regionName", ""),
+                        "flag": flag,
+                        "isp": data.get("isp", "")
+                    }
+        except Exception:
+            pass
+
+    threading.Thread(target=_async_geo, daemon=True).start()
     return fallback
 
 def parse_user_agent_details(ua):
