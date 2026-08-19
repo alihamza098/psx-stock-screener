@@ -2,22 +2,22 @@
   {
     "id": "fb_1787045268_970",
     "rating": 5,
-    "stars": "⭐⭐⭐⭐⭐",
+    "stars": "\u2b50\u2b50\u2b50\u2b50\u2b50",
     "topic": "Indicator Request",
     "message": "Add MACD 4H chart please!",
     "email": "videosupermacy@gmail.com",
     "clientIp": "119.160.118.5",
     "deviceId": "dev_video_supremacy",
-    "deviceInfo": "💻 Desktop (Windows Edge)",
+    "deviceInfo": "\ud83d\udcbb Desktop (Windows Edge)",
     "location": {
       "city": "Karachi",
       "country": "Pakistan",
       "countryCode": "PK",
       "region": "Sindh",
-      "flag": "🇵🇰",
+      "flag": "\ud83c\uddf5\ud83c\uddf0",
       "isp": "Mobilink GSM"
     },
-    "locationStr": "🇵🇰 Karachi, Pakistan",
+    "locationStr": "\ud83c\uddf5\ud83c\uddf0 Karachi, Pakistan",
     "timestamp": 1787045268.341129,
     "dateStr": "18 Aug 2026, 07:27 PM PKT",
     "replied": false
@@ -25,22 +25,22 @@
   {
     "id": "fb_1787043660_890",
     "rating": 5,
-    "stars": "⭐⭐⭐⭐⭐",
+    "stars": "\u2b50\u2b50\u2b50\u2b50\u2b50",
     "topic": "New Feature",
     "message": "Please add RSI divergence indicator!",
     "email": "investor_pro@gmail.com",
     "clientIp": "119.160.1.5",
     "deviceId": "dev_fb_test_1",
-    "deviceInfo": "💻 Desktop (macOS Chrome)",
+    "deviceInfo": "\ud83d\udcbb Desktop (macOS Chrome)",
     "location": {
       "city": "Islamabad",
       "country": "Pakistan",
       "countryCode": "PK",
       "region": "Islamabad",
-      "flag": "🇵🇰",
+      "flag": "\ud83c\uddf5\ud83c\uddf0",
       "isp": "PMCL Transit"
     },
-    "locationStr": "🇵🇰 Islamabad, Pakistan",
+    "locationStr": "\ud83c\uddf5\ud83c\uddf0 Islamabad, Pakistan",
     "timestamp": 1787043660.602539,
     "dateStr": "18 Aug 2026, 07:01 PM PKT",
     "replied": false

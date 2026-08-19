@@ -1,97 +1,15 @@
 {
-  "email_ali@example.com": {
-    "email": "ali@example.com",
-    "paid_name": "Ali Hamza",
-    "is_paid": true,
-    "license_key": "PSX-PRO-7569-2697",
-    "created_at": 1786888621.0,
-    "first_seen": 1786888621.0,
-    "last_active": 1787038910.0,
-    "visit_count": 18,
-    "client_ip": "182.180.12.34",
-    "device_id": "dev_ali_main",
-    "device_info": "\ud83d\udcbb Desktop (macOS Chrome)",
-    "location": {
-      "city": "Karachi",
-      "country": "Pakistan",
-      "countryCode": "PK",
-      "flag": "\ud83c\uddf5\ud83c\uddf0",
-      "isp": "PTCL"
-    }
-  },
-  "email_user1@gmail.com": {
-    "email": "user1@gmail.com",
-    "paid_name": "User1",
-    "is_paid": true,
-    "license_key": "PSX-PRO-5487-9321",
-    "created_at": 1786889632.0,
-    "first_seen": 1786889632.0,
-    "last_active": 1787038910.0,
-    "visit_count": 8,
-    "client_ip": "39.40.18.22",
-    "device_id": "dev_user1",
-    "device_info": "\ud83d\udcf1 Mobile (Android Chrome)",
-    "location": {
-      "city": "Lahore",
-      "country": "Pakistan",
-      "countryCode": "PK",
-      "flag": "\ud83c\uddf5\ud83c\uddf0",
-      "isp": "Nayatel"
-    }
-  },
-  "email_videosupermacy@gmail.com": {
-    "email": "videosupermacy@gmail.com",
-    "paid_name": "Video Supremacy",
-    "is_paid": true,
-    "license_key": "PSX-PRO-VIDEOSUPREMACY",
-    "paid_until": 1818500000.0,
-    "trial_end": 1818500000.0,
-    "created_at": 1786950000.0,
-    "first_seen": 1786950000.0,
-    "last_active": 1787045268.004439,
-    "visit_count": 13,
-    "client_ip": "119.160.118.5",
-    "device_id": "dev_video_supremacy",
-    "device_info": "\ud83d\udcbb Desktop (Windows Edge)",
-    "location": {
-      "city": "Islamabad",
-      "country": "Pakistan",
-      "countryCode": "PK",
-      "flag": "\ud83c\uddf5\ud83c\uddf0",
-      "isp": "StormFiber"
-    },
-    "source": "ADMIN_GRANT"
-  },
-  "email_investor_ali@gmail.com": {
-    "email": "investor_ali@gmail.com",
-    "paid_name": "Ali Investor",
-    "is_paid": false,
-    "created_at": 1786952000.0,
-    "first_seen": 1786952000.0,
-    "last_active": 1787038910.0,
-    "trial_end": 1787298110.0,
-    "visit_count": 6,
-    "client_ip": "182.180.12.34",
-    "device_id": "dev_test_persist_1",
-    "device_info": "\ud83d\udcf1 Mobile (iPhone Safari)",
-    "location": {
-      "city": "Rawalpindi",
-      "country": "Pakistan",
-      "countryCode": "PK",
-      "flag": "\ud83c\uddf5\ud83c\uddf0",
-      "isp": "Zong 4G"
-    }
-  },
   "dev_mw02ym3fgmsvlipqh": {
     "email": "",
     "client_ip": "127.0.0.1",
     "device_id": "dev_mw02ym3fgmsvlipqh",
-    "created_at": 1787039546.4922729,
-    "first_seen": 1787039546.4922729,
-    "last_active": 1787046326.3179362,
-    "visit_count": 184,
-    "trial_end": 1787298746.4922729,
+    "created_at": 1787136031.103414,
+    "first_seen": 1787136031.103414,
+    "last_active": 1787136046.103552,
+    "visit_count": 2,
+    "trial_end": 1787395231.103414,
     "is_paid": false,
+    "license_key": "\u2014",
     "location": {
       "city": "Local Dev",
       "country": "Pakistan",
@@ -101,28 +19,5 @@
     },
     "device_info": "\ud83d\udcbb Desktop (macOS Chrome)",
     "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
-  },
-  "dev_video_supremacy": {
-    "email": "videosupermacy@gmail.com",
-    "client_ip": "119.160.118.5",
-    "device_id": "dev_video_supremacy",
-    "created_at": 1787045268.004439,
-    "first_seen": 1787045268.004439,
-    "last_active": 1787045268.004439,
-    "visit_count": 1,
-    "trial_end": 1818581268.004439,
-    "is_paid": true,
-    "license_key": "PSX-PRO-VIDEOSUPREMACY",
-    "location": {
-      "city": "Karachi",
-      "country": "Pakistan",
-      "countryCode": "PK",
-      "region": "Sindh",
-      "flag": "\ud83c\uddf5\ud83c\uddf0",
-      "isp": "Mobilink GSM"
-    },
-    "device_info": "\ud83d\udcbb Desktop (Other OS Browser)",
-    "user_agent": "",
-    "source": "ADMIN_GRANT"
   }
 }

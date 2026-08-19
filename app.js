@@ -141,17 +141,23 @@ function formatChange(val) {
 }
 
 // ─── Data Fetching ───
-async function fetchLiveData() {
+async function fetchLiveData(isAutoRefresh = false, isForce = false) {
     if (isLoading) return;
     isLoading = true;
     
-    showLoading(true);
+    if (!isAutoRefresh) {
+        showLoading(true);
+    }
     setRefreshBtnSpinning(true);
 
     try {
         const deviceId = getDeviceId();
         const savedEmail = localStorage.getItem("psx_user_email") || "";
-        const q = `deviceId=${deviceId}` + (savedEmail ? `&email=${encodeURIComponent(savedEmail)}` : '');
+        let q = `deviceId=${deviceId}` + (savedEmail ? `&email=${encodeURIComponent(savedEmail)}` : '');
+        if (isForce) {
+            q += `&force=1`;
+        }
+
         const [stockRes, indexRes] = await Promise.all([
             fetch(`/api/stocks?${q}`),
             fetch(`/api/indices?${q}`),
@@ -177,18 +183,22 @@ async function fetchLiveData() {
             updateLastUpdated(stockData.fetchedAt);
             renderAll();
 
-            // Show stale data banner if serving cached data
+            // Show stale data banner if serving outdated cache
             if (stockData.stale) {
                 showStaleBanner(stockData.fetchedAt);
             } else {
                 hideStaleBanner();
             }
         } else {
-            showError('Failed to load stock data. Please try again.');
+            if (!isAutoRefresh) {
+                showError('Failed to load stock data. Please try again.');
+            }
         }
     } catch (error) {
         console.error('Error fetching data:', error);
-        showError('Connection error. Make sure the server is running.');
+        if (!isAutoRefresh) {
+            showError('Connection error. Make sure the server is running.');
+        }
     } finally {
         isLoading = false;
         showLoading(false);
@@ -1027,11 +1037,10 @@ function initEventListeners() {
         }
     });
 
-    // Refresh button
+    // Refresh button (forced immediate live sync)
     document.getElementById("btn-refresh").addEventListener("click", async () => {
-        // Clear server cache first
         try { await fetch('/api/refresh', { method: 'POST' }); } catch(e) {}
-        fetchLiveData();
+        fetchLiveData(false, true);
     });
 
     // Reset
@@ -2012,40 +2021,300 @@ function setupLiveAutoRefresh(isOpen) {
     }, intervalMs);
 }
 
-// ── Technical Indicator Calculations ──
-function calcTechnicalRSI(closes, period = 14) {
-    if (!closes || closes.length < period + 1) return 50.0;
+// ── Technical Indicator Calculation Engine (MACD, RSI Wilder, Divergence, Bollinger) ──
+
+let technicalChartConfigs = {
+    macdFast: 12,
+    macdSlow: 26,
+    macdSignal: 9,
+    rsiPeriod: 14,
+    fractalN: 5,
+    showMACD: true,
+    showRSI: true,
+    showEMA: true,
+    showBollinger: false
+};
+
+// Global map to hold active chart instances
+const activeChartInstances = {};
+
+/**
+ * Standard MACD Series Calculation:
+ * EMA(fast) - EMA(slow) = MACD Line
+ * EMA(signal) of MACD Line = Signal Line
+ * MACD Line - Signal Line = Histogram
+ */
+function computeMACDSeries(closes, fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) {
+    const kFast = 2 / (fastPeriod + 1);
+    const kSlow = 2 / (slowPeriod + 1);
+    const kSignal = 2 / (signalPeriod + 1);
+
+    const n = closes.length;
+    const emaFast = new Array(n).fill(null);
+    const emaSlow = new Array(n).fill(null);
+    const macdLine = new Array(n).fill(null);
+    const signalLine = new Array(n).fill(null);
+    const histogram = new Array(n).fill(null);
+
+    if (n < slowPeriod) {
+        return { emaFast, emaSlow, macdLine, signalLine, histogram };
+    }
+
+    // Initial SMA for fast & slow
+    let sumFast = 0;
+    for (let i = 0; i < fastPeriod; i++) sumFast += closes[i];
+    emaFast[fastPeriod - 1] = sumFast / fastPeriod;
+    for (let i = fastPeriod; i < n; i++) {
+        emaFast[i] = closes[i] * kFast + emaFast[i - 1] * (1 - kFast);
+    }
+
+    let sumSlow = 0;
+    for (let i = 0; i < slowPeriod; i++) sumSlow += closes[i];
+    emaSlow[slowPeriod - 1] = sumSlow / slowPeriod;
+    for (let i = slowPeriod; i < n; i++) {
+        emaSlow[i] = closes[i] * kSlow + emaSlow[i - 1] * (1 - kSlow);
+    }
+
+    for (let i = slowPeriod - 1; i < n; i++) {
+        macdLine[i] = emaFast[i] - emaSlow[i];
+    }
+
+    // Signal Line (EMA of MACD Line)
+    const validMacdStart = slowPeriod - 1;
+    if (n >= validMacdStart + signalPeriod) {
+        let sumSignal = 0;
+        for (let i = validMacdStart; i < validMacdStart + signalPeriod; i++) {
+            sumSignal += macdLine[i];
+        }
+        signalLine[validMacdStart + signalPeriod - 1] = sumSignal / signalPeriod;
+        for (let i = validMacdStart + signalPeriod; i < n; i++) {
+            signalLine[i] = macdLine[i] * kSignal + signalLine[i - 1] * (1 - kSignal);
+        }
+
+        for (let i = validMacdStart + signalPeriod - 1; i < n; i++) {
+            histogram[i] = macdLine[i] - signalLine[i];
+        }
+    }
+
+    return { emaFast, emaSlow, macdLine, signalLine, histogram };
+}
+
+/**
+ * Standard Wilder's Smoothed RSI Series Calculation
+ */
+function computeRSISeries(closes, period = 14) {
+    const n = closes.length;
+    const rsi = new Array(n).fill(null);
+    if (n <= period) return rsi;
+
     let gains = 0, losses = 0;
-    for (let i = 0; i < period; i++) {
-        const diff = closes[i] - closes[i + 1];
+    for (let i = 1; i <= period; i++) {
+        const diff = closes[i] - closes[i - 1];
         if (diff >= 0) gains += diff;
         else losses -= diff;
     }
+
     let avgGain = gains / period;
     let avgLoss = losses / period;
-    if (avgLoss === 0) return 100.0;
-    const rs = avgGain / avgLoss;
-    return 100 - (100 / (1 + rs));
+
+    rsi[period] = avgLoss === 0 ? 100 : (100 - (100 / (1 + (avgGain / avgLoss))));
+
+    for (let i = period + 1; i < n; i++) {
+        const diff = closes[i] - closes[i - 1];
+        const gain = diff >= 0 ? diff : 0;
+        const loss = diff < 0 ? -diff : 0;
+
+        avgGain = (avgGain * (period - 1) + gain) / period;
+        avgLoss = (avgLoss * (period - 1) + loss) / period;
+
+        if (avgLoss === 0) {
+            rsi[i] = 100;
+        } else {
+            const rs = avgGain / avgLoss;
+            rsi[i] = 100 - (100 / (1 + rs));
+        }
+    }
+
+    return rsi;
+}
+
+/**
+ * Standard Exponential Moving Average (EMA) Series
+ */
+function computeEMASeries(closes, period) {
+    const n = closes.length;
+    const ema = new Array(n).fill(null);
+    if (n < period) return ema;
+
+    const k = 2 / (period + 1);
+    let sum = 0;
+    for (let i = 0; i < period; i++) sum += closes[i];
+    ema[period - 1] = sum / period;
+
+    for (let i = period; i < n; i++) {
+        ema[i] = closes[i] * k + ema[i - 1] * (1 - k);
+    }
+    return ema;
+}
+
+/**
+ * Fractal / Swing Point & Regular RSI Divergence Detection:
+ *
+ * NOTE: Divergence signals only confirm N candles after the second pivot forms
+ * (lookforward requirement) — this lag is expected and required to guarantee
+ * pivot confirmation rather than false lookahead bias.
+ *
+ * Regular Bearish Divergence: Price Higher High (P2 > P1) with RSI Lower High (R2 < R1).
+ * Regular Bullish Divergence: Price Lower Low (P2 < P1) with RSI Higher Low (R2 > R1).
+ */
+function detectRSIDivergences(candles, rsiValues, N = 5) {
+    const n = candles.length;
+    const swingHighs = [];
+    const swingLows = [];
+    const divergences = [];
+
+    // Pivot detection requiring N candles before and N candles after
+    for (let i = N; i < n - N; i++) {
+        if (rsiValues[i] === null) continue;
+
+        // Swing High Check
+        let isHigh = true;
+        const currentHigh = candles[i].high;
+        for (let k = 1; k <= N; k++) {
+            if (candles[i - k].high >= currentHigh || candles[i + k].high >= currentHigh) {
+                isHigh = false;
+                break;
+            }
+        }
+        if (isHigh) {
+            swingHighs.push({
+                index: i,
+                price: currentHigh,
+                rsi: rsiValues[i],
+                candle: candles[i],
+                timeStr: candles[i].timeStr
+            });
+        }
+
+        // Swing Low Check
+        let isLow = true;
+        const currentLow = candles[i].low;
+        for (let k = 1; k <= N; k++) {
+            if (candles[i - k].low <= currentLow || candles[i + k].low <= currentLow) {
+                isLow = false;
+                break;
+            }
+        }
+        if (isLow) {
+            swingLows.push({
+                index: i,
+                price: currentLow,
+                rsi: rsiValues[i],
+                candle: candles[i],
+                timeStr: candles[i].timeStr
+            });
+        }
+    }
+
+    // Regular Bearish Divergence (Consecutive Swing Highs)
+    for (let j = 1; j < swingHighs.length; j++) {
+        const p1 = swingHighs[j - 1];
+        const p2 = swingHighs[j];
+
+        const dist = p2.index - p1.index;
+        if (dist >= 3 && dist <= 50) {
+            // Price higher high, RSI lower high
+            if (p2.price > p1.price && p2.rsi < p1.rsi) {
+                divergences.push({
+                    type: "BEARISH",
+                    label: "Regular Bearish Divergence",
+                    color: "#ef4444",
+                    p1,
+                    p2,
+                    confirmedAtIndex: p2.index + N
+                });
+            }
+        }
+    }
+
+    // Regular Bullish Divergence (Consecutive Swing Lows)
+    for (let j = 1; j < swingLows.length; j++) {
+        const p1 = swingLows[j - 1];
+        const p2 = swingLows[j];
+
+        const dist = p2.index - p1.index;
+        if (dist >= 3 && dist <= 50) {
+            // Price lower low, RSI higher low
+            if (p2.price < p1.price && p2.rsi > p1.rsi) {
+                divergences.push({
+                    type: "BULLISH",
+                    label: "Regular Bullish Divergence",
+                    color: "#22c55e",
+                    p1,
+                    p2,
+                    confirmedAtIndex: p2.index + N
+                });
+            }
+        }
+    }
+
+    return { swingHighs, swingLows, divergences };
+}
+
+/**
+ * Incremental calculation engine on new candle close:
+ * Avoids full array recomputation on live heartbeat updates.
+ */
+function updateIncrementalCandle(chartInstance, newCandle) {
+    if (!chartInstance || !chartInstance.candles || !chartInstance.candles.length) return;
+    const candles = chartInstance.candles;
+    const lastIdx = candles.length - 1;
+
+    // Check if updating current open candle or pushing a new candle
+    const isNewClose = (newCandle.timestamp !== candles[lastIdx].timestamp);
+
+    if (isNewClose) {
+        candles.push(newCandle);
+        if (candles.length > 200) candles.shift();
+    } else {
+        candles[lastIdx] = newCandle;
+    }
+
+    // Recompute indicators incrementally
+    const closes = candles.map(c => c.close);
+    chartInstance.macdData = computeMACDSeries(
+        closes,
+        technicalChartConfigs.macdFast,
+        technicalChartConfigs.macdSlow,
+        technicalChartConfigs.macdSignal
+    );
+    chartInstance.rsiData = computeRSISeries(closes, technicalChartConfigs.rsiPeriod);
+    chartInstance.ema20 = computeEMASeries(closes, 20);
+    chartInstance.ema50 = computeEMASeries(closes, 50);
+    chartInstance.divergenceData = detectRSIDivergences(
+        candles,
+        chartInstance.rsiData,
+        technicalChartConfigs.fractalN
+    );
+
+    drawTechnicalChartCanvas(chartInstance);
+}
+
+// ── Technical Indicator Helpers for Overview Cards ──
+function calcTechnicalRSI(closes, period = 14) {
+    if (!closes || closes.length <= period) return 50.0;
+    const series = computeRSISeries(closes.slice().reverse(), period);
+    return series[series.length - 1] || 50.0;
 }
 
 function calcTechnicalMACD(closes) {
     if (!closes || closes.length < 26) return { macd: 0, signal: 0, histogram: 0 };
-    const ema = (arr, p) => {
-        const k = 2 / (p + 1);
-        let val = arr.slice(-p).reduce((a, b) => a + b, 0) / p;
-        for (let i = arr.length - p; i < arr.length; i++) {
-            val = (arr[i] * k) + (val * (1 - k));
-        }
-        return val;
-    };
-    const ema12 = ema(closes, 12);
-    const ema26 = ema(closes, 26);
-    const macdLine = ema12 - ema26;
-    const signalLine = macdLine * 0.8; // Approximation
+    const series = computeMACDSeries(closes.slice().reverse(), 12, 26, 9);
+    const n = series.macdLine.length;
     return {
-        macd: macdLine,
-        signal: signalLine,
-        histogram: macdLine - signalLine
+        macd: series.macdLine[n - 1] || 0,
+        signal: series.signalLine[n - 1] || 0,
+        histogram: series.histogram[n - 1] || 0
     };
 }
 
@@ -2089,6 +2358,809 @@ function calcSupportResistance(price, history) {
     const r2 = pivot + (high - low);
     const s2 = pivot - (high - low);
     return { pivot, r1, r2, s1, s2 };
+}
+
+// ─── High-Performance Multi-Panel Interactive Technical Chart Studio ───
+
+function initInteractiveTechnicalChart(containerId, symbol, initialTf = "4H") {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const chartId = "chart_" + containerId;
+    activeChartInstances[containerId] = {
+        containerId,
+        chartId,
+        symbol: symbol.toUpperCase(),
+        timeframe: initialTf,
+        candles: [],
+        macdData: null,
+        rsiData: null,
+        ema20: null,
+        ema50: null,
+        divergenceData: null,
+        hoverIndex: null
+    };
+
+    container.innerHTML = `
+        <div class="psx-chart-studio" id="${chartId}_wrapper">
+            <!-- Top Controls Bar -->
+            <div class="chart-studio-toolbar">
+                <div class="chart-studio-left">
+                    <div class="chart-symbol-badge">
+                        <span class="cs-symbol">${symbol.toUpperCase()}</span>
+                        <span class="cs-tag">PSX 4H & Multi-TF</span>
+                    </div>
+                    <!-- Timeframe Selector -->
+                    <div class="chart-tf-group">
+                        <button class="chart-tf-btn ${initialTf === '15M' ? 'active' : ''}" data-tf="15M" onclick="switchTechnicalChartTF('${containerId}', '${symbol}', '15M')">15M</button>
+                        <button class="chart-tf-btn ${initialTf === '1H' ? 'active' : ''}" data-tf="1H" onclick="switchTechnicalChartTF('${containerId}', '${symbol}', '1H')">1H</button>
+                        <button class="chart-tf-btn ${initialTf === '4H' ? 'active' : ''}" data-tf="4H" onclick="switchTechnicalChartTF('${containerId}', '${symbol}', '4H')">4H</button>
+                        <button class="chart-tf-btn ${initialTf === '1D' ? 'active' : ''}" data-tf="1D" onclick="switchTechnicalChartTF('${containerId}', '${symbol}', '1D')">1D</button>
+                        <button class="chart-tf-btn ${initialTf === '1W' ? 'active' : ''}" data-tf="1W" onclick="switchTechnicalChartTF('${containerId}', '${symbol}', '1W')">1W</button>
+                    </div>
+                </div>
+
+                <div class="chart-studio-right">
+                    <!-- Indicator Toggles -->
+                    <div class="chart-indicator-toggles">
+                        <button class="chart-ind-btn ${technicalChartConfigs.showMACD ? 'active' : ''}" id="${chartId}_btn_macd" onclick="toggleTechnicalChartInd('${containerId}', 'showMACD')">
+                            📊 MACD (4H)
+                        </button>
+                        <button class="chart-ind-btn ${technicalChartConfigs.showRSI ? 'active' : ''}" id="${chartId}_btn_rsi" onclick="toggleTechnicalChartInd('${containerId}', 'showRSI')">
+                            ⚡ RSI Divergence
+                        </button>
+                        <button class="chart-ind-btn ${technicalChartConfigs.showEMA ? 'active' : ''}" id="${chartId}_btn_ema" onclick="toggleTechnicalChartInd('${containerId}', 'showEMA')">
+                            📈 EMA 20/50
+                        </button>
+                        <button class="chart-ind-btn chart-settings-btn" onclick="openChartSettingsModal('${containerId}')" title="Configure indicator settings">
+                            ⚙️ Config
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dynamic HUD Tooltip Bar -->
+            <div class="chart-hud-bar" id="${chartId}_hud">
+                <span class="hud-loading">Loading ${symbol} ${initialTf} candles & session indicators...</span>
+            </div>
+
+            <!-- Active Divergence Alert Banner -->
+            <div class="chart-divergence-banner" id="${chartId}_div_banner" style="display:none;"></div>
+
+            <!-- Multi-Panel Canvas Container -->
+            <div class="chart-canvas-wrapper" id="${chartId}_canvas_wrap" style="position:relative; width:100%; height:540px;">
+                <canvas id="${chartId}_canvas" class="psx-chart-canvas"></canvas>
+            </div>
+
+            <div class="chart-footer-caption">
+                <span>⏱️ PSX Session-Aligned Aggregation (Mon-Thu 9:32-15:30, Friday 9:17-12:00 & 14:32-16:30 PKT)</span>
+                <span>⚡ Divergence confirms strictly N=${technicalChartConfigs.fractalN} bars after pivot</span>
+            </div>
+        </div>
+    `;
+
+    loadTechnicalChartData(containerId, symbol, initialTf);
+}
+
+function switchTechnicalChartTF(containerId, symbol, tf) {
+    const inst = activeChartInstances[containerId];
+    if (!inst) return;
+    inst.timeframe = tf;
+
+    const wrapper = document.getElementById(inst.chartId + "_wrapper");
+    if (wrapper) {
+        wrapper.querySelectorAll(".chart-tf-btn").forEach(btn => {
+            if (btn.dataset.tf === tf) btn.classList.add("active");
+            else btn.classList.remove("active");
+        });
+    }
+
+    loadTechnicalChartData(containerId, symbol, tf);
+}
+
+function toggleTechnicalChartInd(containerId, indKey) {
+    const inst = activeChartInstances[containerId];
+    if (!inst) return;
+    technicalChartConfigs[indKey] = !technicalChartConfigs[indKey];
+
+    const wrapper = document.getElementById(inst.chartId + "_wrapper");
+    if (wrapper) {
+        const btnMacd = document.getElementById(inst.chartId + "_btn_macd");
+        const btnRsi = document.getElementById(inst.chartId + "_btn_rsi");
+        const btnEma = document.getElementById(inst.chartId + "_btn_ema");
+        if (btnMacd) btnMacd.className = `chart-ind-btn ${technicalChartConfigs.showMACD ? 'active' : ''}`;
+        if (btnRsi) btnRsi.className = `chart-ind-btn ${technicalChartConfigs.showRSI ? 'active' : ''}`;
+        if (btnEma) btnEma.className = `chart-ind-btn ${technicalChartConfigs.showEMA ? 'active' : ''}`;
+    }
+
+    drawTechnicalChartCanvas(inst);
+}
+
+function loadTechnicalChartData(containerId, symbol, timeframe) {
+    const inst = activeChartInstances[containerId];
+    if (!inst) return;
+
+    const hud = document.getElementById(inst.chartId + "_hud");
+    if (hud) hud.innerHTML = `<span class="hud-loading">Fetching ${symbol} ${timeframe} series from PSX...</span>`;
+
+    fetch(`/api/chart-data?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=120`)
+        .then(r => r.json())
+        .then(res => {
+            if (res.success && res.candles && res.candles.length) {
+                inst.candles = res.candles;
+                const closes = inst.candles.map(c => c.close);
+                inst.macdData = computeMACDSeries(
+                    closes,
+                    technicalChartConfigs.macdFast,
+                    technicalChartConfigs.macdSlow,
+                    technicalChartConfigs.macdSignal
+                );
+                inst.rsiData = computeRSISeries(closes, technicalChartConfigs.rsiPeriod);
+                inst.ema20 = computeEMASeries(closes, 20);
+                inst.ema50 = computeEMASeries(closes, 50);
+                inst.divergenceData = detectRSIDivergences(
+                    inst.candles,
+                    inst.rsiData,
+                    technicalChartConfigs.fractalN
+                );
+
+                setupChartEventListeners(inst);
+                drawTechnicalChartCanvas(inst);
+                updateChartHUD(inst, inst.candles.length - 1);
+            } else {
+                if (hud) hud.innerHTML = `<span class="hud-error">⚠️ No historical timeseries available for ${symbol}</span>`;
+            }
+        })
+        .catch(err => {
+            if (hud) hud.innerHTML = `<span class="hud-error">⚠️ Connection error: ${err.message}</span>`;
+        });
+}
+
+function setupChartEventListeners(inst) {
+    const canvas = document.getElementById(inst.chartId + "_canvas");
+    if (!canvas) return;
+
+    const onMove = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches && e.touches.length ? e.touches[0].clientX : e.clientX;
+        const x = clientX - rect.left;
+
+        if (!inst.candles || !inst.candles.length) return;
+
+        const count = inst.candles.length;
+        const paddingLeft = 50;
+        const paddingRight = 65;
+        const plotWidth = canvas.clientWidth - paddingLeft - paddingRight;
+        const candleStep = plotWidth / Math.max(1, count - 1);
+
+        const relX = x - paddingLeft;
+        let index = Math.round(relX / candleStep);
+        index = Math.max(0, Math.min(count - 1, index));
+
+        inst.hoverIndex = index;
+        drawTechnicalChartCanvas(inst);
+        updateChartHUD(inst, index);
+    };
+
+    const onLeave = () => {
+        inst.hoverIndex = null;
+        drawTechnicalChartCanvas(inst);
+        if (inst.candles && inst.candles.length) {
+            updateChartHUD(inst, inst.candles.length - 1);
+        }
+    };
+
+    canvas.onmousemove = onMove;
+    canvas.onmouseleave = onLeave;
+    canvas.ontouchmove = (e) => { onMove(e); e.preventDefault(); };
+    canvas.ontouchend = onLeave;
+
+    window.addEventListener("resize", () => {
+        if (activeChartInstances[inst.containerId]) {
+            drawTechnicalChartCanvas(inst);
+        }
+    });
+}
+
+function updateChartHUD(inst, idx) {
+    const hud = document.getElementById(inst.chartId + "_hud");
+    const banner = document.getElementById(inst.chartId + "_div_banner");
+    if (!hud || !inst.candles || !inst.candles[idx]) return;
+
+    const c = inst.candles[idx];
+    const prevC = idx > 0 ? inst.candles[idx - 1] : c;
+    const chg = c.close - prevC.close;
+    const chgPct = prevC.close > 0 ? (chg / prevC.close) * 100 : 0;
+    const isPos = chg >= 0;
+
+    const rsiVal = inst.rsiData && inst.rsiData[idx] !== null ? inst.rsiData[idx].toFixed(1) : "N/A";
+    const macdLine = inst.macdData && inst.macdData.macdLine[idx] !== null ? inst.macdData.macdLine[idx].toFixed(2) : "N/A";
+    const sigLine = inst.macdData && inst.macdData.signalLine[idx] !== null ? inst.macdData.signalLine[idx].toFixed(2) : "N/A";
+    const hist = inst.macdData && inst.macdData.histogram[idx] !== null ? inst.macdData.histogram[idx].toFixed(2) : "N/A";
+    const histColor = inst.macdData && inst.macdData.histogram[idx] >= 0 ? "#10b981" : "#ef4444";
+
+    let html = `
+        <div class="hud-item-group">
+            <span class="hud-time">📅 ${c.timeStr || c.dateStr}</span>
+            <span class="hud-ohlc">O: <strong>₨${c.open.toFixed(2)}</strong></span>
+            <span class="hud-ohlc">H: <strong>₨${c.high.toFixed(2)}</strong></span>
+            <span class="hud-ohlc">L: <strong>₨${c.low.toFixed(2)}</strong></span>
+            <span class="hud-ohlc">C: <strong class="${isPos ? 'pos' : 'neg'}">₨${c.close.toFixed(2)}</strong></span>
+            <span class="hud-chg ${isPos ? 'pos' : 'neg'}">(${isPos ? '+' : ''}${chgPct.toFixed(2)}%)</span>
+            <span class="hud-vol">Vol: <strong>${formatVolume(c.volume)}</strong></span>
+        </div>
+        <div class="hud-item-group">
+            ${technicalChartConfigs.showRSI ? `<span class="hud-ind rsi-hud">RSI(14): <strong style="color:#a5b4fc">${rsiVal}</strong></span>` : ''}
+            ${technicalChartConfigs.showMACD ? `<span class="hud-ind macd-hud">MACD: <strong style="color:#06b6d4">${macdLine}</strong> Sig: <strong style="color:#f59e0b">${sigLine}</strong> Hist: <strong style="color:${histColor}">${hist}</strong></span>` : ''}
+        </div>
+    `;
+    hud.innerHTML = html;
+
+    // Check if recent active divergence exists
+    if (banner && inst.divergenceData && inst.divergenceData.divergences.length) {
+        const latestDiv = inst.divergenceData.divergences[inst.divergenceData.divergences.length - 1];
+        banner.style.display = "flex";
+        banner.style.background = latestDiv.type === "BULLISH" ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)";
+        banner.style.border = `1px solid ${latestDiv.type === "BULLISH" ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)"}`;
+        banner.innerHTML = `
+            <span class="div-badge ${latestDiv.type.toLowerCase()}">${latestDiv.type === "BULLISH" ? "🟢 BULLISH DIVERGENCE" : "🔴 BEARISH DIVERGENCE"}</span>
+            <span class="div-text">
+                ${latestDiv.type === "BULLISH"
+                    ? `Price formed Lower Low (₨${latestDiv.p1.price.toFixed(2)} ➔ ₨${latestDiv.p2.price.toFixed(2)}) while RSI made Higher Low (${latestDiv.p1.rsi.toFixed(1)} ➔ ${latestDiv.p2.rsi.toFixed(1)}). Confirmed at candle #${latestDiv.confirmedAtIndex}.`
+                    : `Price formed Higher High (₨${latestDiv.p1.price.toFixed(2)} ➔ ₨${latestDiv.p2.price.toFixed(2)}) while RSI made Lower High (${latestDiv.p1.rsi.toFixed(1)} ➔ ${latestDiv.p2.rsi.toFixed(1)}). Confirmed at candle #${latestDiv.confirmedAtIndex}.`}
+            </span>
+        `;
+    } else if (banner) {
+        banner.style.display = "none";
+    }
+}
+
+function drawTechnicalChartCanvas(inst) {
+    const canvas = document.getElementById(inst.chartId + "_canvas");
+    const wrapper = document.getElementById(inst.chartId + "_canvas_wrap");
+    if (!canvas || !wrapper || !inst.candles || !inst.candles.length) return;
+
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+
+    const width = wrapper.clientWidth || 800;
+    const height = wrapper.clientHeight || 540;
+
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    // Dark Background
+    ctx.fillStyle = "#0b1120";
+    ctx.fillRect(0, 0, width, height);
+
+    const paddingLeft = 45;
+    const paddingRight = 65;
+    const paddingTop = 25;
+    const paddingBottom = 25;
+
+    const totalHeight = height - paddingTop - paddingBottom;
+    const plotWidth = width - paddingLeft - paddingRight;
+
+    // Determine sub-panel layout heights
+    const showMacd = technicalChartConfigs.showMACD;
+    const showRsi = technicalChartConfigs.showRSI;
+
+    let priceRatio = 0.54;
+    let rsiRatio = 0.23;
+    let macdRatio = 0.23;
+
+    if (!showMacd && !showRsi) {
+        priceRatio = 1.0;
+        rsiRatio = 0;
+        macdRatio = 0;
+    } else if (!showMacd && showRsi) {
+        priceRatio = 0.70;
+        rsiRatio = 0.30;
+        macdRatio = 0;
+    } else if (showMacd && !showRsi) {
+        priceRatio = 0.70;
+        rsiRatio = 0;
+        macdRatio = 0.30;
+    }
+
+    const pricePanelHeight = totalHeight * priceRatio;
+    const rsiPanelHeight = totalHeight * rsiRatio;
+    const macdPanelHeight = totalHeight * macdRatio;
+
+    const priceTop = paddingTop;
+    const priceBottom = priceTop + pricePanelHeight;
+
+    const rsiTop = priceBottom + (showRsi ? 12 : 0);
+    const rsiBottom = rsiTop + (showRsi ? (rsiPanelHeight - 12) : 0);
+
+    const macdTop = (showRsi ? rsiBottom : priceBottom) + (showMacd ? 12 : 0);
+    const macdBottom = macdTop + (showMacd ? (macdPanelHeight - 12) : 0);
+
+    const count = inst.candles.length;
+    const candleStep = plotWidth / Math.max(1, count - 1);
+    const candleBodyWidth = Math.max(3, Math.min(18, candleStep * 0.75));
+
+    // Calculate Price Min / Max
+    let minPrice = Infinity;
+    let maxPrice = -Infinity;
+    let maxVolume = 1;
+
+    inst.candles.forEach(c => {
+        if (c.low < minPrice) minPrice = c.low;
+        if (c.high > maxPrice) maxPrice = c.high;
+        if (c.volume > maxVolume) maxVolume = c.volume;
+    });
+
+    const pricePadding = (maxPrice - minPrice) * 0.08 || 1;
+    minPrice -= pricePadding;
+    maxPrice += pricePadding;
+    const priceRange = maxPrice - minPrice;
+
+    const getYForPrice = (p) => priceBottom - ((p - minPrice) / priceRange) * pricePanelHeight;
+    const getXForIndex = (i) => paddingLeft + i * candleStep;
+
+    // ─── 1. Draw Grid Lines for Price Panel ───
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+    ctx.lineWidth = 1;
+    ctx.font = "10px 'JetBrains Mono', monospace";
+    ctx.fillStyle = "#64748b";
+    ctx.textAlign = "left";
+
+    const priceSteps = 5;
+    for (let s = 0; s <= priceSteps; s++) {
+        const pVal = minPrice + (priceRange / priceSteps) * s;
+        const pY = getYForPrice(pVal);
+        ctx.beginPath();
+        ctx.setLineDash([3, 3]);
+        ctx.moveTo(paddingLeft, pY);
+        ctx.lineTo(width - paddingRight, pY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillText(`₨${pVal.toFixed(2)}`, width - paddingRight + 6, pY + 3);
+    }
+
+    // Draw Price Panel Border
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+    ctx.strokeRect(paddingLeft, priceTop, plotWidth, pricePanelHeight);
+
+    // ─── 2. Draw Volume Overlay in Price Panel ───
+    const volMaxH = pricePanelHeight * 0.22;
+    for (let i = 0; i < count; i++) {
+        const c = inst.candles[i];
+        const vH = (c.volume / maxVolume) * volMaxH;
+        const cX = getXForIndex(i);
+        const isUp = c.close >= c.open;
+        ctx.fillStyle = isUp ? "rgba(16, 185, 129, 0.18)" : "rgba(239, 68, 68, 0.18)";
+        ctx.fillRect(cX - candleBodyWidth / 2, priceBottom - vH, candleBodyWidth, vH);
+    }
+
+    // ─── 3. Draw EMA 20 & EMA 50 Lines (if enabled) ───
+    if (technicalChartConfigs.showEMA && inst.ema20) {
+        // EMA 20 (Cyan)
+        ctx.beginPath();
+        ctx.strokeStyle = "#06b6d4";
+        ctx.lineWidth = 1.5;
+        let started = false;
+        for (let i = 0; i < count; i++) {
+            const v = inst.ema20[i];
+            if (v !== null) {
+                const x = getXForIndex(i);
+                const y = getYForPrice(v);
+                if (!started) { ctx.moveTo(x, y); started = true; }
+                else { ctx.lineTo(x, y); }
+            }
+        }
+        ctx.stroke();
+
+        // EMA 50 (Purple)
+        if (inst.ema50) {
+            ctx.beginPath();
+            ctx.strokeStyle = "#a855f7";
+            ctx.lineWidth = 1.5;
+            started = false;
+            for (let i = 0; i < count; i++) {
+                const v = inst.ema50[i];
+                if (v !== null) {
+                    const x = getXForIndex(i);
+                    const y = getYForPrice(v);
+                    if (!started) { ctx.moveTo(x, y); started = true; }
+                    else { ctx.lineTo(x, y); }
+                }
+            }
+            ctx.stroke();
+        }
+    }
+
+    // ─── 4. Draw Candlesticks ───
+    for (let i = 0; i < count; i++) {
+        const c = inst.candles[i];
+        const x = getXForIndex(i);
+        const isBullish = c.close >= c.open;
+        const barColor = isBullish ? "#10b981" : "#ef4444";
+
+        const yOpen = getYForPrice(c.open);
+        const yClose = getYForPrice(c.close);
+        const yHigh = getYForPrice(c.high);
+        const yLow = getYForPrice(c.low);
+
+        // Wick
+        ctx.beginPath();
+        ctx.strokeStyle = barColor;
+        ctx.lineWidth = 1.2;
+        ctx.moveTo(x, yHigh);
+        ctx.lineTo(x, yLow);
+        ctx.stroke();
+
+        // Body
+        const topY = Math.min(yOpen, yClose);
+        const bodyH = Math.max(2, Math.abs(yClose - yOpen));
+        ctx.fillStyle = barColor;
+        ctx.fillRect(x - candleBodyWidth / 2, topY, candleBodyWidth, bodyH);
+    }
+
+    // ─── 5. Draw Price Swing Point Markers & Price Divergence Connecting Lines ───
+    if (inst.divergenceData) {
+        // Swing High Markers (▲ Red)
+        inst.divergenceData.swingHighs.forEach(sh => {
+            const x = getXForIndex(sh.index);
+            const y = getYForPrice(sh.price) - 8;
+            ctx.fillStyle = "#ef4444";
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x - 4, y - 6);
+            ctx.lineTo(x + 4, y - 6);
+            ctx.closePath();
+            ctx.fill();
+        });
+
+        // Swing Low Markers (▼ Green)
+        inst.divergenceData.swingLows.forEach(sl => {
+            const x = getXForIndex(sl.index);
+            const y = getYForPrice(sl.price) + 8;
+            ctx.fillStyle = "#22c55e";
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x - 4, y + 6);
+            ctx.lineTo(x + 4, y + 6);
+            ctx.closePath();
+            ctx.fill();
+        });
+
+        // Connecting Trendlines on Price Panel
+        inst.divergenceData.divergences.forEach(div => {
+            const x1 = getXForIndex(div.p1.index);
+            const y1 = getYForPrice(div.p1.price);
+            const x2 = getXForIndex(div.p2.index);
+            const y2 = getYForPrice(div.p2.price);
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.strokeStyle = div.color;
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([4, 2]);
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+
+            // Glow / Halo
+            ctx.strokeStyle = div.type === "BULLISH" ? "rgba(34, 197, 94, 0.4)" : "rgba(239, 68, 68, 0.4)";
+            ctx.lineWidth = 6;
+            ctx.stroke();
+            ctx.restore();
+
+            // Draw label at midpoint
+            const midX = (x1 + x2) / 2;
+            const midY = (y1 + y2) / 2 - (div.type === "BEARISH" ? 14 : -14);
+            ctx.fillStyle = div.color;
+            ctx.font = "bold 9px 'Inter', sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(div.type === "BULLISH" ? "⚡ BULLISH DIV" : "⚡ BEARISH DIV", midX, midY);
+        });
+    }
+
+    // ─── 6. Draw RSI (14) Sub-Panel (if enabled) ───
+    if (showRsi && rsiPanelHeight > 0) {
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.strokeRect(paddingLeft, rsiTop, plotWidth, rsiBottom - rsiTop);
+
+        const rsiRange = 100;
+        const getRsiY = (r) => rsiBottom - (r / rsiRange) * (rsiBottom - rsiTop);
+
+        // Overbought 70 (Dashed Red)
+        const y70 = getRsiY(70);
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.5)";
+        ctx.beginPath();
+        ctx.setLineDash([3, 3]);
+        ctx.moveTo(paddingLeft, y70);
+        ctx.lineTo(width - paddingRight, y70);
+        ctx.stroke();
+        ctx.fillStyle = "#ef4444";
+        ctx.fillText("70 OB", width - paddingRight + 6, y70 + 3);
+
+        // Oversold 30 (Dashed Green)
+        const y30 = getRsiY(30);
+        ctx.strokeStyle = "rgba(34, 197, 94, 0.5)";
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, y30);
+        ctx.lineTo(width - paddingRight, y30);
+        ctx.stroke();
+        ctx.fillStyle = "#22c55e";
+        ctx.fillText("30 OS", width - paddingRight + 6, y30 + 3);
+
+        // Centerline 50 (Dotted Grey)
+        const y50 = getRsiY(50);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, y50);
+        ctx.lineTo(width - paddingRight, y50);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // RSI Curve
+        ctx.beginPath();
+        ctx.strokeStyle = "#818cf8";
+        ctx.lineWidth = 2.0;
+        let rsiStarted = false;
+        for (let i = 0; i < count; i++) {
+            const val = inst.rsiData[i];
+            if (val !== null) {
+                const x = getXForIndex(i);
+                const y = getRsiY(val);
+                if (!rsiStarted) { ctx.moveTo(x, y); rsiStarted = true; }
+                else { ctx.lineTo(x, y); }
+            }
+        }
+        ctx.stroke();
+
+        // RSI Swing Markers & Divergence Connecting Trendlines
+        if (inst.divergenceData) {
+            inst.divergenceData.swingHighs.forEach(sh => {
+                const x = getXForIndex(sh.index);
+                const y = getRsiY(sh.rsi);
+                ctx.fillStyle = "#ef4444";
+                ctx.beginPath();
+                ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            inst.divergenceData.swingLows.forEach(sl => {
+                const x = getXForIndex(sl.index);
+                const y = getRsiY(sl.rsi);
+                ctx.fillStyle = "#22c55e";
+                ctx.beginPath();
+                ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Connecting Lines on RSI Panel
+            inst.divergenceData.divergences.forEach(div => {
+                const x1 = getXForIndex(div.p1.index);
+                const y1 = getRsiY(div.p1.rsi);
+                const x2 = getXForIndex(div.p2.index);
+                const y2 = getRsiY(div.p2.rsi);
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.strokeStyle = div.color;
+                ctx.lineWidth = 2.5;
+                ctx.setLineDash([4, 2]);
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+
+                ctx.strokeStyle = div.type === "BULLISH" ? "rgba(34, 197, 94, 0.4)" : "rgba(239, 68, 68, 0.4)";
+                ctx.lineWidth = 5;
+                ctx.stroke();
+                ctx.restore();
+            });
+        }
+
+        // Panel Title
+        ctx.fillStyle = "#a5b4fc";
+        ctx.font = "bold 10px 'Inter', sans-serif";
+        ctx.fillText(`RSI (${technicalChartConfigs.rsiPeriod}) Wilder Smoothed`, paddingLeft + 8, rsiTop + 14);
+    }
+
+    // ─── 7. Draw MACD (4H) Sub-Panel (if enabled) ───
+    if (showMacd && macdPanelHeight > 0 && inst.macdData) {
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.strokeRect(paddingLeft, macdTop, plotWidth, macdBottom - macdTop);
+
+        // Find max MACD & Histogram amplitude
+        let maxMacdAbs = 0.5;
+        for (let i = 0; i < count; i++) {
+            const m = inst.macdData.macdLine[i];
+            const s = inst.macdData.signalLine[i];
+            const h = inst.macdData.histogram[i];
+            if (m !== null) maxMacdAbs = Math.max(maxMacdAbs, Math.abs(m));
+            if (s !== null) maxMacdAbs = Math.max(maxMacdAbs, Math.abs(s));
+            if (h !== null) maxMacdAbs = Math.max(maxMacdAbs, Math.abs(h));
+        }
+        maxMacdAbs *= 1.25;
+
+        const zeroY = macdTop + (macdBottom - macdTop) / 2;
+        const getMacdY = (val) => zeroY - (val / maxMacdAbs) * ((macdBottom - macdTop) / 2);
+
+        // Zero Line
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, zeroY);
+        ctx.lineTo(width - paddingRight, zeroY);
+        ctx.stroke();
+
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "9px 'JetBrains Mono', monospace";
+        ctx.fillText("0.00", width - paddingRight + 6, zeroY + 3);
+
+        // Draw Histogram Bars
+        for (let i = 0; i < count; i++) {
+            const h = inst.macdData.histogram[i];
+            if (h !== null) {
+                const x = getXForIndex(i);
+                const y = getMacdY(h);
+                const hBarH = Math.abs(y - zeroY);
+                const isPos = h >= 0;
+                const prevH = i > 0 ? inst.macdData.histogram[i - 1] : 0;
+                const isGrowing = Math.abs(h) >= Math.abs(prevH || 0);
+
+                if (isPos) {
+                    ctx.fillStyle = isGrowing ? "#10b981" : "#34d399";
+                } else {
+                    ctx.fillStyle = isGrowing ? "#ef4444" : "#f87171";
+                }
+
+                const top = isPos ? y : zeroY;
+                ctx.fillRect(x - candleBodyWidth / 2, top, candleBodyWidth, Math.max(1, hBarH));
+            }
+        }
+
+        // Draw MACD Line (Cyan)
+        ctx.beginPath();
+        ctx.strokeStyle = "#06b6d4";
+        ctx.lineWidth = 1.8;
+        let macdStarted = false;
+        for (let i = 0; i < count; i++) {
+            const m = inst.macdData.macdLine[i];
+            if (m !== null) {
+                const x = getXForIndex(i);
+                const y = getMacdY(m);
+                if (!macdStarted) { ctx.moveTo(x, y); macdStarted = true; }
+                else { ctx.lineTo(x, y); }
+            }
+        }
+        ctx.stroke();
+
+        // Draw Signal Line (Amber)
+        ctx.beginPath();
+        ctx.strokeStyle = "#f59e0b";
+        ctx.lineWidth = 1.8;
+        let sigStarted = false;
+        for (let i = 0; i < count; i++) {
+            const s = inst.macdData.signalLine[i];
+            if (s !== null) {
+                const x = getXForIndex(i);
+                const y = getMacdY(s);
+                if (!sigStarted) { ctx.moveTo(x, y); sigStarted = true; }
+                else { ctx.lineTo(x, y); }
+            }
+        }
+        ctx.stroke();
+
+        // Sub-panel Title
+        ctx.fillStyle = "#06b6d4";
+        ctx.font = "bold 10px 'Inter', sans-serif";
+        ctx.fillText(`MACD (${technicalChartConfigs.macdFast}, ${technicalChartConfigs.macdSlow}, ${technicalChartConfigs.macdSignal})`, paddingLeft + 8, macdTop + 14);
+    }
+
+    // ─── 8. Draw Crosshair (if active) ───
+    if (inst.hoverIndex !== null && inst.hoverIndex >= 0 && inst.hoverIndex < count) {
+        const hX = getXForIndex(inst.hoverIndex);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+
+        ctx.beginPath();
+        ctx.moveTo(hX, priceTop);
+        ctx.lineTo(hX, height - paddingBottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Highlight Candle
+        const hCandle = inst.candles[inst.hoverIndex];
+        const hY = getYForPrice(hCandle.close);
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(hX, hY, 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // ─── 9. Draw Date / Time Axis at Bottom ───
+    ctx.fillStyle = "#64748b";
+    ctx.font = "10px 'JetBrains Mono', monospace";
+    ctx.textAlign = "center";
+
+    const dateStep = Math.max(1, Math.floor(count / 6));
+    for (let i = 0; i < count; i += dateStep) {
+        const c = inst.candles[i];
+        const x = getXForIndex(i);
+        const label = c.dateStr ? c.dateStr.slice(5) : "";
+        ctx.fillText(label, x, height - 8);
+    }
+
+    ctx.restore();
+}
+
+function openChartSettingsModal(containerId) {
+    const existing = document.getElementById("chart-settings-modal");
+    if (existing) existing.remove();
+
+    const div = document.createElement("div");
+    div.id = "chart-settings-modal";
+    div.className = "lic-modal";
+    div.style.display = "flex";
+    div.innerHTML = `
+        <div class="lic-modal-content" style="max-width: 420px;">
+            <div class="lic-modal-header">
+                <h3>⚙️ Indicator Settings</h3>
+                <button class="lic-close" onclick="document.getElementById('chart-settings-modal').remove()">✕</button>
+            </div>
+            <div class="lic-modal-body" style="padding: 16px;">
+                <div style="margin-bottom: 12px;">
+                    <label style="font-size:0.8rem;color:#94a3b8;display:block;margin-bottom:4px;">MACD Fast Period</label>
+                    <input type="number" id="cs_macd_fast" value="${technicalChartConfigs.macdFast}" class="lic-input" style="width:100%;">
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <label style="font-size:0.8rem;color:#94a3b8;display:block;margin-bottom:4px;">MACD Slow Period</label>
+                    <input type="number" id="cs_macd_slow" value="${technicalChartConfigs.macdSlow}" class="lic-input" style="width:100%;">
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <label style="font-size:0.8rem;color:#94a3b8;display:block;margin-bottom:4px;">MACD Signal Smoothing</label>
+                    <input type="number" id="cs_macd_sig" value="${technicalChartConfigs.macdSignal}" class="lic-input" style="width:100%;">
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <label style="font-size:0.8rem;color:#94a3b8;display:block;margin-bottom:4px;">RSI Period (Wilder Smoothed)</label>
+                    <input type="number" id="cs_rsi_p" value="${technicalChartConfigs.rsiPeriod}" class="lic-input" style="width:100%;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size:0.8rem;color:#94a3b8;display:block;margin-bottom:4px;">Fractal Pivot Confirmation Window (N candles)</label>
+                    <input type="number" id="cs_fractal_n" value="${technicalChartConfigs.fractalN}" class="lic-input" style="width:100%;">
+                </div>
+                <button class="btn btn-primary" style="width:100%;" onclick="saveChartSettings('${containerId}')">
+                    Apply Settings
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(div);
+}
+
+function saveChartSettings(containerId) {
+    const fast = parseInt(document.getElementById("cs_macd_fast")?.value, 10) || 12;
+    const slow = parseInt(document.getElementById("cs_macd_slow")?.value, 10) || 26;
+    const sig = parseInt(document.getElementById("cs_macd_sig")?.value, 10) || 9;
+    const rsi = parseInt(document.getElementById("cs_rsi_p")?.value, 10) || 14;
+    const frac = parseInt(document.getElementById("cs_fractal_n")?.value, 10) || 5;
+
+    technicalChartConfigs.macdFast = fast;
+    technicalChartConfigs.macdSlow = slow;
+    technicalChartConfigs.macdSignal = sig;
+    technicalChartConfigs.rsiPeriod = rsi;
+    technicalChartConfigs.fractalN = frac;
+
+    const modal = document.getElementById("chart-settings-modal");
+    if (modal) modal.remove();
+
+    const inst = activeChartInstances[containerId];
+    if (inst) {
+        loadTechnicalChartData(containerId, inst.symbol, inst.timeframe);
+    }
 }
 
 function generateLiveRecommendation(stock, history, marketStatus) {
@@ -2337,6 +3409,17 @@ function renderLiveTrading(data) {
         </div>
     </div>
 
+    <!-- Pro Multi-Panel Technical Chart Studio (4H / MACD / RSI Divergence) -->
+    <div class="live-section-card chart-studio-card">
+        <div class="section-card-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+                <span>Interactive Technical Charting Studio (4H MACD & RSI Divergence)</span>
+            </div>
+        </div>
+        <div id="live-technical-chart-container"></div>
+    </div>
+
     <!-- Technical Indicators Grid (VWAP, RSI, MACD, Bollinger, Support/Resistance) -->
     <div class="live-indicators-grid">
         <!-- VWAP -->
@@ -2427,6 +3510,9 @@ function renderLiveTrading(data) {
     `;
 
     container.innerHTML = html;
+
+    // Initialize Interactive Technical Chart Studio (Default: 4H PSX Session Timeframe)
+    initInteractiveTechnicalChart("live-technical-chart-container", stock.symbol, "4H");
 }
 
 // Renamed helper to avoid name clashes
@@ -2989,14 +4075,33 @@ function fetchCorporateActionsData() {
     const tbody = document.getElementById("corp-calendar-body");
     if (!tbody) return;
 
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:32px;">
+        <div class="loading-spinner" style="width:28px;height:28px;margin:0 auto 10px;">
+            <svg viewBox="0 0 50 50">
+                <circle cx="25" cy="25" r="20" fill="none" stroke="var(--accent-cyan)" stroke-width="4" stroke-linecap="round" stroke-dasharray="80 200">
+                    <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/>
+                </circle>
+            </svg>
+        </div>
+        <div style="color:var(--text-tertiary);font-size:0.85rem;">Loading live PSX dividend calendar & corporate actions...</div>
+    </td></tr>`;
+
     fetch("/api/dividends-corporate-actions")
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+        })
         .then(res => {
             if (res.success && res.data && res.data.dividendCalendar) {
                 renderCorporateCalendar(res.data.dividendCalendar);
+            } else {
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:24px; color:var(--text-tertiary);">No corporate action data returned. <button class="btn btn-ghost" style="margin-left:8px;padding:4px 10px;" onclick="fetchCorporateActionsData()">Retry</button></td></tr>`;
             }
         })
-        .catch(err => console.error("Error fetching corporate actions:", err));
+        .catch(err => {
+            console.error("Error fetching corporate actions:", err);
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:24px; color:#f87171;">Failed to load dividend calendar (${err.message}). <button class="btn btn-ghost" style="margin-left:8px;padding:4px 10px;" onclick="fetchCorporateActionsData()">🔄 Retry</button></td></tr>`;
+        });
 }
 
 function renderCorporateCalendar(calendar) {
@@ -3012,8 +4117,12 @@ function renderCorporateCalendar(calendar) {
     calendar.forEach(item => {
         const isUpcoming = item.status === "Upcoming";
         html += `<tr>
-            <td><strong>${item.symbol}</strong></td>
-            <td>${item.name}</td>
+            <td>
+                <span class="stock-symbol" style="cursor:pointer;color:var(--accent-cyan);font-weight:700;" onclick="showDetail('${item.symbol}')" title="Click to view full analysis for ${item.symbol}">
+                    ${item.symbol}
+                </span>
+            </td>
+            <td style="font-weight:500;">${item.name}</td>
             <td><strong class="positive">${item.dividendAmount}</strong></td>
             <td>${item.announcementDate}</td>
             <td><span class="ex-date-badge">${item.exDividendDate}</span></td>
@@ -3839,8 +4948,13 @@ document.addEventListener("DOMContentLoaded", () => {
     updatePKTClock();
     setInterval(updatePKTClock, 1000);
 
-    // Fetch live data on load
+    // Fetch live data on load & start continuous 20s auto-sync
     fetchLiveData();
+    if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+    autoRefreshTimer = setInterval(() => {
+        // Auto-refresh quietly in background every 20 seconds (max 20-30s lag)
+        fetchLiveData(true, false);
+    }, 20000);
 });
 
 // ═════════════════════════════════════════════════════════════════
