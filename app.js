@@ -168,7 +168,7 @@ async function fetchLiveData(isAutoRefresh = false, isForce = false) {
         ]);
         if (timeoutId) clearTimeout(timeoutId);
 
-        if (stockRes.status === 402 || indexRes.status === 402) {
+        if (stockRes.status === 401 || stockRes.status === 402 || indexRes.status === 401 || indexRes.status === 402) {
             initTrialSystem();
             return;
         }
@@ -176,7 +176,7 @@ async function fetchLiveData(isAutoRefresh = false, isForce = false) {
         const stockData = await stockRes.json();
         const indexData = await indexRes.json();
 
-        if (stockData.trialExpired || indexData.trialExpired) {
+        if (stockData.trialExpired || indexData.trialExpired || stockData.needsEmail || indexData.needsEmail) {
             initTrialSystem();
             return;
         }
@@ -4815,6 +4815,7 @@ function submitTrialEmail() {
                         const emailModal = document.getElementById("trial-email-modal");
                         if (emailModal) emailModal.style.display = "none";
                         initTrialSystem();
+                        fetchLiveData(false, true);
                     }, 1200);
                 } else {
                     msgEl.className = "activation-msg msg-error";
@@ -4882,6 +4883,7 @@ function submitLicenseActivation() {
                         const modal = document.getElementById("trial-paywall-modal");
                         if (modal) modal.style.display = "none";
                         initTrialSystem();
+                        fetchLiveData(false, true);
                     }, 1800);
                 } else {
                     msgEl.className = "activation-msg msg-error";
@@ -4911,6 +4913,7 @@ function acceptTermsAndConditions() {
     const modal = document.getElementById("terms-disclaimer-modal");
     if (modal) modal.style.display = "none";
     initTrialSystem();
+    fetchLiveData(false, true);
 }
 
 function initTermsCheck() {

@@ -1960,8 +1960,9 @@ def save_trial_db(db):
 
 def check_trial_status(client_ip, device_id, host_header="", email="", user_agent="", orig_start_ts=0, license_key=""):
     host_lower = (host_header or "").lower()
-    is_local_host = any(h in host_lower for h in ["localhost", "127.0.0.1", "192.168.", "10."]) or \
-                   any(ip in (client_ip or "") for ip in ["127.0.0.1", "192.168.", "10."])
+    local_patterns = ["localhost", "127.0.0.1", "::1", "0.0.0.0", "192.168.", "10.", ".local"]
+    is_local_host = any(h in host_lower for h in local_patterns) or \
+                   any(ip in (client_ip or "") for ip in ["127.0.0.1", "::1", "192.168.", "10."])
 
     if is_local_host:
         return {
@@ -2820,6 +2821,13 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         status = check_trial_status(client_ip, device_id, host_header, email)
         if status.get("isLocal") or status.get("trialActive"):
             return True
+        if status.get("needsEmail"):
+            self._send_json({
+                "success": False,
+                "needsEmail": True,
+                "error": "Email registration required to start 3-Day Free Trial."
+            }, 401)
+            return False
         self._send_json({
             "success": False,
             "error": "3-Day Free Trial Expired. Upgrade to PSX Screener Pro to continue accessing live data.",
