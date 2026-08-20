@@ -1,18 +1,6 @@
-const CACHE_NAME = 'psx-screener-v1';
-const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/app.js',
-  '/manifest.json'
-];
+const CACHE_NAME = 'psx-screener-v2';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
-  );
   self.skipWaiting();
 });
 
@@ -26,26 +14,26 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only cache GET requests for static assets, let API calls pass through or fallback
-  if (event.request.method === 'GET' && !event.request.url.includes('/api/')) {
-    event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) {
-          fetch(event.request).then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
-            }
-          }).catch(() => {});
-          return cachedResponse;
-        }
-        return fetch(event.request);
-      })
-    );
+  // Let all API calls and dynamic requests bypass service worker completely
+  if (event.request.url.includes('/api/')) {
+    return;
   }
+  
+  // Network-first strategy for HTML, JS, CSS
+  event.respondWith(
+    fetch(event.request)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return networkResponse;
+      })
+      .catch(() => caches.match(event.request))
+  );
 });

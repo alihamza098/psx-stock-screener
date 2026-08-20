@@ -2803,9 +2803,12 @@ def admin_delete_user_record(email):
 class PSXHandler(http.server.SimpleHTTPRequestHandler):
     """Custom handler for API routes + static file serving."""
 
-    def __init__(self, *args, **kwargs):
-        # Serve from current directory
-        super().__init__(*args, directory=str(Path(__file__).parent), **kwargs)
+    def end_headers(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
 
     def _get_client_ip(self):
         forwarded = self.headers.get("X-Forwarded-For", "")
@@ -3075,9 +3078,6 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-            self.send_header("Pragma", "no-cache")
-            self.send_header("Expires", "0")
             self.end_headers()
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError):
