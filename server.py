@@ -2809,6 +2809,178 @@ def admin_delete_user_record(email):
     save_trial_db(trial_db)
     return {"success": True, "message": f"Removed records for {email_clean}"}
 
+# ─── Tab & Feature Deployment Status Management ───
+TAB_STATUS_FILE = str(Path(__file__).parent / "cache" / "tab_status.json")
+
+DEFAULT_TAB_STATUSES = {
+    "table": {
+        "id": "table",
+        "name": "Table View (Screener)",
+        "category": "Main Navigation",
+        "icon": "📊",
+        "status": "ONLINE",
+        "message": "Market Screener & Real-Time Technical Filters",
+        "eta": "Live Now"
+    },
+    "cards": {
+        "id": "cards",
+        "name": "Card View",
+        "category": "Main Navigation",
+        "icon": "🗂️",
+        "status": "ONLINE",
+        "message": "Visual Stock Cards Grid",
+        "eta": "Live Now"
+    },
+    "scorecard": {
+        "id": "scorecard",
+        "name": "Investment Scorecard",
+        "category": "Main Navigation",
+        "icon": "🏆",
+        "status": "ONLINE",
+        "message": "Algorithmic 0-100 Fundamental & Technical Scoring",
+        "eta": "Live Now"
+    },
+    "weekly-scan": {
+        "id": "weekly-scan",
+        "name": "Weekly Trade Options",
+        "category": "Main Navigation",
+        "icon": "🎯",
+        "status": "ONLINE",
+        "message": "Multi-Trigger Weekly Swing Scanner & Dynamic Position Sizing",
+        "eta": "Live Now"
+    },
+    "live-trading": {
+        "id": "live-trading",
+        "name": "Live Trading Analysis",
+        "category": "Main Navigation",
+        "icon": "⚡",
+        "status": "ONLINE",
+        "message": "Single Stock Multi-Timeframe Technicals & Real-Time Signals",
+        "eta": "Live Now"
+    },
+    "education": {
+        "id": "education",
+        "name": "Market Mechanics",
+        "category": "Main Navigation",
+        "icon": "🎓",
+        "status": "ONLINE",
+        "message": "PSX Trading Education, Upper Locks & Circuit Rules",
+        "eta": "Live Now"
+    },
+    "simulator": {
+        "id": "simulator",
+        "name": "Paper Simulator & Broker",
+        "category": "Main Navigation",
+        "icon": "🎮",
+        "status": "ONLINE",
+        "message": "Virtual Paper Trading Portfolio with Live Margin Accounting",
+        "eta": "Live Now"
+    },
+    "corporate": {
+        "id": "corporate",
+        "name": "Dividends & Corporate Actions",
+        "category": "Main Navigation",
+        "icon": "📅",
+        "status": "ONLINE",
+        "message": "Dividend Payouts, AGMs & Bonus Issues Calendar",
+        "eta": "Live Now"
+    },
+    "financials": {
+        "id": "financials",
+        "name": "Financial Statements & Ratios",
+        "category": "Main Navigation",
+        "icon": "📊",
+        "status": "ONLINE",
+        "message": "Balance Sheet, Income Statement, Cash Flows & 10 Key Ratios",
+        "eta": "Live Now"
+    },
+    "trading-intelligence": {
+        "id": "trading-intelligence",
+        "name": "AI Trading Agent",
+        "category": "Main Navigation",
+        "icon": "🤖",
+        "status": "ONLINE",
+        "message": "Autonomous AI Screener & Multi-Factor Position Monitor",
+        "eta": "Live Now"
+    },
+    "upper-lock": {
+        "id": "upper-lock",
+        "name": "Upper Lock Analysis",
+        "category": "Top Module",
+        "icon": "🔒",
+        "status": "ONLINE",
+        "message": "Circuit Breakers & Upper Lock Price Band Detector",
+        "eta": "Live Now"
+    },
+    "stock-history": {
+        "id": "stock-history",
+        "name": "Stock History & Trends",
+        "category": "Top Module",
+        "icon": "📈",
+        "status": "ONLINE",
+        "message": "Historical Price & Volume Trend Analytics",
+        "eta": "Live Now"
+    }
+}
+
+def get_tab_status_db():
+    if os.path.exists(TAB_STATUS_FILE):
+        try:
+            with open(TAB_STATUS_FILE, "r") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    merged = dict(DEFAULT_TAB_STATUSES)
+                    for k, v in data.items():
+                        if k in merged:
+                            merged[k] = {**merged[k], **v}
+                        else:
+                            merged[k] = v
+                    return merged
+        except Exception as e:
+            print(f"[PSX] Error reading tab_status.json: {e}")
+    return dict(DEFAULT_TAB_STATUSES)
+
+def save_tab_status_db(tabs):
+    try:
+        Path(TAB_STATUS_FILE).parent.mkdir(parents=True, exist_ok=True)
+        with open(TAB_STATUS_FILE, "w") as f:
+            json.dump(tabs, f, indent=2)
+    except Exception as e:
+        print(f"[PSX] Error saving tab_status.json: {e}")
+
+def update_tab_status(tab_id, status, message=None, eta=None):
+    tabs = get_tab_status_db()
+    if tab_id not in tabs:
+        return {"success": False, "error": f"Tab '{tab_id}' not found."}
+    
+    clean_status = "ONLINE" if str(status).upper() == "ONLINE" else "OFFLINE"
+    tabs[tab_id]["status"] = clean_status
+    if message:
+        tabs[tab_id]["message"] = message
+    if eta:
+        tabs[tab_id]["eta"] = eta
+    tabs[tab_id]["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(time.time() + 5*3600))
+    save_tab_status_db(tabs)
+    return {
+        "success": True, 
+        "tab": tabs[tab_id], 
+        "message": f"Tab '{tabs[tab_id]['name']}' is now set to {clean_status}!"
+    }
+
+def set_all_tabs_status(status):
+    clean_status = "ONLINE" if str(status).upper() == "ONLINE" else "OFFLINE"
+    tabs = get_tab_status_db()
+    now_str = time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(time.time() + 5*3600))
+    for k in tabs:
+        tabs[k]["status"] = clean_status
+        tabs[k]["updated_at"] = now_str
+    save_tab_status_db(tabs)
+    return {
+        "success": True, 
+        "tabs": tabs, 
+        "message": f"All tabs have been marked as {clean_status}!"
+    }
+
 
 # ─── HTTP Request Handler ───
 class PSXHandler(http.server.SimpleHTTPRequestHandler):
@@ -3034,6 +3206,40 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 "sizing": sizing
             })
 
+        # ─── Tab & Feature Deployment Status Endpoints ───
+        elif parsed_path.path == "/api/tabs/status":
+            tabs = get_tab_status_db()
+            self._send_json({"success": True, "tabs": tabs})
+        elif parsed_path.path == "/api/admin/tabs/status":
+            query = parse_qs(parsed_path.query)
+            secret = query.get("secret", [""])[0]
+            if not verify_admin_secret(secret):
+                self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                return
+            tabs = get_tab_status_db()
+            self._send_json({"success": True, "tabs": tabs})
+        elif parsed_path.path == "/api/admin/tabs/set-status":
+            query = parse_qs(parsed_path.query)
+            secret = query.get("secret", [""])[0]
+            if not verify_admin_secret(secret):
+                self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                return
+            tab_id = query.get("tabId", [""])[0]
+            status = query.get("status", ["ONLINE"])[0]
+            msg = query.get("message", [None])[0]
+            eta = query.get("eta", [None])[0]
+            res = update_tab_status(tab_id, status, msg, eta)
+            self._send_json(res, 200 if res.get("success") else 400)
+        elif parsed_path.path == "/api/admin/tabs/set-all":
+            query = parse_qs(parsed_path.query)
+            secret = query.get("secret", [""])[0]
+            if not verify_admin_secret(secret):
+                self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                return
+            status = query.get("status", ["ONLINE"])[0]
+            res = set_all_tabs_status(status)
+            self._send_json(res, 200 if res.get("success") else 400)
+
         # ─── Admin Endpoints ───
         elif parsed_path.path in ["/admin", "/admin/"]:
             self.path = "/admin.html"
@@ -3155,6 +3361,33 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 reply_msg = body.get('reply', '')
                 res = admin_reply_feedback(feedback_id, reply_msg)
                 self._send_json(res, 200 if res["success"] else 400)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/admin/tabs/status":
+            try:
+                body = json.loads(post_data.decode('utf-8'))
+                secret = body.get('secret', '')
+                if not verify_admin_secret(secret):
+                    self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                    return
+                tab_id = body.get('tabId', '')
+                status = body.get('status', 'ONLINE')
+                message = body.get('message', None)
+                eta = body.get('eta', None)
+                res = update_tab_status(tab_id, status, message, eta)
+                self._send_json(res, 200 if res.get('success') else 400)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/admin/tabs/set-all":
+            try:
+                body = json.loads(post_data.decode('utf-8'))
+                secret = body.get('secret', '')
+                if not verify_admin_secret(secret):
+                    self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                    return
+                status = body.get('status', 'ONLINE')
+                res = set_all_tabs_status(status)
+                self._send_json(res, 200 if res.get('success') else 400)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 400)
         elif self.path == "/api/trading/approve-trade":

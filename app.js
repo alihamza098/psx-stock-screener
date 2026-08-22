@@ -954,6 +954,99 @@ function updateRangeLabels() {
     document.getElementById("year-change-value").textContent = yearChange <= -100 ? "Any" : `≥ ${yearChange}%`;
 }
 
+// ─── Tab & Feature Deployment Status System ───
+let appTabStatuses = {};
+
+async function fetchAndApplyTabStatuses() {
+    try {
+        const res = await fetch("/api/tabs/status");
+        const json = await res.json();
+        if (json.success && json.tabs) {
+            appTabStatuses = json.tabs;
+            applyTabDeploymentBadges();
+        }
+    } catch (e) {
+        console.error("Error loading tab statuses:", e);
+    }
+}
+
+function applyTabDeploymentBadges() {
+    const tabsList = Object.values(appTabStatuses || {});
+    tabsList.forEach(tab => {
+        const tabBtn = document.getElementById("tab-" + tab.id);
+        const isOffline = tab.status === "OFFLINE";
+
+        if (tabBtn) {
+            if (isOffline) {
+                tabBtn.classList.add("tab-offline-coming-soon");
+                let badge = tabBtn.querySelector(".badge-tab-coming-soon");
+                if (!badge) {
+                    badge = document.createElement("span");
+                    badge.className = "badge-tab-coming-soon";
+                    badge.textContent = "COMING SOON";
+                    tabBtn.appendChild(badge);
+                }
+            } else {
+                tabBtn.classList.remove("tab-offline-coming-soon");
+                const badge = tabBtn.querySelector(".badge-tab-coming-soon");
+                if (badge) badge.remove();
+            }
+        }
+
+        // Top Header modules
+        if (tab.id === "upper-lock") {
+            const btn = document.getElementById("btn-upper-lock");
+            if (btn) {
+                if (isOffline) {
+                    btn.classList.add("tab-offline-coming-soon");
+                    btn.title = "Upper Lock (Coming Soon)";
+                } else {
+                    btn.classList.remove("tab-offline-coming-soon");
+                    btn.title = "Upper Lock Analysis";
+                }
+            }
+        } else if (tab.id === "stock-history") {
+            const btn = document.getElementById("btn-stock-history");
+            if (btn) {
+                if (isOffline) {
+                    btn.classList.add("tab-offline-coming-soon");
+                    btn.title = "Stock Trends (Coming Soon)";
+                } else {
+                    btn.classList.remove("tab-offline-coming-soon");
+                    btn.title = "Stock History & Trends";
+                }
+            }
+        }
+    });
+}
+
+function renderComingSoonTab(view) {
+    const tabCfg = appTabStatuses[view] || {
+        name: view.replace('-', ' ').toUpperCase(),
+        icon: "🚀",
+        message: "This feature is currently undergoing final verification and will be deployed online shortly.",
+        eta: "Coming Soon"
+    };
+
+    return `
+    <div class="coming-soon-tab-container">
+        <div class="coming-soon-card">
+            <div class="coming-soon-badge-top">⏳ FEATURE COMING SOON</div>
+            <div class="coming-soon-icon">${tabCfg.icon || '🚀'}</div>
+            <h2 class="coming-soon-title">${tabCfg.name}</h2>
+            <p class="coming-soon-desc">${tabCfg.message || 'This algorithmic module is being prepared for high-performance online deployment.'}</p>
+            <div class="coming-soon-eta-pill">
+                <span>Target Launch:</span>
+                <strong style="color: #34d399;">${tabCfg.eta || 'Coming Soon'}</strong>
+            </div>
+            <div class="coming-soon-actions">
+                <button class="btn btn-primary" onclick="switchToPaywallModal()">⚡ Get Early Access Notification</button>
+                <button class="btn btn-ghost" onclick="switchView('table')">📊 Back to Market Screener</button>
+            </div>
+        </div>
+    </div>`;
+}
+
 // ─── View Switching ───
 function switchView(view) {
     currentView = view;
@@ -985,6 +1078,15 @@ function switchView(view) {
     if (marketOverview) marketOverview.style.display = isScreenerView ? "grid" : "none";
     if (screenerControls) screenerControls.style.display = isScreenerView ? "block" : "none";
     if (searchContainer) searchContainer.style.display = isScreenerView ? "flex" : "none";
+
+    // Check if this tab is marked COMING SOON / OFFLINE
+    if (appTabStatuses[view] && appTabStatuses[view].status === "OFFLINE") {
+        const targetViewEl = document.getElementById(`view-${view}`);
+        if (targetViewEl) {
+            targetViewEl.innerHTML = renderComingSoonTab(view);
+        }
+        return;
+    }
 
     // View specific initializations
     if (view === "weekly-scan") {
@@ -6806,5 +6908,16 @@ function openStockChartModal(symbol) {
         showDetail(symbol);
     }
 }
+
+// ─── Initial Application Startup ───
+document.addEventListener("DOMContentLoaded", () => {
+    initEventListeners();
+    fetchLiveData();
+    fetchAndApplyTabStatuses();
+
+    // Periodic Tab Deployment Status Sync (Every 8 seconds)
+    setInterval(fetchAndApplyTabStatuses, 8000);
+});
+
 
 

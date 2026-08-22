@@ -371,11 +371,17 @@
                 <div class="kpi-val" id="kpi-total-feedbacks" style="color: #f472b6;">0</div>
                 <div class="kpi-sub">User ratings & feature ideas</div>
             </div>
+            <div class="kpi-card" style="border-color: rgba(99, 102, 241, 0.4); background: rgba(99, 102, 241, 0.08);">
+                <div class="kpi-label">🎛️ Online Active Tabs</div>
+                <div class="kpi-val" id="kpi-online-tabs" style="color: var(--accent-green);">12 / 12</div>
+                <div class="kpi-sub"><span id="kpi-offline-tabs">0</span> coming soon</div>
+            </div>
         </div>
 
         <!-- Dashboard Sub-Tabs -->
         <div class="admin-tabs">
             <button class="tab-btn active" onclick="switchAdminTab('live', this)">🟢 Live Active Visitors (<span id="tab-online-count">0</span>)</button>
+            <button class="tab-btn" onclick="switchAdminTab('deployment', this)">🎛️ Tab Deployment Status (<span id="tab-online-tabs-count">12</span> Online)</button>
             <button class="tab-btn" onclick="switchAdminTab('users', this)">👥 All Registered Users</button>
             <button class="tab-btn" onclick="switchAdminTab('licenses', this)">🔑 License Key Manager</button>
             <button class="tab-btn" onclick="switchAdminTab('upgrade', this)">⚡ Direct Pro Upgrader</button>
@@ -399,6 +405,60 @@
                     <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted);">
                         Waiting for live visitors activity...
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Tab & Feature Deployment Status Management -->
+        <div id="tab-deployment" class="admin-tab-content" style="display:none;">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">
+                            <span>🎛️ Tab & Feature Deployment Control Center</span>
+                        </div>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">
+                            Toggle tabs between <strong>🟢 ONLINE</strong> (Fully active) and <strong>🟡 COMING SOON</strong> (Displays a Coming Soon badge & placeholder screen). Changes reflect instantly for all visitors.
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-primary btn-sm" onclick="setAllTabsDeploymentStatus('ONLINE')" style="background: linear-gradient(135deg, #059669, #10b981);">
+                            🟢 Set ALL Tabs Online
+                        </button>
+                        <button class="btn btn-ghost btn-sm" onclick="setAllTabsDeploymentStatus('OFFLINE')" style="border-color: #f59e0b; color: #fbbf24;">
+                            ⏳ Set ALL Coming Soon
+                        </button>
+                        <button class="btn btn-ghost btn-sm" onclick="fetchTabDeploymentStatus()">
+                            🔄 Sync Status
+                        </button>
+                    </div>
+                </div>
+
+                <div class="filter-bar" style="margin-bottom: 16px;">
+                    <input type="text" id="tab-search-input" class="search-input" placeholder="🔍 Search tab by name or ID..." oninput="renderTabDeploymentTable()">
+                    <select id="tab-status-filter" class="form-control" onchange="renderTabDeploymentTable()">
+                        <option value="ALL">All Statuses</option>
+                        <option value="ONLINE">🟢 Online Only</option>
+                        <option value="OFFLINE">🟡 Coming Soon Only</option>
+                    </select>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 220px;">Tab / Feature Name</th>
+                                <th style="width: 140px;">Category</th>
+                                <th style="width: 150px;">Live Status</th>
+                                <th>Headline & Status Message</th>
+                                <th style="width: 140px;">ETA / Release</th>
+                                <th style="width: 200px; text-align: center;">One-Click Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabs-deployment-table-body">
+                            <tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">Loading feature deployment flags...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -636,6 +696,7 @@
             if (adminSecret) {
                 document.getElementById("login-modal").style.display = "none";
                 fetchAdminData();
+                fetchTabDeploymentStatus();
             }
         });
 
@@ -659,6 +720,7 @@
                         document.getElementById("login-modal").style.display = "none";
                         errEl.style.display = "none";
                         fetchAdminData();
+                        fetchTabDeploymentStatus();
                     } else {
                         errEl.style.display = "block";
                         errEl.textContent = res.error || "Incorrect Password.";
@@ -683,6 +745,10 @@
             const target = document.getElementById("tab-" + tabId);
             if (target) target.style.display = "block";
             if (btn) btn.classList.add("active");
+
+            if (tabId === "deployment") {
+                fetchTabDeploymentStatus();
+            }
         }
 
         let adminAutoPollTimer = null;
@@ -707,6 +773,8 @@
                 .catch(err => {
                     console.error("fetchAdminData error:", err);
                 });
+
+            fetchTabDeploymentStatus();
 
             if (!adminAutoPollTimer) {
                 adminAutoPollTimer = setInterval(fetchAdminData, 5000);
@@ -1251,6 +1319,192 @@
                     statusEl.textContent = "Error: " + err.message;
                 }
             });
+        }
+
+        // ═════════════════════════════════════════════════════════════════
+        // 🎛️ TAB & FEATURE DEPLOYMENT MANAGEMENT JAVASCRIPT
+        // ═════════════════════════════════════════════════════════════════
+
+        let adminTabsData = {};
+
+        function fetchTabDeploymentStatus() {
+            if (!adminSecret) return;
+
+            fetch(`/api/admin/tabs/status?secret=${encodeURIComponent(adminSecret)}`)
+                .then(r => r.json())
+                .then(res => {
+                    if (res.success && res.tabs) {
+                        adminTabsData = res.tabs;
+                        renderTabDeploymentTable();
+                    }
+                })
+                .catch(err => console.error("Error fetching tab statuses:", err));
+        }
+
+        function renderTabDeploymentTable() {
+            const tbody = document.getElementById("tabs-deployment-table-body");
+            if (!tbody) return;
+
+            const tabsList = Object.values(adminTabsData || {});
+            if (tabsList.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">No tab definitions loaded.</td></tr>`;
+                return;
+            }
+
+            const search = (document.getElementById("tab-search-input")?.value || "").trim().toLowerCase();
+            const statusFilter = document.getElementById("tab-status-filter")?.value || "ALL";
+
+            let onlineCount = 0;
+            let offlineCount = 0;
+
+            tabsList.forEach(t => {
+                if (t.status === "ONLINE") onlineCount++;
+                else offlineCount++;
+            });
+
+            // Update KPI cards
+            const kpiOnline = document.getElementById("kpi-online-tabs");
+            const kpiOffline = document.getElementById("kpi-offline-tabs");
+            const tabOnlineCount = document.getElementById("tab-online-tabs-count");
+            if (kpiOnline) kpiOnline.textContent = `${onlineCount} / ${tabsList.length}`;
+            if (kpiOffline) kpiOffline.textContent = `${offlineCount} coming soon`;
+            if (tabOnlineCount) tabOnlineCount.textContent = onlineCount;
+
+            const filtered = tabsList.filter(t => {
+                if (statusFilter !== "ALL" && t.status !== statusFilter) return false;
+                if (search && !t.name.toLowerCase().includes(search) && !t.id.toLowerCase().includes(search) && !(t.message || '').toLowerCase().includes(search)) return false;
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">No tabs match the selected filter.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(t => {
+                const isOnline = t.status === "ONLINE";
+                const statusBadge = isOnline ? 
+                    `<span class="badge badge-pro" style="font-size:0.75rem; padding:4px 10px;">🟢 ONLINE</span>` : 
+                    `<span class="badge badge-unused" style="font-size:0.75rem; padding:4px 10px; background: rgba(245,158,11,0.18); color:#fbbf24; border-color: rgba(245,158,11,0.4);">🟡 COMING SOON</span>`;
+
+                const toggleBtn = isOnline ? 
+                    `<button class="btn btn-sm" onclick="toggleTabDeployment('${t.id}', 'OFFLINE')" style="background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.4); font-size:0.75rem; padding:6px 12px; border-radius:6px; font-weight:700;">
+                        ⏳ Mark Coming Soon
+                    </button>` :
+                    `<button class="btn btn-primary btn-sm" onclick="toggleTabDeployment('${t.id}', 'ONLINE')" style="background: linear-gradient(135deg, #059669, #10b981); font-size:0.75rem; padding:6px 12px; border-radius:6px; font-weight:700;">
+                        🟢 Deploy Online
+                    </button>`;
+
+                return `
+                <tr>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:1.3rem;">${t.icon || '📌'}</span>
+                            <div>
+                                <div style="font-weight:700; color:#f8fafc; font-size:0.88rem;">${t.name}</div>
+                                <code style="font-size:0.7rem; color:#64748b;">ID: ${t.id}</code>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge" style="background:rgba(255,255,255,0.06); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1); font-size:0.7rem;">
+                            ${t.category || 'Main Navigation'}
+                        </span>
+                    </td>
+                    <td>${statusBadge}</td>
+                    <td>
+                        <input type="text" id="tab-msg-${t.id}" class="form-control" value="${(t.message || '').replace(/"/g, '&quot;')}" style="font-size:0.78rem; padding:5px 8px; width:100%;" onchange="saveTabInlineDetails('${t.id}')">
+                    </td>
+                    <td>
+                        <input type="text" id="tab-eta-${t.id}" class="form-control" value="${(t.eta || 'Live Now').replace(/"/g, '&quot;')}" style="font-size:0.78rem; padding:5px 8px; width:100px;" onchange="saveTabInlineDetails('${t.id}')">
+                    </td>
+                    <td style="text-align:center;">
+                        <div style="display:flex; justify-content:center; gap:6px;">
+                            ${toggleBtn}
+                        </div>
+                    </td>
+                </tr>`;
+            }).join("");
+        }
+
+        function toggleTabDeployment(tabId, targetStatus) {
+            if (!adminSecret) return;
+
+            const payload = {
+                secret: adminSecret,
+                tabId: tabId,
+                status: targetStatus,
+                message: document.getElementById(`tab-msg-${tabId}`)?.value || null,
+                eta: document.getElementById(`tab-eta-${tabId}`)?.value || (targetStatus === 'ONLINE' ? 'Live Now' : 'Coming Soon')
+            };
+
+            fetch("/api/admin/tabs/status", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success && res.tab) {
+                    adminTabsData[tabId] = res.tab;
+                    renderTabDeploymentTable();
+                } else {
+                    alert(res.error || "Failed to update tab status.");
+                }
+            })
+            .catch(err => console.error("Toggle error:", err));
+        }
+
+        function saveTabInlineDetails(tabId) {
+            if (!adminSecret || !adminTabsData[tabId]) return;
+            const currentStatus = adminTabsData[tabId].status || "ONLINE";
+            const msg = document.getElementById(`tab-msg-${tabId}`)?.value || "";
+            const eta = document.getElementById(`tab-eta-${tabId}`)?.value || "";
+
+            fetch("/api/admin/tabs/status", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    secret: adminSecret,
+                    tabId: tabId,
+                    status: currentStatus,
+                    message: msg,
+                    eta: eta
+                })
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success && res.tab) {
+                    adminTabsData[tabId] = res.tab;
+                }
+            });
+        }
+
+        function setAllTabsDeploymentStatus(targetStatus) {
+            if (!adminSecret) return;
+            const confirmMsg = targetStatus === "ONLINE" ? 
+                "Are you sure you want to mark ALL tabs and modules as ONLINE?" : 
+                "Are you sure you want to mark ALL tabs and modules as COMING SOON / OFFLINE?";
+            if (!confirm(confirmMsg)) return;
+
+            fetch("/api/admin/tabs/set-all", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    secret: adminSecret,
+                    status: targetStatus
+                })
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success && res.tabs) {
+                    adminTabsData = res.tabs;
+                    renderTabDeploymentTable();
+                } else {
+                    alert(res.error || "Failed to update all tabs.");
+                }
+            })
+            .catch(err => console.error("Error setting all tabs:", err));
         }
     </script>
 </body>
