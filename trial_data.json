@@ -3,11 +3,11 @@
     "email": "",
     "client_ip": "127.0.0.1",
     "device_id": "dev_mw02ym3fgmsvlipqh",
-    "created_at": 1787136031.103414,
-    "first_seen": 1787136031.103414,
-    "last_active": 1787136046.103552,
-    "visit_count": 2,
-    "trial_end": 1787395231.103414,
+    "created_at": 1787387280.752023,
+    "first_seen": 1787387280.752023,
+    "last_active": 1787390082.5506601,
+    "visit_count": 105,
+    "trial_end": 1787646480.752023,
     "is_paid": false,
     "license_key": "\u2014",
     "location": {
@@ -19,5 +19,26 @@
     },
     "device_info": "\ud83d\udcbb Desktop (macOS Chrome)",
     "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+  },
+  "dev_n3pke6go2mt45od2v": {
+    "email": "",
+    "client_ip": "127.0.0.1",
+    "device_id": "dev_n3pke6go2mt45od2v",
+    "created_at": 1787389697.339545,
+    "first_seen": 1787389697.339545,
+    "last_active": 1787389822.3715599,
+    "visit_count": 9,
+    "trial_end": 1787648897.339545,
+    "is_paid": false,
+    "license_key": "\u2014",
+    "location": {
+      "city": "Local Dev",
+      "country": "Pakistan",
+      "countryCode": "PK",
+      "flag": "\ud83c\uddf5\ud83c\uddf0",
+      "isp": "Localhost"
+    },
+    "device_info": "\ud83d\udcbb Desktop (macOS Chrome)",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Cursor/3.17.8 Chrome/144.0.7559.236 Electron/40.10.3 Safari/537.36"
   }
 }
