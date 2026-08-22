@@ -966,7 +966,7 @@ function switchView(view) {
     const activeMobileTab = document.querySelector(`.mobile-nav-item[data-view="${view}"]`);
     if (activeMobileTab) activeMobileTab.classList.add("active");
 
-    const views = ["table", "cards", "scorecard", "live-trading", "education", "simulator", "corporate", "financials", "trading-intelligence"];
+    const views = ["table", "cards", "scorecard", "weekly-scan", "live-trading", "education", "simulator", "corporate", "financials", "trading-intelligence"];
     views.forEach(v => {
         const el = document.getElementById(`view-${v}`);
         if (el) el.style.display = (view === v) ? (v === "cards" ? "grid" : "block") : "none";
@@ -987,7 +987,9 @@ function switchView(view) {
     if (searchContainer) searchContainer.style.display = isScreenerView ? "flex" : "none";
 
     // View specific initializations
-    if (view === "live-trading") {
+    if (view === "weekly-scan") {
+        loadWeeklyScanData();
+    } else if (view === "live-trading") {
         if (!currentLiveSymbol) currentLiveSymbol = "UNITY";
         fetchLiveTradingAnalysis(currentLiveSymbol);
     } else if (view === "simulator") {
@@ -5353,13 +5355,13 @@ function renderTopPicksCards() {
                 </div>` : ''}
             </div>
 
-            <!-- Action Buttons Footer -->
+            <!-- Action Buttons Footer (Human Approval Gate) -->
             <div style="display:flex; gap:8px; margin-top:16px;">
-                <button class="btn btn-primary btn-sm" style="flex:1; font-weight:700;" onclick="switchView('simulator'); setTimeout(()=>{ buyFromScreener('${stock.symbol}'); }, 200);">
-                    🎮 Paper Buy
+                <button class="btn btn-primary btn-sm" style="flex:2; font-weight:800; background: linear-gradient(135deg, #10b981, #059669); border:none;" onclick="approveTradeCard('${stock.symbol}', ${stock.price}, ${stock.stopLoss}, ${stock.target1}, ${stock.target2}, '${stock.strategy || 'Momentum'}')">
+                    ⚡ APPROVE BUY (Paper)
                 </button>
-                <button class="btn btn-ghost btn-sm" style="font-weight:700;" onclick="switchView('live-trading'); setTimeout(()=>{ fetchLiveTradingAnalysis('${stock.symbol}'); }, 200);">
-                    ⚡ Live Depth
+                <button class="btn btn-ghost btn-sm" style="flex:1; color:#ef4444; border-color:rgba(239,68,68,0.3); font-weight:700;" onclick="rejectTradeCard('${stock.symbol}', this)">
+                    ❌ Reject
                 </button>
             </div>
         </div>
@@ -5888,4 +5890,569 @@ function submitFeedbackForm() {
         }
     });
 }
+
+// ─── PSX AI Trading Client Methods (Phase 3 & 4) ───
+
+function approveTradeCard(symbol, entryPrice, stopLoss, tp1, tp2, strategy) {
+    if (!symbol || entryPrice <= 0) return;
+    
+    const stock = (typeof STOCKS !== "undefined" && STOCKS) ? STOCKS.find(s => s.symbol === symbol) : null;
+    const name = stock ? (stock.name || symbol) : symbol;
+    const sector = stock ? (stock.sector || "Other") : "Other";
+
+    if (!confirm(`⚡ EXECUTE TRADE APPROVAL (Paper Account)?\n\nSymbol: ${symbol} (${name})\nEntry: PKR ${entryPrice.toFixed(2)}\nStop Loss: PKR ${stopLoss.toFixed(2)}\nTarget 1: PKR ${tp1.toFixed(2)}\nStrategy: ${strategy}\n\nStrict Risk Engine rules (1% max risk) will be enforced.`)) {
+        return;
+    }
+
+    fetch("/api/trading/approve-trade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            symbol: symbol,
+            name: name,
+            sector: sector,
+            entry_price: entryPrice,
+            stop_loss: stopLoss,
+            take_profit_1: tp1,
+            take_profit_2: tp2,
+            strategy: strategy
+        })
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            alert(`✅ TRADE EXECUTED SUCCESSFULLY!\n\nBought ${res.order.shares.toLocaleString()} shares of ${symbol} @ PKR ${res.order.fill_price.toFixed(2)}\nTotal Cost: PKR ${res.order.total_cost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}\n\nActive position monitoring is now live.`);
+            loadActiveTradingPortfolio();
+            // Switch to active positions tab
+            const posTabBtn = document.querySelector("button[onclick*='active-positions']");
+            if (posTabBtn) switchIntelSubTab('active-positions', posTabBtn);
+        } else {
+            alert(`❌ ORDER REJECTED BY RISK ENGINE:\n\n${res.error || "Order execution failed"}`);
+        }
+    })
+    .catch(err => {
+        alert(`Error executing trade approval: ${err}`);
+    });
+}
+
+function rejectTradeCard(symbol, btnElement) {
+    if (btnElement) {
+        const card = btnElement.closest(".intel-card");
+        if (card) {
+            card.style.opacity = "0.4";
+            card.style.pointerEvents = "none";
+        }
+    }
+    fetch("/api/trading/reject-trade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: symbol })
+    });
+}
+
+function loadActiveTradingPortfolio() {
+    fetch("/api/trading/portfolio")
+    .then(r => r.json())
+    .then(res => {
+        if (!res.success || !res.portfolio) return;
+        const p = res.portfolio;
+
+        const eqEl = document.getElementById("trading-equity-val");
+        if (eqEl) eqEl.textContent = `₨${(p.equity || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+        const cashEl = document.getElementById("trading-cash-val");
+        if (cashEl) cashEl.textContent = `₨${(p.cash || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+        const unEl = document.getElementById("trading-unrealized-val");
+        if (unEl) {
+            const unPnl = p.total_unrealized_pnl || 0;
+            unEl.textContent = `${unPnl >= 0 ? '+' : ''}₨${unPnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            unEl.style.color = unPnl >= 0 ? "#10b981" : "#ef4444";
+        }
+
+        const realEl = document.getElementById("trading-realized-val");
+        if (realEl) {
+            const rPnl = p.total_realized_pnl || 0;
+            realEl.textContent = `${rPnl >= 0 ? '+' : ''}₨${rPnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            realEl.style.color = rPnl >= 0 ? "#10b981" : "#ef4444";
+        }
+
+        const countEl = document.getElementById("intel-active-pos-count");
+        if (countEl) countEl.textContent = p.positions_count || 0;
+
+        // Render table
+        const tbody = document.getElementById("trading-active-positions-tbody");
+        if (!tbody) return;
+
+        if (!p.positions || p.positions.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:#94a3b8;">No active open positions. Approve trade setups in the "Best Setups Right Now" tab to begin tracking.</td></tr>`;
+            return;
+        }
+
+        let html = "";
+        p.positions.forEach(pos => {
+            const pnl = pos.unrealized_pnl || 0;
+            const pnlPct = pos.unrealized_pnl_pct || 0;
+            const pnlColor = pnl >= 0 ? "#10b981" : "#ef4444";
+
+            html += `
+            <tr>
+                <td><strong>${pos.symbol}</strong><br><span style="font-size:0.75rem; color:#94a3b8;">${pos.name || ''}</span></td>
+                <td>${pos.shares.toLocaleString()}</td>
+                <td>₨${pos.entry_price.toFixed(2)}</td>
+                <td><strong style="color:#fff;">₨${pos.current_price.toFixed(2)}</strong></td>
+                <td style="color:#f87171;">₨${pos.stop_loss ? pos.stop_loss.toFixed(2) : '—'}</td>
+                <td>
+                    <span style="color:#10b981;">TP1: ₨${pos.take_profit_1 ? pos.take_profit_1.toFixed(2) : '—'} ${pos.tp1_hit ? '✅ (Trimmed)' : ''}</span><br>
+                    <span style="color:#38bdf8;">TP2: ₨${pos.take_profit_2 ? pos.take_profit_2.toFixed(2) : '—'}</span>
+                </td>
+                <td style="color:#a855f7;">₨${pos.trailing_stop ? pos.trailing_stop.toFixed(2) : (pos.stop_loss ? pos.stop_loss.toFixed(2) : '—')}</td>
+                <td style="color:${pnlColor}; font-weight:800;">
+                    ${pnl >= 0 ? '+' : ''}₨${pnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    <div style="font-size:0.75rem;">(${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)</div>
+                </td>
+                <td>
+                    <button class="btn btn-danger btn-sm" onclick="closeActivePosition('${pos.symbol}')" style="font-size:0.75rem; padding:4px 8px; font-weight:700; background:#dc2626;">
+                        Close
+                    </button>
+                </td>
+            </tr>`;
+        });
+        tbody.innerHTML = html;
+    })
+    .catch(err => console.error("Error loading trading portfolio:", err));
+}
+
+function closeActivePosition(symbol) {
+    if (!confirm(`Are you sure you want to close position in ${symbol} at current market price?`)) return;
+    fetch("/api/trading/close-position", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: symbol })
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            alert(`Position closed for ${symbol}. Realized P&L: PKR ${res.trade.realized_pnl >= 0 ? '+' : ''}${res.trade.realized_pnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+            loadActiveTradingPortfolio();
+        } else {
+            alert(`Error closing position: ${res.error}`);
+        }
+    });
+}
+
+function handleKillSwitchClick() {
+    if (!confirm("🛑 EMERGENCY KILL SWITCH:\n\nThis will immediately:\n1. Close ALL open positions at market price\n2. Block all new trade executions\n\nDo you want to proceed?")) return;
+    
+    fetch("/api/trading/kill-switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "activate", reason: "User Activated Emergency Kill Switch" })
+    })
+    .then(r => r.json())
+    .then(res => {
+        alert("🛑 KILL SWITCH ACTIVATED: All positions closed and trading halted.");
+        loadActiveTradingPortfolio();
+    });
+}
+
+function handleResetPaperAccount() {
+    if (!confirm("Reset paper trading account back to initial PKR 1,000,000 capital?")) return;
+    fetch("/api/trading/reset-paper-account", { method: "POST" })
+    .then(r => r.json())
+    .then(res => {
+        alert("Paper account reset to initial PKR 1,000,000 capital.");
+        loadActiveTradingPortfolio();
+    });
+}
+
+// ═════════════════════════════════════════════════════════════════
+// 🎯 PSX WEEKLY TRADE OPTIONS ENGINE (SECTION 7 SPEC)
+// ═════════════════════════════════════════════════════════════════
+
+let currentWeeklyRun = null;
+let currentWeeklyCandidates = [];
+let weeklyGradeFilter = "ALL";
+let weeklyDirFilter = "ALL";
+
+async function loadWeeklyScanData(forceRefresh = false) {
+    const container = document.getElementById("weekly-candidates-container");
+    if (!currentWeeklyRun || forceRefresh) {
+        if (container) container.innerHTML = `<div class="weekly-loading-state"><div class="spinner" style="margin: 0 auto 12px;"></div>Loading PSX Weekly Trade Options data...</div>`;
+    }
+
+    try {
+        const res = await fetch("/api/weekly-scan/latest");
+        const json = await res.json();
+        if (json.success && json.run) {
+            currentWeeklyRun = json.run;
+            currentWeeklyCandidates = json.candidates || [];
+            renderWeeklyScanView();
+        } else {
+            if (container) container.innerHTML = `<div class="weekly-empty-state">No weekly scan runs found. Click "Run Manual Scan" above to generate.</div>`;
+        }
+    } catch (e) {
+        console.error("Error loading weekly scan data:", e);
+        if (container) container.innerHTML = `<div class="weekly-empty-state" style="color: var(--accent-rose);">Failed to load weekly scan data. Please verify server connection.</div>`;
+    }
+}
+
+function renderWeeklyScanView() {
+    if (!currentWeeklyRun) return;
+
+    // 1. Render Header Meta Bar
+    const dateEl = document.getElementById("weekly-meta-date");
+    const runTypeEl = document.getElementById("weekly-meta-runtype");
+    const universeEl = document.getElementById("weekly-meta-universe");
+    const candidatesEl = document.getElementById("weekly-meta-candidates");
+    const configVerEl = document.getElementById("weekly-meta-config-ver");
+
+    if (dateEl) dateEl.textContent = currentWeeklyRun.dataAsOfDate || "--";
+    if (runTypeEl) runTypeEl.textContent = currentWeeklyRun.runType === "SCHEDULED_WEEKLY" ? "📅 Scheduled Weekly" : "⚡ Manual Rescan";
+    if (universeEl) universeEl.textContent = `${currentWeeklyRun.universeSize} Stocks`;
+    if (candidatesEl) candidatesEl.textContent = `${currentWeeklyCandidates.length} Qualified`;
+    if (configVerEl) configVerEl.textContent = `Config v${currentWeeklyRun.configVersion || '1.0.0'}`;
+
+    // Exclusion Funnel Chips
+    const ex = currentWeeklyRun.excludedCounts || {};
+    const liqChip = document.getElementById("funnel-liq");
+    const trigChip = document.getElementById("funnel-trigger");
+    const rrChip = document.getElementById("funnel-rr");
+
+    if (liqChip) liqChip.textContent = `💧 ${ex.failedLiquidity || 0} Low Liq`;
+    if (trigChip) trigChip.textContent = `⚡ ${ex.noTriggerDetected || 0} No Trig`;
+    if (rrChip) rrChip.textContent = `⚖️ ${ex.rrBelowThreshold || 0} Low RR`;
+
+    // 2. Render Candidates
+    filterAndRenderWeeklyCandidates();
+}
+
+function setWeeklyGradeFilter(btn, grade) {
+    weeklyGradeFilter = grade;
+    document.querySelectorAll("#weekly-grade-pills .pill-btn").forEach(b => b.classList.remove("active"));
+    if (btn) btn.classList.add("active");
+    filterAndRenderWeeklyCandidates();
+}
+
+function setWeeklyDirFilter(btn, dir) {
+    weeklyDirFilter = dir;
+    document.querySelectorAll("#weekly-dir-pills .pill-btn").forEach(b => b.classList.remove("active"));
+    if (btn) btn.classList.add("active");
+    filterAndRenderWeeklyCandidates();
+}
+
+function filterAndRenderWeeklyCandidates() {
+    const container = document.getElementById("weekly-candidates-container");
+    if (!container) return;
+
+    const statusFilter = document.getElementById("weekly-status-filter")?.value || "ALL";
+    const searchVal = (document.getElementById("weekly-symbol-search")?.value || "").trim().toUpperCase();
+
+    let filtered = (currentWeeklyCandidates || []).filter(c => {
+        if (weeklyGradeFilter !== "ALL" && c.grade !== weeklyGradeFilter) return false;
+        if (weeklyDirFilter !== "ALL" && c.direction !== weeklyDirFilter) return false;
+        if (statusFilter !== "ALL" && c.status !== statusFilter) return false;
+        if (searchVal && !c.symbol.includes(searchVal) && !c.sector.toUpperCase().includes(searchVal)) return false;
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        container.innerHTML = `<div class="weekly-empty-state">No scan candidates match the selected filters.</div>`;
+        return;
+    }
+
+    container.innerHTML = filtered.map(c => {
+        const isWatched = watchlist.has(c.symbol);
+        const gradeClass = c.grade === "A_PLUS" ? "grade-badge-a-plus" : (c.grade === "A" ? "grade-badge-a" : "grade-badge-b");
+        const gradeLabel = c.grade === "A_PLUS" ? "⭐ A+ TOP" : (c.grade === "A" ? "A GRADE" : "B GRADE");
+        const dirClass = c.direction === "LONG" ? "long" : "short";
+        const dirSymbol = c.direction === "LONG" ? "LONG ↗" : "SHORT ↘";
+        const rawScore = c.score?.rawScore || 0;
+        const scorePct = Math.round((rawScore / 6) * 100);
+
+        const triggersHtml = (c.triggers || []).map(t => {
+            const volBadge = t.volumeRatioToAvg20d ? `<span class="trigger-vol-badge">${t.volumeRatioToAvg20d}x Vol</span>` : '';
+            const subtype = t.divergenceSubtype ? ` (${t.divergenceSubtype.replace('_', ' ')})` : '';
+            const typeIcon = t.type === "BREAKOUT" ? "⚡" : (t.type === "MACD_CROSSOVER" ? "🎯" : (t.type === "RSI_DIVERGENCE" ? "📊" : "🔄"));
+            return `
+            <div class="trigger-chip-item">
+                <div class="trigger-name-group">
+                    <span>${typeIcon}</span>
+                    <span>${t.type.replace('_', ' ')}${subtype}</span>
+                </div>
+                <div style="display: flex; gap: 4px; align-items: center;">
+                    <span style="font-size: 0.68rem; color: #94a3b8;">${t.timeframe}</span>
+                    ${volBadge}
+                </div>
+            </div>`;
+        }).join("");
+
+        return `
+        <div class="weekly-candidate-card ${c.grade === 'A_PLUS' ? 'grade-a-plus' : ''}">
+            <div class="card-top-row">
+                <div class="candidate-symbol-block">
+                    <button class="star-btn ${isWatched ? 'active' : ''}" data-star="${c.symbol}" title="Watchlist">${isWatched ? '★' : '☆'}</button>
+                    <div class="candidate-symbol" onclick="showDetail('${c.symbol}')" style="cursor: pointer;">${c.symbol}</div>
+                    <div class="candidate-sector">${c.sector}</div>
+                </div>
+                <div class="candidate-grade-badge ${gradeClass}">${gradeLabel}</div>
+            </div>
+
+            <div class="direction-status-row">
+                <div class="dir-badge ${dirClass}">${dirSymbol}</div>
+                <select class="status-select-btn" onchange="updateWeeklyCandidateStatus('${c.id}', this.value)">
+                    <option value="ACTIVE" ${c.status === 'ACTIVE' ? 'selected' : ''}>🟢 ACTIVE</option>
+                    <option value="TARGET_REACHED" ${c.status === 'TARGET_REACHED' ? 'selected' : ''}>🎯 TARGET REACHED</option>
+                    <option value="MISSED" ${c.status === 'MISSED' ? 'selected' : ''}>⏳ MISSED</option>
+                    <option value="INVALIDATED" ${c.status === 'INVALIDATED' ? 'selected' : ''}>❌ INVALIDATED</option>
+                    <option value="LOCKED" ${c.status === 'LOCKED' ? 'selected' : ''}>🔒 LOCKED</option>
+                </select>
+            </div>
+
+            <!-- Score Progress -->
+            <div class="score-breakdown-box">
+                <div class="score-mini-metrics">
+                    <span>Score: <strong>${rawScore}/6</strong> (Trend: ${c.score?.trendScore || 0}, Trig: ${c.score?.triggerScore || 0}, Vol: ${c.score?.volumeScore || 0})</span>
+                    <span>${c.score?.volumeConfirmed ? '✔ Vol Confirmed' : 'Moderate Vol'}</span>
+                </div>
+                <div class="score-progress-track">
+                    <div class="score-progress-fill" style="width: ${scorePct}%;"></div>
+                </div>
+            </div>
+
+            <!-- Triggers -->
+            <div class="triggers-chip-list">
+                ${triggersHtml}
+            </div>
+
+            <!-- Risk Structure Matrix -->
+            <div>
+                <div class="risk-structure-grid">
+                    <div>
+                        <div class="risk-col-label">Entry</div>
+                        <div class="risk-col-val">Rs ${c.risk?.entry?.toFixed(2) || '0.00'}</div>
+                    </div>
+                    <div>
+                        <div class="risk-col-label">Stop Loss</div>
+                        <div class="risk-col-val stop">Rs ${c.risk?.stop?.toFixed(2) || '0.00'}</div>
+                    </div>
+                    <div>
+                        <div class="risk-col-label">Target</div>
+                        <div class="risk-col-val target">Rs ${c.risk?.target?.toFixed(2) || '0.00'}</div>
+                    </div>
+                </div>
+                <div class="rr-badge-row">
+                    <span>Basis: ${c.risk?.stopBasis?.replace('_', ' ') || 'ATR'}</span>
+                    <span class="rr-pill">${c.risk?.rewardRiskRatio?.toFixed(1) || '1.5'}x R:R</span>
+                </div>
+            </div>
+
+            <!-- AI Rationale -->
+            <div class="candidate-rationale-box">
+                ${c.rationale}
+            </div>
+
+            <!-- Bottom Actions -->
+            <div class="candidate-actions-row">
+                <button class="btn btn-secondary btn-sm" onclick="openStockChartModal('${c.symbol}')">
+                    📈 4H / Daily Chart
+                </button>
+                <button class="btn btn-ghost btn-sm" onclick="showDetail('${c.symbol}')">
+                    🔍 Company Profile
+                </button>
+            </div>
+        </div>`;
+    }).join("");
+}
+
+async function triggerWeeklyManualRescan() {
+    const btn = document.getElementById("btn-weekly-rescan");
+    const icon = document.getElementById("icon-weekly-rescan");
+    if (btn) btn.disabled = true;
+    if (icon) icon.classList.add("spinning");
+
+    try {
+        const res = await fetch("/api/weekly-scan/rescan", { method: "POST" });
+        const json = await res.json();
+        if (json.success) {
+            let attempts = 0;
+            const interval = setInterval(async () => {
+                attempts++;
+                const checkRes = await fetch("/api/weekly-scan/latest");
+                const checkJson = await checkRes.json();
+                if (checkJson.success && checkJson.run && checkJson.run.id === json.runId) {
+                    clearInterval(interval);
+                    currentWeeklyRun = checkJson.run;
+                    currentWeeklyCandidates = checkJson.candidates || [];
+                    renderWeeklyScanView();
+                    if (btn) btn.disabled = false;
+                    if (icon) icon.classList.remove("spinning");
+                } else if (attempts > 12) {
+                    clearInterval(interval);
+                    loadWeeklyScanData(true);
+                    if (btn) btn.disabled = false;
+                    if (icon) icon.classList.remove("spinning");
+                }
+            }, 1000);
+        } else {
+            alert(json.error || "Failed to trigger rescan.");
+            if (btn) btn.disabled = false;
+            if (icon) icon.classList.remove("spinning");
+        }
+    } catch (e) {
+        console.error("Rescan trigger error:", e);
+        if (btn) btn.disabled = false;
+        if (icon) icon.classList.remove("spinning");
+    }
+}
+
+async function showWeeklyHistoryModal() {
+    const modal = document.getElementById("weekly-scan-history-modal");
+    const listEl = document.getElementById("weekly-history-list");
+    if (modal) modal.style.display = "flex";
+    if (listEl) listEl.innerHTML = `<div style="text-align:center; padding: 20px; color: #94a3b8;">Loading archives...</div>`;
+
+    try {
+        const res = await fetch("/api/weekly-scan/runs?limit=20");
+        const json = await res.json();
+        if (json.success && json.runs && json.runs.length > 0) {
+            listEl.innerHTML = json.runs.map(r => `
+            <div style="display:flex; justify-content:space-between; align-items:center; background: rgba(30,41,59,0.7); border:1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;">
+                <div>
+                    <div style="font-weight: 700; color: #f8fafc; font-size: 0.9rem;">${r.dataAsOfDate} (${r.runType.replace('_', ' ')})</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">
+                        ${r.candidatesReturned} Candidates | Universe: ${r.universeSize} | Config: v${r.configVersion}
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="loadHistoricalWeeklyRun('${r.id}')" style="font-size: 0.76rem; padding: 5px 12px;">
+                    View Candidates →
+                </button>
+            </div>`).join("");
+        } else {
+            listEl.innerHTML = `<div style="text-align:center; padding: 20px; color: #94a3b8;">No historical runs recorded yet.</div>`;
+        }
+    } catch (e) {
+        if (listEl) listEl.innerHTML = `<div style="color: #f87171; text-align:center;">Failed to load archive history.</div>`;
+    }
+}
+
+async function loadHistoricalWeeklyRun(runId) {
+    try {
+        const res = await fetch(`/api/weekly-scan/runs/${runId}`);
+        const json = await res.json();
+        if (json.success && json.run) {
+            currentWeeklyRun = json.run;
+            currentWeeklyCandidates = json.candidates || [];
+            renderWeeklyScanView();
+            const modal = document.getElementById("weekly-scan-history-modal");
+            if (modal) modal.style.display = "none";
+        }
+    } catch (e) {
+        console.error("Error loading historical run:", e);
+    }
+}
+
+async function showWeeklyConfigModal() {
+    const modal = document.getElementById("weekly-scan-config-modal");
+    if (modal) modal.style.display = "flex";
+
+    try {
+        const res = await fetch("/api/weekly-scan/config");
+        const json = await res.json();
+        if (json.success && json.config) {
+            const cfg = json.config;
+            const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+            setVal("cfg-min-traded-val", cfg.liquidity?.minAvgDailyTradedValuePkr || 20000000);
+            setVal("cfg-breakout-days", cfg.trigger?.breakoutLookbackDays || 20);
+            setVal("cfg-vol-mult", cfg.volumeConfirmation?.minVolumeMultiple || 1.5);
+            setVal("cfg-atr-mult", cfg.risk?.atrMultipleForStop || 1.5);
+            setVal("cfg-min-rr", cfg.risk?.minRewardRiskRatio || 1.5);
+            setVal("cfg-max-candidates", cfg.output?.maxCandidatesShown || 20);
+        }
+    } catch (e) {
+        console.error("Config fetch error:", e);
+    }
+}
+
+async function saveWeeklyConfigFromModal() {
+    const getVal = (id) => parseFloat(document.getElementById(id)?.value) || 0;
+    const newConfig = {
+        liquidity: { minAvgDailyTradedValuePkr: getVal("cfg-min-traded-val") },
+        trigger: {
+            breakoutLookbackDays: parseInt(document.getElementById("cfg-breakout-days")?.value) || 20,
+            breakoutVolumeMultiple: getVal("cfg-vol-mult"),
+            macdCrossoverMaxBarsAgo: 3,
+            pullbackMaEma: 20
+        },
+        volumeConfirmation: { minVolumeMultiple: getVal("cfg-vol-mult") },
+        risk: {
+            atrMultipleForStop: getVal("cfg-atr-mult"),
+            minRewardRiskRatio: getVal("cfg-min-rr"),
+            defaultTargetMultipleIfNoStructure: 2.0
+        },
+        output: {
+            maxCandidatesShown: parseInt(document.getElementById("cfg-max-candidates")?.value) || 20,
+            minGradeToDisplay: "B"
+        }
+    };
+
+    const statusMsg = document.getElementById("cfg-status-msg");
+    try {
+        const res = await fetch("/api/weekly-scan/config", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(newConfig)
+        });
+        const jsonRes = await res.json();
+        if (jsonRes.success) {
+            if (statusMsg) {
+                statusMsg.style.display = "block";
+                statusMsg.className = "activation-msg msg-success";
+                statusMsg.textContent = `✔ Thresholds saved as version ${jsonRes.config?.version || 'new'}!`;
+            }
+            setTimeout(() => {
+                const modal = document.getElementById("weekly-scan-config-modal");
+                if (modal) modal.style.display = "none";
+                if (statusMsg) statusMsg.style.display = "none";
+                triggerWeeklyManualRescan();
+            }, 1200);
+        } else {
+            if (statusMsg) {
+                statusMsg.style.display = "block";
+                statusMsg.className = "activation-msg msg-error";
+                statusMsg.textContent = `✖ ${jsonRes.error || 'Failed to save config.'}`;
+            }
+        }
+    } catch (e) {
+        if (statusMsg) {
+            statusMsg.style.display = "block";
+            statusMsg.className = "activation-msg msg-error";
+            statusMsg.textContent = "Network error saving config.";
+        }
+    }
+}
+
+async function updateWeeklyCandidateStatus(candidateId, newStatus) {
+    try {
+        const res = await fetch(`/api/weekly-scan/candidates/${candidateId}/status`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: newStatus })
+        });
+        const json = await res.json();
+        if (json.success) {
+            const cand = (currentWeeklyCandidates || []).find(c => c.id === candidateId);
+            if (cand) cand.status = newStatus;
+        }
+    } catch (e) {
+        console.error("Status update error:", e);
+    }
+}
+
+function openStockChartModal(symbol) {
+    if (typeof showDetail === "function") {
+        showDetail(symbol);
+    }
+}
+
 

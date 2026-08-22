@@ -6266,6 +6266,474 @@ body {
     color: #64748b;
 }
 
+/* ========================================================================
+   Weekly Trade Options Spec Component Styles
+   ======================================================================== */
+.weekly-scan-view {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    animation: fadeIn 0.3s ease;
+}
+
+.weekly-header-card {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.6));
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-radius: var(--radius-xl);
+    padding: 24px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(12px);
+}
+
+.weekly-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.weekly-title-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #818cf8;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    padding: 3px 10px;
+    border-radius: 20px;
+    margin-bottom: 6px;
+}
+
+.weekly-title-group h2 {
+    font-size: 1.45rem;
+    font-weight: 800;
+    color: #f8fafc;
+    margin: 0 0 4px;
+}
+
+.weekly-subtitle {
+    font-size: 0.84rem;
+    color: #94a3b8;
+    margin: 0;
+    max-width: 680px;
+    line-height: 1.5;
+}
+
+.weekly-header-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.weekly-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.weekly-meta-card {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+}
+
+.weekly-meta-card.highlight-emerald {
+    background: linear-gradient(135deg, rgba(6, 78, 59, 0.4), rgba(4, 120, 87, 0.2));
+    border-color: rgba(16, 185, 129, 0.4);
+}
+
+.meta-card-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+}
+
+.meta-card-value {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #f8fafc;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.highlight-emerald .meta-card-value {
+    color: #34d399;
+}
+
+.meta-card-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-top: 4px;
+}
+
+.meta-exclusion-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.funnel-chip {
+    font-size: 0.68rem;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #cbd5e1;
+    cursor: default;
+}
+
+/* Controls Bar */
+.weekly-controls-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-lg);
+    padding: 12px 18px;
+}
+
+.weekly-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.weekly-filter-group label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #94a3b8;
+    white-space: nowrap;
+}
+
+.weekly-pill-selector {
+    display: flex;
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 3px;
+    gap: 2px;
+}
+
+.pill-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.pill-btn:hover {
+    color: #fff;
+}
+
+.pill-btn.active {
+    background: #6366f1;
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.4);
+}
+
+.pill-btn.pill-a-plus.active {
+    background: linear-gradient(135deg, #10b981, #059669);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+}
+
+.pill-btn.pill-long.active {
+    background: #10b981;
+}
+
+.pill-btn.pill-short.active {
+    background: #ef4444;
+}
+
+.weekly-select, .weekly-input {
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    color: #fff;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+}
+
+/* Candidates Grid */
+.weekly-candidates-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 18px;
+}
+
+.weekly-candidate-card {
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: var(--radius-xl);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.weekly-candidate-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.5);
+}
+
+.weekly-candidate-card.grade-a-plus {
+    border-color: rgba(16, 185, 129, 0.4);
+    box-shadow: 0 4px 20px -2px rgba(16, 185, 129, 0.15);
+}
+
+.card-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.candidate-symbol-block {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.candidate-symbol {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #f8fafc;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.candidate-sector {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.candidate-grade-badge {
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 6px;
+    letter-spacing: 0.05em;
+}
+
+.grade-badge-a-plus {
+    background: linear-gradient(135deg, #059669, #10b981);
+    color: #ffffff;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+}
+
+.grade-badge-a {
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    color: #ffffff;
+}
+
+.grade-badge-b {
+    background: linear-gradient(135deg, #d97706, #f59e0b);
+    color: #ffffff;
+}
+
+.direction-status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.dir-badge {
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+.dir-badge.long {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.dir-badge.short {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.status-select-btn {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #cbd5e1;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+/* Score Breakdown Bar */
+.score-breakdown-box {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+.score-mini-metrics {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 6px;
+}
+
+.score-progress-track {
+    height: 5px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.score-progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #6366f1, #10b981);
+}
+
+/* Triggers List */
+.triggers-chip-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.trigger-chip-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.74rem;
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 6px;
+    padding: 5px 8px;
+}
+
+.trigger-name-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+.trigger-vol-badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #facc15;
+    background: rgba(250, 204, 21, 0.12);
+    padding: 1px 5px;
+    border-radius: 4px;
+}
+
+/* Risk Structure Box */
+.risk-structure-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: center;
+}
+
+.risk-col-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+}
+
+.risk-col-val {
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: #f8fafc;
+    font-family: 'JetBrains Mono', monospace;
+    margin-top: 2px;
+}
+
+.risk-col-val.stop { color: #f87171; }
+.risk-col-val.target { color: #34d399; }
+
+.rr-badge-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 6px;
+    padding: 0 4px;
+}
+
+.rr-pill {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+/* Rationale summary */
+.candidate-rationale-box {
+    font-size: 0.76rem;
+    color: #cbd5e1;
+    line-height: 1.45;
+    background: rgba(30, 41, 59, 0.4);
+    border-left: 3px solid #6366f1;
+    border-radius: 0 6px 6px 0;
+    padding: 8px 10px;
+}
+
+/* Bottom Action Row */
+.candidate-actions-row {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+}
+
+.candidate-actions-row .btn {
+    flex: 1;
+    font-size: 0.76rem;
+    padding: 6px 10px;
+    justify-content: center;
+}
+
+.weekly-loading-state, .weekly-empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 48px;
+    color: var(--text-tertiary);
+    font-size: 0.95rem;
+}
+
+
 
 
 
