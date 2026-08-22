@@ -486,48 +486,156 @@
                 </div>
             </div>
 
-            <!-- Controls: Filters, Grade Selection, Direction & Status -->
-            <div class="weekly-controls-bar">
-                <div class="weekly-filter-group">
-                    <label>Grade:</label>
-                    <div class="weekly-pill-selector" id="weekly-grade-pills">
-                        <button class="pill-btn active" data-grade="ALL" onclick="setWeeklyGradeFilter(this, 'ALL')">All</button>
-                        <button class="pill-btn pill-a-plus" data-grade="A_PLUS" onclick="setWeeklyGradeFilter(this, 'A_PLUS')">⭐ A+ Top</button>
-                        <button class="pill-btn pill-a" data-grade="A" onclick="setWeeklyGradeFilter(this, 'A')">A Grade</button>
-                        <button class="pill-btn pill-b" data-grade="B" onclick="setWeeklyGradeFilter(this, 'B')">B Grade</button>
+            <!-- Sub-Tab Selector: Active Candidates vs Performance Ledger -->
+            <div class="weekly-subtab-bar">
+                <button class="weekly-subtab-btn active" id="btn-subtab-candidates" onclick="switchWeeklySubtab('candidates')">
+                    ⚡ Active Scan Candidates (<span id="count-subtab-candidates">0</span>)
+                </button>
+                <button class="weekly-subtab-btn" id="btn-subtab-performance" onclick="switchWeeklySubtab('performance')">
+                    🎯 Prediction Accuracy & Performance Ledger (<span id="count-subtab-performance">0</span>)
+                </button>
+            </div>
+
+            <!-- ─── PANE 1: Active Candidates ─── -->
+            <div id="weekly-candidates-pane">
+                <!-- Controls: Filters, Capital Allocation, Grade & Status -->
+                <div class="weekly-controls-bar">
+                    <div class="weekly-filter-group capital-input-group" style="background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.3); padding: 4px 10px; border-radius: 8px;">
+                        <label style="color: #a5b4fc; font-weight: 800;">💰 Available Capital:</label>
+                        <span style="color: #94a3b8; font-size: 0.8rem;">PKR</span>
+                        <input type="number" id="weekly-user-capital" class="weekly-input" value="500000" step="50000" min="10000" style="width: 110px; font-weight: 800; font-family: 'JetBrains Mono', monospace;" oninput="onWeeklyCapitalChange()">
+                        <span style="font-size: 0.72rem; color: #64748b;" title="50% allocation ceiling per position">(Max 50% Cap)</span>
+                    </div>
+
+                    <div class="weekly-filter-group">
+                        <label>Grade:</label>
+                        <div class="weekly-pill-selector" id="weekly-grade-pills">
+                            <button class="pill-btn active" data-grade="ALL" onclick="setWeeklyGradeFilter(this, 'ALL')">All</button>
+                            <button class="pill-btn pill-a-plus" data-grade="A_PLUS" onclick="setWeeklyGradeFilter(this, 'A_PLUS')">⭐ A+ Top</button>
+                            <button class="pill-btn pill-a" data-grade="A" onclick="setWeeklyGradeFilter(this, 'A')">A Grade</button>
+                            <button class="pill-btn pill-b" data-grade="B" onclick="setWeeklyGradeFilter(this, 'B')">B Grade</button>
+                        </div>
+                    </div>
+
+                    <div class="weekly-filter-group">
+                        <label>Direction:</label>
+                        <div class="weekly-pill-selector" id="weekly-dir-pills">
+                            <button class="pill-btn active" data-dir="ALL" onclick="setWeeklyDirFilter(this, 'ALL')">All</button>
+                            <button class="pill-btn pill-long" data-dir="LONG" onclick="setWeeklyDirFilter(this, 'LONG')">LONG ↗</button>
+                            <button class="pill-btn pill-short" data-dir="SHORT" onclick="setWeeklyDirFilter(this, 'SHORT')">SHORT ↘</button>
+                        </div>
+                    </div>
+
+                    <div class="weekly-filter-group">
+                        <label>Status:</label>
+                        <select id="weekly-status-filter" class="filter-select weekly-select" onchange="filterAndRenderWeeklyCandidates()">
+                            <option value="ALL">All Statuses</option>
+                            <option value="ACTIVE" selected>ACTIVE Only</option>
+                            <option value="TARGET_REACHED">TARGET REACHED</option>
+                            <option value="MISSED">MISSED</option>
+                            <option value="INVALIDATED">INVALIDATED</option>
+                            <option value="LOCKED">LOCKED</option>
+                        </select>
+                    </div>
+
+                    <div class="weekly-filter-group" style="flex: 1; min-width: 160px;">
+                        <input type="text" id="weekly-symbol-search" class="filter-select weekly-input" placeholder="Search symbol or sector..." oninput="filterAndRenderWeeklyCandidates()" style="width: 100%;">
                     </div>
                 </div>
 
-                <div class="weekly-filter-group">
-                    <label>Direction:</label>
-                    <div class="weekly-pill-selector" id="weekly-dir-pills">
-                        <button class="pill-btn active" data-dir="ALL" onclick="setWeeklyDirFilter(this, 'ALL')">All</button>
-                        <button class="pill-btn pill-long" data-dir="LONG" onclick="setWeeklyDirFilter(this, 'LONG')">LONG ↗</button>
-                        <button class="pill-btn pill-short" data-dir="SHORT" onclick="setWeeklyDirFilter(this, 'SHORT')">SHORT ↘</button>
-                    </div>
-                </div>
-
-                <div class="weekly-filter-group">
-                    <label>Status:</label>
-                    <select id="weekly-status-filter" class="filter-select weekly-select" onchange="filterAndRenderWeeklyCandidates()">
-                        <option value="ALL">All Statuses</option>
-                        <option value="ACTIVE" selected>ACTIVE Only</option>
-                        <option value="TARGET_REACHED">TARGET REACHED</option>
-                        <option value="MISSED">MISSED</option>
-                        <option value="INVALIDATED">INVALIDATED</option>
-                        <option value="LOCKED">LOCKED</option>
-                    </select>
-                </div>
-
-                <div class="weekly-filter-group" style="flex: 1; min-width: 180px;">
-                    <label>Search Symbol:</label>
-                    <input type="text" id="weekly-symbol-search" class="filter-select weekly-input" placeholder="Search symbol or sector..." oninput="filterAndRenderWeeklyCandidates()">
+                <!-- Candidates Grid -->
+                <div class="weekly-candidates-container" id="weekly-candidates-container">
+                    <div class="weekly-loading-state">Loading Weekly Trade Options candidates...</div>
                 </div>
             </div>
 
-            <!-- Candidates Grid -->
-            <div class="weekly-candidates-container" id="weekly-candidates-container">
-                <div class="weekly-loading-state">Loading Weekly Trade Options candidates...</div>
+            <!-- ─── PANE 2: Prediction Accuracy & Performance Ledger ─── -->
+            <div id="weekly-performance-pane" style="display:none;">
+                <!-- Performance KPI Cards -->
+                <div class="performance-kpi-grid" id="performance-kpi-grid">
+                    <div class="kpi-card highlight-emerald">
+                        <div class="kpi-label">Overall Win Rate</div>
+                        <div class="kpi-value" id="kpi-win-rate">--%</div>
+                        <div class="kpi-sub" id="kpi-win-counts">0 Won / 0 Lost (0 Closed)</div>
+                    </div>
+                    <div class="kpi-card highlight-indigo">
+                        <div class="kpi-label">⭐ A+ Grade Success Rate</div>
+                        <div class="kpi-value" id="kpi-a-plus-win-rate">--%</div>
+                        <div class="kpi-sub" id="kpi-a-plus-counts">Highest Conviction Setups</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Average Gain per Winner</div>
+                        <div class="kpi-value text-emerald" id="kpi-avg-gain">+--%</div>
+                        <div class="kpi-sub" id="kpi-avg-loss">Avg Loss: ---%</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Profit Factor</div>
+                        <div class="kpi-value" id="kpi-profit-factor">--x</div>
+                        <div class="kpi-sub" id="kpi-total-r">Net R: +0.0 R</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Predictions Tracked</div>
+                        <div class="kpi-value" id="kpi-total-predictions">0</div>
+                        <div class="kpi-sub" id="kpi-in-progress-count">0 In-Progress (3d/5d/7d Window)</div>
+                    </div>
+                </div>
+
+                <!-- Audit Controls & Action Bar -->
+                <div class="weekly-controls-bar" style="margin-top: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1;">
+                        <button class="btn btn-primary btn-sm" id="btn-reanalyze-audit" onclick="reanalyzeWeeklyPredictions()">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="icon-reanalyze-audit"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                            <span>Re-Analyze All Predictions (3d/5d/7d Check)</span>
+                        </button>
+                        <span style="font-size: 0.76rem; color: #94a3b8;">Automatically checks live high/low vs expected target & stop levels.</span>
+                    </div>
+
+                    <div class="weekly-filter-group">
+                        <label>Outcome:</label>
+                        <select id="audit-filter-outcome" class="weekly-select" onchange="loadWeeklyPerformanceData()">
+                            <option value="ALL">All Outcomes</option>
+                            <option value="SUCCESSFUL">🎯 SUCCESSFUL (Target Hit)</option>
+                            <option value="STOPPED_OUT">🛑 STOPPED OUT (Stop Hit)</option>
+                            <option value="IN_PROGRESS">⏳ IN PROGRESS</option>
+                            <option value="EXPIRED_TIME">⌛ EXPIRED TIME</option>
+                        </select>
+                    </div>
+
+                    <div class="weekly-filter-group">
+                        <label>Grade:</label>
+                        <select id="audit-filter-grade" class="weekly-select" onchange="loadWeeklyPerformanceData()">
+                            <option value="ALL">All Grades</option>
+                            <option value="A_PLUS">A+ Only</option>
+                            <option value="A">A Grade</option>
+                            <option value="B">B Grade</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Historical Prediction Ledger Table -->
+                <div class="audit-table-wrapper" style="margin-top: 14px;">
+                    <table class="audit-ledger-table">
+                        <thead>
+                            <tr>
+                                <th>Predicted Date</th>
+                                <th>Symbol / Sector</th>
+                                <th>Grade</th>
+                                <th>Direction</th>
+                                <th>Entry</th>
+                                <th>Stop Loss</th>
+                                <th>Target</th>
+                                <th>Peak Gain</th>
+                                <th>Current Return</th>
+                                <th>Outcome</th>
+                                <th>AI Audit & Verification Rationale</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-ledger-body">
+                            <tr><td colspan="12" style="text-align:center; padding: 32px; color: #94a3b8;">Loading prediction audit ledger...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </section>
 
@@ -1700,6 +1808,87 @@
             <div class="terms-footer" style="padding: 14px 24px;">
                 <button class="btn btn-primary" onclick="saveWeeklyConfigFromModal()" style="width: 100%; min-height: 42px; font-weight: 700; border-radius: 8px; justify-content: center;">
                     💾 Save Thresholds & Apply
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Weekly Trade Direct Buy Modal -->
+    <div id="weekly-buy-modal" class="terms-modal-overlay" style="display:none;">
+        <div class="terms-modal-box" style="max-width: 520px; background: #0f172a; border: 1px solid rgba(16, 185, 129, 0.4); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9);">
+            <div class="terms-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding: 18px 24px;">
+                <span class="terms-header-icon">⚡</span>
+                <div style="text-align: left;">
+                    <h2 style="color: #f8fafc; font-size: 1.25rem; font-weight: 800; margin: 0;" id="buy-modal-title">Buy PSX Stock</h2>
+                    <p style="font-size: 0.78rem; color: #94a3b8; margin: 2px 0 0;" id="buy-modal-subtitle">Weekly Trade Options Position Sizing</p>
+                </div>
+                <button class="modal-close-btn" onclick="document.getElementById('weekly-buy-modal').style.display='none'" style="margin-left: auto; background: transparent; border: none; color: #94a3b8; font-size: 1.3rem; cursor: pointer;">✕</button>
+            </div>
+            <div class="terms-body" style="padding: 20px 24px; text-align: left;">
+                <!-- Capital & Liquidity Matrix Card -->
+                <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 6px;">
+                        <span>Available Capital:</span>
+                        <strong style="color: #f8fafc;" id="buy-modal-avail-cap">PKR 500,000</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 6px;">
+                        <span>Maximum Ceiling (50%):</span>
+                        <strong style="color: #a5b4fc;" id="buy-modal-max-alloc">PKR 250,000</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.84rem; color: #34d399; font-weight: 800; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); margin-bottom: 6px;">
+                        <span>Recommended Investment:</span>
+                        <span id="buy-modal-rec-invest">PKR 150,000 (30.0%)</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">
+                        <span>Expected Exit:</span>
+                        <span id="buy-modal-exit-badge" class="exit-badge moderate">Moderate 🟡</span>
+                    </div>
+                    <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 6px; line-height: 1.4;" id="buy-modal-reason">
+                        Reason: Scaled to safe % of daily traded value.
+                    </div>
+                </div>
+
+                <!-- Order Sizing Input -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+                    <div>
+                        <label style="font-size: 0.76rem; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">Number of Shares</label>
+                        <input type="number" id="buy-modal-shares" class="lic-input" style="width: 100%; padding: 10px 12px; font-weight: 800; font-family: 'JetBrains Mono', monospace;" oninput="recalcBuyModalTotal()">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.76rem; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">Execution Price</label>
+                        <input type="number" id="buy-modal-price" class="lic-input" step="0.05" style="width: 100%; padding: 10px 12px; font-weight: 800; font-family: 'JetBrains Mono', monospace;" oninput="recalcBuyModalTotal()">
+                    </div>
+                </div>
+
+                <!-- Risk Parameters Matrix -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+                    <div>
+                        <label style="font-size: 0.74rem; font-weight: 600; color: #f87171; display: block; margin-bottom: 4px;">Stop Loss Level</label>
+                        <input type="number" id="buy-modal-stop" class="lic-input" step="0.05" style="width: 100%; padding: 8px 10px; font-size: 0.85rem;">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.74rem; font-weight: 600; color: #34d399; display: block; margin-bottom: 4px;">Take Profit Target</label>
+                        <input type="number" id="buy-modal-target" class="lic-input" step="0.05" style="width: 100%; padding: 8px 10px; font-size: 0.85rem;">
+                    </div>
+                </div>
+
+                <!-- Total Cost Summary -->
+                <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.82rem; color: #cbd5e1;">
+                        <span>Total Trade Cost:</span>
+                        <strong style="color: #fff;" id="buy-modal-total-cost">PKR 0.00</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #64748b; margin-top: 2px;">
+                        <span>Est. Taxes & Commission (0.15%):</span>
+                        <span id="buy-modal-fees">PKR 0.00</span>
+                    </div>
+                </div>
+
+                <div id="buy-modal-status-msg" class="activation-msg" style="display:none; margin-bottom: 10px;"></div>
+            </div>
+            <div class="terms-footer" style="padding: 14px 24px;">
+                <button class="btn btn-primary" id="btn-execute-weekly-buy" onclick="submitWeeklyBuyOrder()" style="width: 100%; min-height: 44px; font-weight: 800; border-radius: 8px; justify-content: center; background: linear-gradient(135deg, #059669, #10b981);">
+                    ⚡ Execute Paper Trade Now
                 </button>
             </div>
         </div>

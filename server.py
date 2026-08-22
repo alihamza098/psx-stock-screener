@@ -3008,6 +3008,31 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 "success": True,
                 "config": cfg
             })
+        elif parsed_path.path == "/api/weekly-scan/performance":
+            query = parse_qs(parsed_path.query)
+            grade = query.get("grade", ["ALL"])[0]
+            outcome = query.get("outcome", ["ALL"])[0]
+            limit = int(query.get("limit", ["50"])[0])
+            offset = int(query.get("offset", ["0"])[0])
+            summary = weekly_engine.get_performance_summary()
+            history = weekly_engine.get_prediction_history(filter_grade=grade, filter_outcome=outcome, limit=limit, offset=offset)
+            self._send_json({
+                "success": True,
+                "summary": summary,
+                "history": history,
+                "count": len(history)
+            })
+        elif parsed_path.path == "/api/weekly-scan/recommend-sizing":
+            query = parse_qs(parsed_path.query)
+            capital = float(query.get("capital", ["500000"])[0])
+            price = float(query.get("price", ["100"])[0])
+            adtv = float(query.get("adtv", ["20000000"])[0])
+            avg_vol = float(query.get("volume", ["0"])[0])
+            sizing = weekly_engine.calculate_recommended_investment(available_capital=capital, stock_price=price, adtv_20d=adtv, avg_vol_20d=avg_vol)
+            self._send_json({
+                "success": True,
+                "sizing": sizing
+            })
 
         # ─── Admin Endpoints ───
         elif parsed_path.path in ["/admin", "/admin/"]:
@@ -3200,6 +3225,59 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 })
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/weekly-scan/audit":
+            try:
+                stocks, _ = fetch_stock_data()
+                stocks_dict = {s.get("symbol", "").upper(): s for s in stocks} if stocks else {}
+                summary = weekly_engine.audit_and_evaluate_predictions(stocks_dict=stocks_dict)
+                history = weekly_engine.get_prediction_history(limit=50)
+                self._send_json({
+                    "success": True,
+                    "summary": summary,
+                    "history": history,
+                    "message": "Predictions re-analyzed and performance audit updated."
+                })
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+        elif self.path == "/api/weekly-scan/buy":
+            try:
+                body = json.loads(post_data.decode("utf-8")) if post_data else {}
+                symbol = body.get("symbol", "").upper().strip()
+                name = body.get("name", symbol)
+                sector = body.get("sector", "Other")
+                shares = int(body.get("shares", 0))
+                entry_price = float(body.get("entry_price", 0.0))
+                stop_loss = float(body.get("stop_loss", 0.0))
+                target = float(body.get("target_price", 0.0))
+                strategy = body.get("strategy", "Weekly Swing Strategy")
+
+                if not symbol or shares <= 0 or entry_price <= 0:
+                    self._send_json({"success": False, "error": "Invalid order parameters."}, 400)
+                    return
+
+                # Execute order in Paper Broker
+                order_res = paper_broker.place_buy_order(
+                    symbol=symbol,
+                    name=name,
+                    sector=sector,
+                    shares=shares,
+                    price=entry_price,
+                    stop_loss=stop_loss,
+                    take_profit_1=target,
+                    take_profit_2=target * 1.05,
+                    strategy=strategy
+                )
+
+                if order_res.get("success"):
+                    self._send_json({
+                        "success": True,
+                        "order": order_res.get("order"),
+                        "message": f"Successfully bought {shares:,} shares of {symbol} at Rs {entry_price:.2f} (Weekly Trade Sizing)."
+                    })
+                else:
+                    self._send_json({"success": False, "error": order_res.get("error", "Failed to execute paper order.")}, 400)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
         else:
             self.send_error(404)
 

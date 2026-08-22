@@ -6067,6 +6067,7 @@ function handleResetPaperAccount() {
 }
 
 // ═════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 // 🎯 PSX WEEKLY TRADE OPTIONS ENGINE (SECTION 7 SPEC)
 // ═════════════════════════════════════════════════════════════════
 
@@ -6074,6 +6075,82 @@ let currentWeeklyRun = null;
 let currentWeeklyCandidates = [];
 let weeklyGradeFilter = "ALL";
 let weeklyDirFilter = "ALL";
+let currentWeeklySubtab = "candidates";
+let currentBuyCandidate = null;
+
+function switchWeeklySubtab(tab) {
+    currentWeeklySubtab = tab;
+    const btnCand = document.getElementById("btn-subtab-candidates");
+    const btnPerf = document.getElementById("btn-subtab-performance");
+    const paneCand = document.getElementById("weekly-candidates-pane");
+    const panePerf = document.getElementById("weekly-performance-pane");
+
+    if (tab === "candidates") {
+        if (btnCand) btnCand.classList.add("active");
+        if (btnPerf) btnPerf.classList.remove("active");
+        if (paneCand) paneCand.style.display = "block";
+        if (panePerf) panePerf.style.display = "none";
+    } else {
+        if (btnCand) btnCand.classList.remove("active");
+        if (btnPerf) btnPerf.classList.add("active");
+        if (paneCand) paneCand.style.display = "none";
+        if (panePerf) panePerf.style.display = "block";
+        loadWeeklyPerformanceData();
+    }
+}
+
+function getUserAvailableCapital() {
+    const el = document.getElementById("weekly-user-capital");
+    const val = el ? parseFloat(el.value) : 500000;
+    return (val && val > 0) ? val : 500000;
+}
+
+function onWeeklyCapitalChange() {
+    filterAndRenderWeeklyCandidates();
+}
+
+function computeCandidateInvestment(candidate, availableCapital) {
+    const stockPrice = candidate.risk?.entry || 1.0;
+    const adtv = candidate.liquidity?.avgDailyTradedValue20d || 20000000.0;
+    const avgVol = candidate.liquidity?.avgDailyVolume20d || (adtv / stockPrice);
+
+    // 50% Maximum Capital Ceiling
+    const maxCeilingPkr = availableCapital * 0.50;
+
+    // Safe market capacity (~1.0% of ADTV / volume)
+    const liquidityCapPkr = adtv * 0.010;
+    const volCapPkr = (avgVol * 0.010) * stockPrice;
+    let safeCapacityPkr = Math.min(liquidityCapPkr, volCapPkr);
+    safeCapacityPkr = Math.max(Math.min(25000, availableCapital), safeCapacityPkr);
+
+    const rawRecommended = Math.min(maxCeilingPkr, safeCapacityPkr);
+    const recommendedShares = stockPrice > 0 ? Math.max(1, Math.floor(rawRecommended / stockPrice)) : 0;
+    const recommendedPkr = Math.round(recommendedShares * stockPrice);
+
+    let exitDifficulty = "Moderate";
+    let reason = "Moderate turnover; position sized to safe % of daily volume to ensure frictionless exit.";
+
+    if (adtv >= 75000000 && recommendedPkr >= (maxCeilingPkr * 0.85)) {
+        exitDifficulty = "Easy";
+        reason = "Deep institutional liquidity & high daily turnover allow full allocation ceiling.";
+    } else if (adtv >= 35000000) {
+        exitDifficulty = "Moderate";
+        reason = "Moderate turnover; position sized to safe % of daily volume to ensure frictionless exit.";
+    } else {
+        exitDifficulty = "Difficult";
+        reason = "Limited daily volume & market depth; position strictly scaled down to preserve easy exit.";
+    }
+
+    return {
+        availableCapital: availableCapital,
+        maxCeilingPkr: maxCeilingPkr,
+        recommendedPkr: recommendedPkr,
+        recommendedShares: recommendedShares,
+        reason: reason,
+        exitDifficulty: exitDifficulty,
+        percentOfCapital: Math.round((recommendedPkr / availableCapital) * 1000) / 10
+    };
+}
 
 async function loadWeeklyScanData(forceRefresh = false) {
     const container = document.getElementById("weekly-candidates-container");
@@ -6088,6 +6165,7 @@ async function loadWeeklyScanData(forceRefresh = false) {
             currentWeeklyRun = json.run;
             currentWeeklyCandidates = json.candidates || [];
             renderWeeklyScanView();
+            loadWeeklyPerformanceData(false);
         } else {
             if (container) container.innerHTML = `<div class="weekly-empty-state">No weekly scan runs found. Click "Run Manual Scan" above to generate.</div>`;
         }
@@ -6106,12 +6184,14 @@ function renderWeeklyScanView() {
     const universeEl = document.getElementById("weekly-meta-universe");
     const candidatesEl = document.getElementById("weekly-meta-candidates");
     const configVerEl = document.getElementById("weekly-meta-config-ver");
+    const countSubtabCand = document.getElementById("count-subtab-candidates");
 
     if (dateEl) dateEl.textContent = currentWeeklyRun.dataAsOfDate || "--";
     if (runTypeEl) runTypeEl.textContent = currentWeeklyRun.runType === "SCHEDULED_WEEKLY" ? "📅 Scheduled Weekly" : "⚡ Manual Rescan";
     if (universeEl) universeEl.textContent = `${currentWeeklyRun.universeSize} Stocks`;
     if (candidatesEl) candidatesEl.textContent = `${currentWeeklyCandidates.length} Qualified`;
     if (configVerEl) configVerEl.textContent = `Config v${currentWeeklyRun.configVersion || '1.0.0'}`;
+    if (countSubtabCand) countSubtabCand.textContent = currentWeeklyCandidates.length;
 
     // Exclusion Funnel Chips
     const ex = currentWeeklyRun.excludedCounts || {};
@@ -6147,6 +6227,7 @@ function filterAndRenderWeeklyCandidates() {
 
     const statusFilter = document.getElementById("weekly-status-filter")?.value || "ALL";
     const searchVal = (document.getElementById("weekly-symbol-search")?.value || "").trim().toUpperCase();
+    const availableCap = getUserAvailableCapital();
 
     let filtered = (currentWeeklyCandidates || []).filter(c => {
         if (weeklyGradeFilter !== "ALL" && c.grade !== weeklyGradeFilter) return false;
@@ -6169,6 +6250,11 @@ function filterAndRenderWeeklyCandidates() {
         const dirSymbol = c.direction === "LONG" ? "LONG ↗" : "SHORT ↘";
         const rawScore = c.score?.rawScore || 0;
         const scorePct = Math.round((rawScore / 6) * 100);
+
+        // Dynamic Sizing Calculation
+        const sizing = computeCandidateInvestment(c, availableCap);
+        const exitClass = sizing.exitDifficulty === "Easy" ? "easy" : (sizing.exitDifficulty === "Moderate" ? "moderate" : "difficult");
+        const exitIcon = sizing.exitDifficulty === "Easy" ? "🟢" : (sizing.exitDifficulty === "Moderate" ? "🟡" : "🔴");
 
         const triggersHtml = (c.triggers || []).map(t => {
             const volBadge = t.volumeRatioToAvg20d ? `<span class="trigger-vol-badge">${t.volumeRatioToAvg20d}x Vol</span>` : '';
@@ -6247,6 +6333,22 @@ function filterAndRenderWeeklyCandidates() {
                 </div>
             </div>
 
+            <!-- 💰 Capital & Dynamic Liquidity Recommendation Box -->
+            <div class="candidate-capital-box">
+                <div class="capital-row-top">
+                    <span style="color: #cbd5e1; font-weight: 600;">Recommended Allocation:</span>
+                    <span class="capital-rec-amount">PKR ${sizing.recommendedPkr.toLocaleString()} (${sizing.percentOfCapital}%)</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #94a3b8;">
+                    <span>Position Size: <strong>${sizing.recommendedShares.toLocaleString()} Shares</strong></span>
+                    <span>Max Ceiling (50%): PKR ${sizing.maxCeilingPkr.toLocaleString()}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; margin-top: 2px;">
+                    <span class="capital-reason-text">${sizing.reason}</span>
+                    <span class="exit-badge ${exitClass}" title="Expected Exit Liquidity">${sizing.exitDifficulty} ${exitIcon}</span>
+                </div>
+            </div>
+
             <!-- AI Rationale -->
             <div class="candidate-rationale-box">
                 ${c.rationale}
@@ -6254,15 +6356,264 @@ function filterAndRenderWeeklyCandidates() {
 
             <!-- Bottom Actions -->
             <div class="candidate-actions-row">
+                <button class="btn btn-primary btn-sm btn-buy-card" onclick="openWeeklyBuyModal('${c.id}')">
+                    ⚡ Buy / Paper Trade
+                </button>
                 <button class="btn btn-secondary btn-sm" onclick="openStockChartModal('${c.symbol}')">
                     📈 4H / Daily Chart
                 </button>
                 <button class="btn btn-ghost btn-sm" onclick="showDetail('${c.symbol}')">
-                    🔍 Company Profile
+                    🔍 Profile
                 </button>
             </div>
         </div>`;
     }).join("");
+}
+
+// ═════════════════════════════════════════════════════════════════
+// ⚡ DIRECT BUY EXECUTION MODAL & ORDER ROUTING
+// ═════════════════════════════════════════════════════════════════
+
+function openWeeklyBuyModal(candidateId) {
+    const cand = (currentWeeklyCandidates || []).find(c => c.id === candidateId);
+    if (!cand) return;
+    currentBuyCandidate = cand;
+
+    const modal = document.getElementById("weekly-buy-modal");
+    if (!modal) return;
+
+    const availableCap = getUserAvailableCapital();
+    const sizing = computeCandidateInvestment(cand, availableCap);
+
+    document.getElementById("buy-modal-title").textContent = `Buy ${cand.symbol} (${cand.sector || 'PSX'})`;
+    document.getElementById("buy-modal-subtitle").textContent = `Weekly Trade ${cand.grade.replace('_', '+')} • ${cand.direction} Setup`;
+    document.getElementById("buy-modal-avail-cap").textContent = `PKR ${availableCap.toLocaleString()}`;
+    document.getElementById("buy-modal-max-alloc").textContent = `PKR ${sizing.maxCeilingPkr.toLocaleString()} (50%)`;
+    document.getElementById("buy-modal-rec-invest").textContent = `PKR ${sizing.recommendedPkr.toLocaleString()} (${sizing.percentOfCapital}%)`;
+    
+    const exitBadge = document.getElementById("buy-modal-exit-badge");
+    const exitClass = sizing.exitDifficulty === "Easy" ? "easy" : (sizing.exitDifficulty === "Moderate" ? "moderate" : "difficult");
+    const exitIcon = sizing.exitDifficulty === "Easy" ? "🟢" : (sizing.exitDifficulty === "Moderate" ? "🟡" : "🔴");
+    if (exitBadge) {
+        exitBadge.className = `exit-badge ${exitClass}`;
+        exitBadge.textContent = `${sizing.exitDifficulty} Exit ${exitIcon}`;
+    }
+
+    document.getElementById("buy-modal-reason").textContent = `Reason: ${sizing.reason}`;
+    document.getElementById("buy-modal-shares").value = sizing.recommendedShares;
+    document.getElementById("buy-modal-price").value = cand.risk?.entry || 1.0;
+    document.getElementById("buy-modal-stop").value = cand.risk?.stop || 0.0;
+    document.getElementById("buy-modal-target").value = cand.risk?.target || 0.0;
+
+    const statusMsg = document.getElementById("buy-modal-status-msg");
+    if (statusMsg) statusMsg.style.display = "none";
+
+    recalcBuyModalTotal();
+    modal.style.display = "flex";
+}
+
+function recalcBuyModalTotal() {
+    const shares = parseInt(document.getElementById("buy-modal-shares")?.value) || 0;
+    const price = parseFloat(document.getElementById("buy-modal-price")?.value) || 0;
+    const total = shares * price;
+    const fees = total * 0.0015;
+
+    const totalEl = document.getElementById("buy-modal-total-cost");
+    const feesEl = document.getElementById("buy-modal-fees");
+    if (totalEl) totalEl.textContent = `PKR ${total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    if (feesEl) feesEl.textContent = `PKR ${fees.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+}
+
+async function submitWeeklyBuyOrder() {
+    if (!currentBuyCandidate) return;
+
+    const shares = parseInt(document.getElementById("buy-modal-shares")?.value) || 0;
+    const price = parseFloat(document.getElementById("buy-modal-price")?.value) || 0;
+    const stopLoss = parseFloat(document.getElementById("buy-modal-stop")?.value) || 0;
+    const target = parseFloat(document.getElementById("buy-modal-target")?.value) || 0;
+    const statusMsg = document.getElementById("buy-modal-status-msg");
+    const btn = document.getElementById("btn-execute-weekly-buy");
+
+    if (shares <= 0 || price <= 0) {
+        if (statusMsg) {
+            statusMsg.style.display = "block";
+            statusMsg.className = "activation-msg msg-error";
+            statusMsg.textContent = "Please enter valid shares and execution price.";
+        }
+        return;
+    }
+
+    if (btn) btn.disabled = true;
+    try {
+        const res = await fetch("/api/weekly-scan/buy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                symbol: currentBuyCandidate.symbol,
+                name: currentBuyCandidate.symbol,
+                sector: currentBuyCandidate.sector || "Other",
+                shares: shares,
+                entry_price: price,
+                stop_loss: stopLoss,
+                target_price: target,
+                strategy: `Weekly ${currentBuyCandidate.grade} Swing`
+            })
+        });
+        const json = await res.json();
+        if (json.success) {
+            if (statusMsg) {
+                statusMsg.style.display = "block";
+                statusMsg.className = "activation-msg msg-success";
+                statusMsg.textContent = `✔ Order executed! ${json.message || ''}`;
+            }
+            setTimeout(() => {
+                const modal = document.getElementById("weekly-buy-modal");
+                if (modal) modal.style.display = "none";
+                if (btn) btn.disabled = false;
+            }, 1200);
+        } else {
+            if (statusMsg) {
+                statusMsg.style.display = "block";
+                statusMsg.className = "activation-msg msg-error";
+                statusMsg.textContent = `✖ ${json.error || 'Failed to place trade.'}`;
+            }
+            if (btn) btn.disabled = false;
+        }
+    } catch (e) {
+        if (statusMsg) {
+            statusMsg.style.display = "block";
+            statusMsg.className = "activation-msg msg-error";
+            statusMsg.textContent = "Network error executing trade.";
+        }
+        if (btn) btn.disabled = false;
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════
+// 🎯 ACCURACY & PREDICTION PERFORMANCE LEDGER
+// ═════════════════════════════════════════════════════════════════
+
+async function loadWeeklyPerformanceData(showLoading = true) {
+    const tbody = document.getElementById("audit-ledger-body");
+    const countSubtabPerf = document.getElementById("count-subtab-performance");
+    const outcomeFilter = document.getElementById("audit-filter-outcome")?.value || "ALL";
+    const gradeFilter = document.getElementById("audit-filter-grade")?.value || "ALL";
+
+    if (showLoading && tbody) {
+        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:32px; color:#94a3b8;"><div class="spinner" style="margin: 0 auto 10px;"></div>Loading accuracy & performance metrics...</td></tr>`;
+    }
+
+    try {
+        const url = `/api/weekly-scan/performance?outcome=${encodeURIComponent(outcomeFilter)}&grade=${encodeURIComponent(gradeFilter)}&limit=100`;
+        const res = await fetch(url);
+        const json = await res.json();
+        if (json.success) {
+            const sum = json.summary || {};
+            const hist = json.history || [];
+
+            // Update KPI Cards
+            const kpiWin = document.getElementById("kpi-win-rate");
+            const kpiCounts = document.getElementById("kpi-win-counts");
+            const kpiAPlus = document.getElementById("kpi-a-plus-win-rate");
+            const kpiAPlusCounts = document.getElementById("kpi-a-plus-counts");
+            const kpiAvgGain = document.getElementById("kpi-avg-gain");
+            const kpiAvgLoss = document.getElementById("kpi-avg-loss");
+            const kpiProfitFactor = document.getElementById("kpi-profit-factor");
+            const kpiTotalR = document.getElementById("kpi-total-r");
+            const kpiTotalPred = document.getElementById("kpi-total-predictions");
+            const kpiInProg = document.getElementById("kpi-in-progress-count");
+
+            if (kpiWin) kpiWin.textContent = `${sum.overallWinRatePct || 0}%`;
+            if (kpiCounts) kpiCounts.textContent = `${sum.successfulCount || 0} Won / ${sum.stoppedCount || 0} Lost (${sum.closedEvaluations || 0} Closed)`;
+            
+            const aPlusData = sum.gradeBreakdown?.A_PLUS || {};
+            if (kpiAPlus) kpiAPlus.textContent = `${aPlusData.winRatePct || 0}%`;
+            if (kpiAPlusCounts) kpiAPlusCounts.textContent = `${aPlusData.won || 0} Won / ${aPlusData.lost || 0} Lost (Total: ${aPlusData.total || 0})`;
+
+            if (kpiAvgGain) kpiAvgGain.textContent = `+${sum.avgWinnerGainPct || 0}%`;
+            if (kpiAvgLoss) kpiAvgLoss.textContent = `Avg Loss: -${sum.avgLoserLossPct || 0}%`;
+            if (kpiProfitFactor) kpiProfitFactor.textContent = `${sum.profitFactor || 1.0}x`;
+            if (kpiTotalR) kpiTotalR.textContent = `Net R: ${sum.totalRealizedR >= 0 ? '+' : ''}${sum.totalRealizedR || 0} R`;
+
+            if (kpiTotalPred) kpiTotalPred.textContent = sum.totalPredictions || 0;
+            if (kpiInProg) kpiInProg.textContent = `${sum.inProgressCount || 0} In-Progress (3d/5d/7d Window)`;
+            if (countSubtabPerf) countSubtabPerf.textContent = sum.totalPredictions || 0;
+
+            // Render Table Rows
+            if (hist.length === 0) {
+                if (tbody) tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:32px; color:#94a3b8;">No predictions match the selected filter criteria.</td></tr>`;
+                return;
+            }
+
+            if (tbody) {
+                tbody.innerHTML = hist.map(r => {
+                    const outcomeClass = r.outcome === "SUCCESSFUL" ? "successful" : (r.outcome === "STOPPED_OUT" ? "stopped_out" : (r.outcome === "EXPIRED_TIME" ? "expired_time" : "in_progress"));
+                    const outcomeIcon = r.outcome === "SUCCESSFUL" ? "🎯" : (r.outcome === "STOPPED_OUT" ? "🛑" : (r.outcome === "EXPIRED_TIME" ? "⌛" : "⏳"));
+                    const outcomeLabel = r.outcome === "SUCCESSFUL" ? "TARGET HIT" : (r.outcome === "STOPPED_OUT" ? "STOPPED OUT" : (r.outcome === "EXPIRED_TIME" ? "EXPIRED" : "IN PROGRESS"));
+                    const predDateStr = (r.predictedAt || "").substring(0, 10);
+                    const gradeClass = r.grade === "A_PLUS" ? "grade-badge-a-plus" : (r.grade === "A" ? "grade-badge-a" : "grade-badge-b");
+                    const returnColor = r.currentReturnPct >= 0 ? "#34d399" : "#f87171";
+
+                    return `
+                    <tr>
+                        <td style="white-space: nowrap;">
+                            <div style="font-weight: 700; color: #f8fafc;">${predDateStr}</div>
+                            <div style="font-size: 0.7rem; color: #94a3b8;">${r.daysElapsed}d ago</div>
+                        </td>
+                        <td>
+                            <div style="font-weight: 800; color: #f8fafc; font-family: 'JetBrains Mono', monospace; cursor: pointer;" onclick="showDetail('${r.symbol}')">${r.symbol}</div>
+                            <div style="font-size: 0.7rem; color: #94a3b8;">${r.sector || 'Other'}</div>
+                        </td>
+                        <td><span class="candidate-grade-badge ${gradeClass}" style="font-size: 0.68rem; padding: 2px 6px;">${r.grade.replace('_', '+')}</span></td>
+                        <td><span class="dir-badge ${r.direction === 'LONG' ? 'long' : 'short'}">${r.direction}</span></td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">Rs ${r.entryPrice.toFixed(2)}</td>
+                        <td style="font-family: 'JetBrains Mono', monospace; color: #f87171;">Rs ${r.stopPrice.toFixed(2)}</td>
+                        <td style="font-family: 'JetBrains Mono', monospace; color: #34d399;">Rs ${r.targetPrice.toFixed(2)}</td>
+                        <td style="font-family: 'JetBrains Mono', monospace; color: #34d399; font-weight: 700;">+${r.maxGainPct.toFixed(1)}%</td>
+                        <td style="font-family: 'JetBrains Mono', monospace; font-weight: 800; color: ${returnColor};">${r.currentReturnPct >= 0 ? '+' : ''}${r.currentReturnPct.toFixed(1)}%</td>
+                        <td>
+                            <span class="outcome-pill ${outcomeClass}">
+                                <span>${outcomeIcon}</span>
+                                <span>${outcomeLabel}</span>
+                            </span>
+                        </td>
+                        <td style="font-size: 0.74rem; color: #cbd5e1; max-width: 280px; line-height: 1.35;">${r.evaluationNotes || 'Audited against live prices.'}</td>
+                        <td>
+                            <button class="btn btn-ghost btn-sm" onclick="openStockChartModal('${r.symbol}')" style="font-size: 0.72rem; padding: 4px 8px;">
+                                📈 Chart
+                            </button>
+                        </td>
+                    </tr>`;
+                }).join("");
+            }
+        }
+    } catch (e) {
+        console.error("Error loading performance data:", e);
+        if (tbody) tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:32px; color:#f87171;">Failed to load accuracy metrics.</td></tr>`;
+    }
+}
+
+async function reanalyzeWeeklyPredictions() {
+    const btn = document.getElementById("btn-reanalyze-audit");
+    const icon = document.getElementById("icon-reanalyze-audit");
+    if (btn) btn.disabled = true;
+    if (icon) icon.classList.add("spinning");
+
+    try {
+        const res = await fetch("/api/weekly-scan/audit", { method: "POST" });
+        const json = await res.json();
+        if (json.success) {
+            loadWeeklyPerformanceData(false);
+            loadWeeklyScanData(false);
+        } else {
+            alert(json.error || "Failed to re-analyze predictions.");
+        }
+    } catch (e) {
+        console.error("Re-analysis error:", e);
+    } finally {
+        if (btn) btn.disabled = false;
+        if (icon) icon.classList.remove("spinning");
+    }
 }
 
 async function triggerWeeklyManualRescan() {
@@ -6285,6 +6636,7 @@ async function triggerWeeklyManualRescan() {
                     currentWeeklyRun = checkJson.run;
                     currentWeeklyCandidates = checkJson.candidates || [];
                     renderWeeklyScanView();
+                    loadWeeklyPerformanceData(false);
                     if (btn) btn.disabled = false;
                     if (icon) icon.classList.remove("spinning");
                 } else if (attempts > 12) {

@@ -143,10 +143,45 @@ def init_db():
             volume_ratio_to_avg20d REAL
         );
 
+        CREATE TABLE IF NOT EXISTS prediction_audits (
+            id                      TEXT PRIMARY KEY,
+            candidate_id            TEXT NOT NULL,
+            scan_run_id            TEXT NOT NULL,
+            symbol                  TEXT NOT NULL,
+            sector                  TEXT,
+            direction               TEXT NOT NULL,
+            grade                   TEXT NOT NULL,
+            entry_price             REAL NOT NULL,
+            stop_price              REAL NOT NULL,
+            target_price            REAL NOT NULL,
+            stop_basis              TEXT,
+            reward_risk_ratio       REAL NOT NULL,
+            raw_score               INTEGER NOT NULL,
+            predicted_at            TEXT NOT NULL,
+            last_evaluated_at       TEXT NOT NULL,
+            days_elapsed            INTEGER NOT NULL DEFAULT 0,
+            current_price           REAL NOT NULL,
+            highest_price_reached   REAL NOT NULL,
+            lowest_price_reached    REAL NOT NULL,
+            max_gain_pct            REAL NOT NULL,
+            max_loss_pct            REAL NOT NULL,
+            current_return_pct      REAL NOT NULL,
+            outcome                 TEXT NOT NULL,
+            target_reached          INTEGER NOT NULL DEFAULT 0,
+            stop_hit                INTEGER NOT NULL DEFAULT 0,
+            target_reached_at       TEXT,
+            stopped_out_at          TEXT,
+            evaluation_notes        TEXT
+        );
+
         CREATE INDEX IF NOT EXISTS idx_scan_candidates_run ON scan_candidates(scan_run_id);
         CREATE INDEX IF NOT EXISTS idx_scan_candidates_symbol ON scan_candidates(symbol);
         CREATE INDEX IF NOT EXISTS idx_scan_candidates_status ON scan_candidates(status);
         CREATE INDEX IF NOT EXISTS idx_scan_candidates_grade ON scan_candidates(grade);
+        CREATE INDEX IF NOT EXISTS idx_prediction_audits_symbol ON prediction_audits(symbol);
+        CREATE INDEX IF NOT EXISTS idx_prediction_audits_outcome ON prediction_audits(outcome);
+        CREATE INDEX IF NOT EXISTS idx_prediction_audits_grade ON prediction_audits(grade);
+        CREATE INDEX IF NOT EXISTS idx_prediction_audits_candidate ON prediction_audits(candidate_id);
         """)
 
         # Ensure default config is seeded
@@ -739,6 +774,12 @@ def _row_to_candidate(row, triggers_map):
             "avgDailyVolume20d": int(row["avg_daily_volume_20d"]) if row["avg_daily_volume_20d"] is not None else 0,
             "passedLiquidityFilter": bool(row["passed_liquidity_filter"])
         },
+        "investmentRecommendation": calculate_recommended_investment(
+            available_capital=500000.0,
+            stock_price=float(row["entry_price"]),
+            adtv_20d=float(row["avg_daily_traded_value_20d"]) if row["avg_daily_traded_value_20d"] is not None else 20000000.0,
+            avg_vol_20d=int(row["avg_daily_volume_20d"]) if row["avg_daily_volume_20d"] is not None else 0
+        ),
         "rationale": row["rationale"],
         "dataGaps": data_gaps,
         "createdAt": row["created_at"],
@@ -971,3 +1012,404 @@ def trigger_async_rescan(stocks, index_data=None):
     _active_scan_thread.start()
 
     return new_run_id
+
+
+# ═════════════════════════════════════════════════════════════════
+# 💰 DYNAMIC INVESTMENT SIZING & LIQUIDITY EXIT MODEL
+# ═════════════════════════════════════════════════════════════════
+
+def calculate_recommended_investment(available_capital=500000.0, stock_price=1.0, adtv_20d=20000000.0, avg_vol_20d=0):
+    """
+    Computes dynamic investment amount & share count recommendation based on available capital,
+    a 50% ceiling, stock liquidity (ADTV 20d), volume, bid/ask depth, and exit difficulty.
+    """
+    try:
+        available_capital = float(available_capital) if available_capital and float(available_capital) > 0 else 500000.0
+    except Exception:
+        available_capital = 500000.0
+
+    try:
+        stock_price = float(stock_price) if stock_price and float(stock_price) > 0 else 1.0
+    except Exception:
+        stock_price = 1.0
+
+    try:
+        adtv = float(adtv_20d) if adtv_20d and float(adtv_20d) > 0 else 20000000.0
+    except Exception:
+        adtv = 20000000.0
+
+    try:
+        avg_vol = float(avg_vol_20d) if avg_vol_20d and float(avg_vol_20d) > 0 else (adtv / stock_price if stock_price > 0 else 100000)
+    except Exception:
+        avg_vol = 100000.0
+
+    # 1. 50% Maximum Capital Ceiling
+    max_ceiling_pkr = available_capital * 0.50
+
+    # 2. Dynamic Liquidity & Safe Turnover Capacity
+    # Safe market participation: ~1.0% of 20-day Average Daily Traded Value
+    # This guarantees that the trader can liquidate in normal market hours without moving the order book.
+    liquidity_cap_pkr = adtv * 0.010
+
+    # Volume cap check (1.0% of average daily shares traded)
+    vol_cap_pkr = (avg_vol * 0.010) * stock_price
+    safe_capacity_pkr = min(liquidity_cap_pkr, vol_cap_pkr)
+
+    # Floor for small accounts (at least PKR 25k or up to available capital)
+    safe_capacity_pkr = max(min(25000.0, available_capital), safe_capacity_pkr)
+
+    # 3. Recommended Investment is the smaller of the 50% ceiling and the liquidity capacity
+    raw_recommended = min(max_ceiling_pkr, safe_capacity_pkr)
+    
+    # Calculate whole shares
+    if stock_price > 0:
+        recommended_shares = max(1, int(raw_recommended / stock_price))
+        recommended_pkr = round(recommended_shares * stock_price, 2)
+    else:
+        recommended_shares = 0
+        recommended_pkr = 0.0
+
+    # 4. Exit Difficulty Classification & Clear Reasoning
+    if adtv >= 75_000_000 and recommended_pkr >= (max_ceiling_pkr * 0.85):
+        exit_difficulty = "Easy"
+        reason = "Deep institutional liquidity & high daily turnover allow full allocation ceiling."
+    elif adtv >= 35_000_000:
+        exit_difficulty = "Moderate"
+        reason = "Moderate turnover; position sized to safe % of daily volume to ensure frictionless exit."
+    else:
+        exit_difficulty = "Difficult"
+        reason = "Limited daily volume & market depth; position strictly scaled down to preserve easy exit."
+
+    return {
+        "availableCapital": round(available_capital, 2),
+        "maxAllocationCeilingPkr": round(max_ceiling_pkr, 2),
+        "maxAllocationPct": 50.0,
+        "recommendedPkr": round(recommended_pkr, 2),
+        "recommendedShares": recommended_shares,
+        "reason": reason,
+        "exitDifficulty": exit_difficulty,
+        "percentOfCapital": round((recommended_pkr / available_capital * 100.0) if available_capital > 0 else 0, 1)
+    }
+
+
+# ═════════════════════════════════════════════════════════════════
+# 📊 PREDICTION PERSISTENCE, RE-ANALYSIS & HISTORICAL ACCURACY
+# ═════════════════════════════════════════════════════════════════
+
+def audit_and_evaluate_predictions(stocks_dict=None):
+    """
+    Re-analyzes all historical predictions against live price quotes & candles.
+    Checks whether the target was reached, stop was hit, or if it is in progress after 3d/5d/7d.
+    Records audit entries and computes aggregate performance metrics.
+    """
+    now_dt = datetime.datetime.now(datetime.timezone.utc)
+    now_iso = now_dt.isoformat()
+    today_str = now_dt.strftime("%Y-%m-%d")
+
+    # If stocks_dict is None, load from cache
+    if not stocks_dict:
+        try:
+            cache_file = BASE_DIR / "cache" / "stocks_cache.json"
+            if cache_file.exists():
+                with open(cache_file, "r") as f:
+                    cached = json.load(f)
+                    stocks_list = cached.get("data", []) if isinstance(cached, dict) else cached
+                    stocks_dict = {s.get("symbol", "").upper(): s for s in stocks_list}
+        except Exception:
+            stocks_dict = {}
+
+    with _db_lock:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # 1. Ensure all scan_candidates have an entry in prediction_audits
+        cur.execute("SELECT * FROM scan_candidates")
+        candidates = cur.fetchall()
+
+        for c in candidates:
+            cid = c["id"]
+            cur.execute("SELECT * FROM prediction_audits WHERE candidate_id = ?", (cid,))
+            existing_audit = cur.fetchone()
+
+            sym = c["symbol"].upper()
+            stk = (stocks_dict or {}).get(sym, {})
+            live_price = float(stk.get("price", c["entry_price"])) if stk else float(c["entry_price"])
+            intraday_high = float(stk.get("high", live_price)) if stk else live_price
+            intraday_low = float(stk.get("low", live_price)) if stk else live_price
+
+            entry_p = float(c["entry_price"])
+            stop_p = float(c["stop_price"])
+            target_p = float(c["target_price"])
+            dir_str = c["direction"]
+            grade_str = c["grade"]
+
+            pred_dt_str = c["created_at"]
+            try:
+                pred_dt = datetime.datetime.fromisoformat(pred_dt_str.replace("Z", "+00:00"))
+                days_elapsed = max(0, (now_dt - pred_dt).days)
+            except Exception:
+                days_elapsed = 0
+
+            if existing_audit:
+                highest_p = max(float(existing_audit["highest_price_reached"]), intraday_high, live_price)
+                lowest_p = min(float(existing_audit["lowest_price_reached"]), intraday_low, live_price)
+                outcome = existing_audit["outcome"]
+                target_reached = int(existing_audit["target_reached"])
+                stop_hit = int(existing_audit["stop_hit"])
+                target_reached_at = existing_audit["target_reached_at"]
+                stopped_out_at = existing_audit["stopped_out_at"]
+            else:
+                highest_p = max(entry_p, intraday_high, live_price)
+                lowest_p = min(entry_p, intraday_low, live_price)
+                outcome = "IN_PROGRESS"
+                target_reached = 0
+                stop_hit = 0
+                target_reached_at = None
+                stopped_out_at = None
+
+            # Calculate return percentages
+            if dir_str == "LONG":
+                max_gain_pct = round(((highest_p - entry_p) / entry_p) * 100.0, 2) if entry_p > 0 else 0.0
+                max_loss_pct = round(((lowest_p - entry_p) / entry_p) * 100.0, 2) if entry_p > 0 else 0.0
+                current_return_pct = round(((live_price - entry_p) / entry_p) * 100.0, 2) if entry_p > 0 else 0.0
+                
+                # Check target hit
+                if (highest_p >= target_p or live_price >= target_p) and not stop_hit:
+                    outcome = "SUCCESSFUL"
+                    target_reached = 1
+                    if not target_reached_at:
+                        target_reached_at = now_iso
+                # Check stop loss hit
+                elif (lowest_p <= stop_p or live_price <= stop_p) and not target_reached:
+                    outcome = "STOPPED_OUT"
+                    stop_hit = 1
+                    if not stopped_out_at:
+                        stopped_out_at = now_iso
+                else:
+                    if outcome not in ["SUCCESSFUL", "STOPPED_OUT"]:
+                        if days_elapsed >= 7:
+                            outcome = "EXPIRED_TIME"
+                        else:
+                            outcome = "IN_PROGRESS"
+            else: # SHORT
+                max_gain_pct = round(((entry_p - lowest_p) / entry_p) * 100.0, 2) if entry_p > 0 else 0.0
+                max_loss_pct = round(((entry_p - highest_p) / entry_p) * 100.0, 2) if entry_p > 0 else 0.0
+                current_return_pct = round(((entry_p - live_price) / entry_p) * 100.0, 2) if entry_p > 0 else 0.0
+
+                if (lowest_p <= target_p or live_price <= target_p) and not stop_hit:
+                    outcome = "SUCCESSFUL"
+                    target_reached = 1
+                    if not target_reached_at:
+                        target_reached_at = now_iso
+                elif (highest_p >= stop_p or live_price >= stop_p) and not target_reached:
+                    outcome = "STOPPED_OUT"
+                    stop_hit = 1
+                    if not stopped_out_at:
+                        stopped_out_at = now_iso
+                else:
+                    if outcome not in ["SUCCESSFUL", "STOPPED_OUT"]:
+                        if days_elapsed >= 7:
+                            outcome = "EXPIRED_TIME"
+                        else:
+                            outcome = "IN_PROGRESS"
+
+            # Evaluation notes
+            notes = f"Audited at {today_str} ({days_elapsed}d elapsed). Current price: Rs {live_price:.2f}. "
+            if outcome == "SUCCESSFUL":
+                notes += f"🎯 Target Hit! Max gain achieved: +{max_gain_pct:.1f}%."
+            elif outcome == "STOPPED_OUT":
+                notes += f"🛑 Stop hit at Rs {lowest_p if dir_str == 'LONG' else highest_p:.2f} (Loss: {max_loss_pct:.1f}%)."
+            elif outcome == "EXPIRED_TIME":
+                notes += f"⏳ 7-day swing window elapsed without target/stop trigger. Return at exit: {current_return_pct:+.1f}%."
+            else:
+                notes += f"⏳ Trade in progress. Peak gain so far: {max_gain_pct:+.1f}%, current return: {current_return_pct:+.1f}%."
+
+            # Update candidate status in scan_candidates
+            if outcome == "SUCCESSFUL":
+                cur.execute("UPDATE scan_candidates SET status = 'TARGET_REACHED', last_revalidated_at = ? WHERE id = ?", (now_iso, cid))
+            elif outcome == "STOPPED_OUT":
+                cur.execute("UPDATE scan_candidates SET status = 'INVALIDATED', last_revalidated_at = ? WHERE id = ?", (now_iso, cid))
+
+            # Upsert into prediction_audits
+            if existing_audit:
+                cur.execute("""
+                UPDATE prediction_audits
+                SET last_evaluated_at = ?, days_elapsed = ?, current_price = ?,
+                    highest_price_reached = ?, lowest_price_reached = ?, max_gain_pct = ?,
+                    max_loss_pct = ?, current_return_pct = ?, outcome = ?, target_reached = ?,
+                    stop_hit = ?, target_reached_at = ?, stopped_out_at = ?, evaluation_notes = ?
+                WHERE candidate_id = ?
+                """, (
+                    now_iso, days_elapsed, live_price, highest_p, lowest_p, max_gain_pct,
+                    max_loss_pct, current_return_pct, outcome, target_reached,
+                    stop_hit, target_reached_at, stopped_out_at, notes, cid
+                ))
+            else:
+                audit_id = str(uuid.uuid4())
+                cur.execute("""
+                INSERT INTO prediction_audits (
+                    id, candidate_id, scan_run_id, symbol, sector, direction, grade,
+                    entry_price, stop_price, target_price, stop_basis, reward_risk_ratio,
+                    raw_score, predicted_at, last_evaluated_at, days_elapsed,
+                    current_price, highest_price_reached, lowest_price_reached,
+                    max_gain_pct, max_loss_pct, current_return_pct, outcome,
+                    target_reached, stop_hit, target_reached_at, stopped_out_at, evaluation_notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    audit_id, cid, c["scan_run_id"], sym, c["sector"], dir_str, grade_str,
+                    entry_p, stop_p, target_p, c["stop_basis"], float(c["reward_risk_ratio"]),
+                    int(c["raw_score"]), pred_dt_str, now_iso, days_elapsed,
+                    live_price, highest_p, lowest_p, max_gain_pct, max_loss_pct, current_return_pct,
+                    outcome, target_reached, stop_hit, target_reached_at, stopped_out_at, notes
+                ))
+
+        conn.commit()
+        conn.close()
+
+    return get_performance_summary()
+
+
+def get_performance_summary():
+    """Computes high-level performance metrics, win rates, grade breakdowns, and profit factor."""
+    with _db_lock:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM prediction_audits")
+        rows = cur.fetchall()
+        conn.close()
+
+    total_pred = len(rows)
+    if total_pred == 0:
+        return {
+            "totalPredictions": 0,
+            "closedEvaluations": 0,
+            "successfulCount": 0,
+            "stoppedCount": 0,
+            "inProgressCount": 0,
+            "expiredCount": 0,
+            "overallWinRatePct": 0.0,
+            "gradeBreakdown": {
+                "A_PLUS": {"total": 0, "won": 0, "lost": 0, "winRatePct": 0.0},
+                "A": {"total": 0, "won": 0, "lost": 0, "winRatePct": 0.0},
+                "B": {"total": 0, "won": 0, "lost": 0, "winRatePct": 0.0}
+            },
+            "avgWinnerGainPct": 0.0,
+            "avgLoserLossPct": 0.0,
+            "profitFactor": 0.0,
+            "totalRealizedR": 0.0
+        }
+
+    successful = [r for r in rows if r["outcome"] == "SUCCESSFUL"]
+    stopped = [r for r in rows if r["outcome"] == "STOPPED_OUT"]
+    in_progress = [r for r in rows if r["outcome"] == "IN_PROGRESS"]
+    expired = [r for r in rows if r["outcome"] == "EXPIRED_TIME"]
+
+    closed_count = len(successful) + len(stopped)
+    win_rate = round((len(successful) / closed_count * 100.0), 1) if closed_count > 0 else 0.0
+
+    # Grade breakdowns
+    grade_map = {
+        "A_PLUS": {"total": 0, "won": 0, "lost": 0, "winRatePct": 0.0},
+        "A": {"total": 0, "won": 0, "lost": 0, "winRatePct": 0.0},
+        "B": {"total": 0, "won": 0, "lost": 0, "winRatePct": 0.0}
+    }
+
+    for r in rows:
+        g = r["grade"]
+        if g in grade_map:
+            grade_map[g]["total"] += 1
+            if r["outcome"] == "SUCCESSFUL":
+                grade_map[g]["won"] += 1
+            elif r["outcome"] == "STOPPED_OUT":
+                grade_map[g]["lost"] += 1
+
+    for g, data in grade_map.items():
+        g_closed = data["won"] + data["lost"]
+        data["winRatePct"] = round((data["won"] / g_closed * 100.0), 1) if g_closed > 0 else 0.0
+
+    # Winner gains vs Loser losses
+    winner_gains = [float(r["max_gain_pct"]) for r in successful if float(r["max_gain_pct"]) > 0]
+    avg_win = round(sum(winner_gains) / len(winner_gains), 1) if winner_gains else 0.0
+
+    loser_losses = [abs(float(r["max_loss_pct"])) for r in stopped if float(r["max_loss_pct"]) != 0]
+    avg_loss = round(sum(loser_losses) / len(loser_losses), 1) if loser_losses else 0.0
+
+    gross_gains = sum(winner_gains)
+    gross_losses = sum(loser_losses)
+    profit_factor = round(gross_gains / gross_losses, 2) if gross_losses > 0 else (round(gross_gains, 2) if gross_gains > 0 else 1.0)
+
+    total_r = round((len(successful) * 2.0) - (len(stopped) * 1.0), 1)
+
+    return {
+        "totalPredictions": total_pred,
+        "closedEvaluations": closed_count,
+        "successfulCount": len(successful),
+        "stoppedCount": len(stopped),
+        "inProgressCount": len(in_progress),
+        "expiredCount": len(expired),
+        "overallWinRatePct": win_rate,
+        "gradeBreakdown": grade_map,
+        "avgWinnerGainPct": avg_win,
+        "avgLoserLossPct": avg_loss,
+        "profitFactor": profit_factor,
+        "totalRealizedR": total_r
+    }
+
+
+def get_prediction_history(filter_grade=None, filter_outcome=None, limit=50, offset=0):
+    """Returns paginated list of prediction audits for the historical ledger."""
+    with _db_lock:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        query = "SELECT * FROM prediction_audits WHERE 1=1"
+        params = []
+
+        if filter_grade and filter_grade != "ALL":
+            query += " AND grade = ?"
+            params.append(filter_grade)
+
+        if filter_outcome and filter_outcome != "ALL":
+            query += " AND outcome = ?"
+            params.append(filter_outcome)
+
+        query += " ORDER BY predicted_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall()
+        conn.close()
+
+    audits = []
+    for r in rows:
+        audits.append({
+            "id": r["id"],
+            "candidateId": r["candidate_id"],
+            "scanRunId": r["scan_run_id"],
+            "symbol": r["symbol"],
+            "sector": r["sector"],
+            "direction": r["direction"],
+            "grade": r["grade"],
+            "entryPrice": float(r["entry_price"]),
+            "stopPrice": float(r["stop_price"]),
+            "targetPrice": float(r["target_price"]),
+            "stopBasis": r["stop_basis"],
+            "rewardRiskRatio": float(r["reward_risk_ratio"]),
+            "rawScore": int(r["raw_score"]),
+            "predictedAt": r["predicted_at"],
+            "lastEvaluatedAt": r["last_evaluated_at"],
+            "daysElapsed": int(r["days_elapsed"]),
+            "currentPrice": float(r["current_price"]),
+            "highestPriceReached": float(r["highest_price_reached"]),
+            "lowestPriceReached": float(r["lowest_price_reached"]),
+            "maxGainPct": float(r["max_gain_pct"]),
+            "maxLossPct": float(r["max_loss_pct"]),
+            "currentReturnPct": float(r["current_return_pct"]),
+            "outcome": r["outcome"],
+            "targetReached": bool(r["target_reached"]),
+            "stopHit": bool(r["stop_hit"]),
+            "targetReachedAt": r["target_reached_at"],
+            "stoppedOutAt": r["stopped_out_at"],
+            "evaluationNotes": r["evaluation_notes"]
+        })
+    return audits
