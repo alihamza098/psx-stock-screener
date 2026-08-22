@@ -17,6 +17,17 @@ import urllib.error
 from html.parser import HTMLParser
 from pathlib import Path
 
+# ─── PSX AI Trading Engine Modules (Phase 1 to 4) ───
+import psx_calendar
+import psx_indicators
+import psx_scanner
+import psx_scoring
+import psx_ai_researcher
+from psx_risk_engine import risk_engine
+from psx_paper_broker import paper_broker
+from psx_position_monitor import position_monitor
+import weekly_scan_engine as weekly_engine
+
 PORT = int(os.environ.get('PORT', 3000))
 CACHE_DURATION = 120  # seconds (2 min to reduce PSX load)
 FETCH_TIMEOUT = 8     # seconds (balanced for Render)
@@ -2864,6 +2875,20 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             query = parse_qs(parsed_path.query)
             if not self._check_auth(query): return
             self._handle_upper_lock_analysis()
+        elif parsed_path.path == "/api/trading/calendar":
+            self._handle_trading_calendar()
+        elif parsed_path.path == "/api/trading/market-regime":
+            self._handle_trading_market_regime()
+        elif parsed_path.path == "/api/trading/opportunities":
+            self._handle_trading_opportunities()
+        elif parsed_path.path == "/api/trading/trade-card":
+            query = parse_qs(parsed_path.query)
+            symbol = query.get("symbol", [""])[0]
+            self._handle_trading_trade_card(symbol)
+        elif parsed_path.path == "/api/trading/portfolio":
+            self._handle_trading_portfolio()
+        elif parsed_path.path == "/api/trading/monitor-positions":
+            self._handle_trading_monitor_positions()
         elif parsed_path.path == "/api/live-trading":
             query = parse_qs(parsed_path.query)
             if not self._check_auth(query): return
@@ -2941,6 +2966,47 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({
                 "success": True,
                 "data": data
+            })
+
+        # ─── PSX Weekly Trade Options API Contract (Section 5) ───
+        elif parsed_path.path == "/api/weekly-scan/latest":
+            run, candidates = weekly_engine.get_latest_scan()
+            if not run:
+                stocks, _ = fetch_stock_data()
+                idx_data, _ = fetch_index_data()
+                if stocks:
+                    run, candidates = weekly_engine.execute_weekly_scan(stocks, index_data=idx_data, run_type="SCHEDULED_WEEKLY")
+            self._send_json({
+                "success": True,
+                "run": run,
+                "candidates": candidates
+            })
+        elif parsed_path.path == "/api/weekly-scan/runs":
+            query = parse_qs(parsed_path.query)
+            limit = int(query.get("limit", ["10"])[0])
+            offset = int(query.get("offset", ["0"])[0])
+            runs = weekly_engine.get_scan_runs_list(limit=limit, offset=offset)
+            self._send_json({
+                "success": True,
+                "runs": runs,
+                "count": len(runs)
+            })
+        elif parsed_path.path.startswith("/api/weekly-scan/runs/"):
+            run_id = parsed_path.path.replace("/api/weekly-scan/runs/", "").strip("/")
+            run, candidates = weekly_engine.get_scan_run_by_id(run_id)
+            if not run:
+                self._send_json({"success": False, "error": f"Scan run '{run_id}' not found."}, 404)
+            else:
+                self._send_json({
+                    "success": True,
+                    "run": run,
+                    "candidates": candidates
+                })
+        elif parsed_path.path == "/api/weekly-scan/config":
+            cfg = weekly_engine.get_current_config()
+            self._send_json({
+                "success": True,
+                "config": cfg
             })
 
         # ─── Admin Endpoints ───
@@ -3066,11 +3132,109 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json(res, 200 if res["success"] else 400)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/trading/approve-trade":
+            try:
+                body = json.loads(post_data.decode('utf-8'))
+                self._handle_trading_approve_trade(body)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/trading/reject-trade":
+            try:
+                body = json.loads(post_data.decode('utf-8'))
+                self._send_json({"success": True, "status": "REJECTED", "symbol": body.get("symbol")})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/trading/close-position":
+            try:
+                body = json.loads(post_data.decode('utf-8'))
+                self._handle_trading_close_position(body)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/trading/kill-switch":
+            try:
+                body = json.loads(post_data.decode('utf-8'))
+                self._handle_trading_kill_switch(body)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/trading/reset-paper-account":
+            try:
+                res = paper_broker.reset_account()
+                self._send_json(res)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
         elif self.path == "/api/refresh":
             res = force_refresh_all()
             self._send_json(res)
+
+        # ─── PSX Weekly Trade Options API Contract (Section 5) ───
+        elif self.path == "/api/weekly-scan/rescan":
+            try:
+                stocks, _ = fetch_stock_data()
+                idx_data, _ = fetch_index_data()
+                run_id = weekly_engine.trigger_async_rescan(stocks, index_data=idx_data)
+                self._send_json({
+                    "success": True,
+                    "runId": run_id,
+                    "message": "Manual weekly rescan triggered successfully. Poll GET /api/weekly-scan/runs/{runId} for completion."
+                })
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+        elif self.path.startswith("/api/weekly-scan/candidates/") and self.path.endswith("/status"):
+            try:
+                parts = self.path.strip("/").split("/")
+                candidate_id = parts[3]
+                body = json.loads(post_data.decode("utf-8")) if post_data else {}
+                new_status = body.get("status")
+                res = weekly_engine.update_candidate_status(candidate_id, new_status)
+                self._send_json(res, 200 if res.get("success") else 400)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/weekly-scan/config":
+            try:
+                body = json.loads(post_data.decode("utf-8")) if post_data else {}
+                saved = weekly_engine.save_config(body)
+                self._send_json({
+                    "success": True,
+                    "config": saved,
+                    "message": f"ScanConfig updated to version {saved['version']}."
+                })
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
         else:
             self.send_error(404)
+
+    def do_PATCH(self):
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length)
+        if self.path.startswith("/api/weekly-scan/candidates/") and self.path.endswith("/status"):
+            try:
+                parts = self.path.strip("/").split("/")
+                candidate_id = parts[3]
+                body = json.loads(post_data.decode("utf-8")) if post_data else {}
+                new_status = body.get("status")
+                res = weekly_engine.update_candidate_status(candidate_id, new_status)
+                self._send_json(res, 200 if res.get("success") else 400)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
+        else:
+            self._send_json({"success": False, "error": "Not Found"}, 404)
+
+    def do_PUT(self):
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length)
+        if self.path == "/api/weekly-scan/config":
+            try:
+                body = json.loads(post_data.decode("utf-8")) if post_data else {}
+                saved = weekly_engine.save_config(body)
+                self._send_json({
+                    "success": True,
+                    "config": saved,
+                    "message": f"ScanConfig updated to version {saved['version']}."
+                })
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
+        else:
+            self._send_json({"success": False, "error": "Not Found"}, 404)
 
     def _send_json(self, data, status=200):
         try:
@@ -3213,6 +3377,243 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({"success": True, "data": res})
         except Exception as e:
             print(f"[PSX] Error in dividends/corporate actions handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    # ─── PSX AI Trading Engine Handlers (Phase 1 & 2) ───
+    def _handle_trading_calendar(self):
+        try:
+            status = psx_calendar.get_psx_market_status()
+            self._send_json({"success": True, "calendar": status})
+        except Exception as e:
+            print(f"[PSX Trading] Error in calendar handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_trading_market_regime(self):
+        try:
+            stocks, _ = fetch_stock_data()
+            indices, _ = fetch_index_data()
+            regime = psx_scanner.classify_market_regime(indices, stocks)
+            self._send_json({"success": True, "market_regime": regime})
+        except Exception as e:
+            print(f"[PSX Trading] Error in market regime handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_trading_opportunities(self):
+        try:
+            stocks, _ = fetch_stock_data()
+            indices, _ = fetch_index_data()
+            regime = psx_scanner.classify_market_regime(indices, stocks)
+            candidates = psx_scanner.scan_liquid_candidates(stocks)
+
+            # Sort by change & volume to pick top active candidates for deep multi-timeframe analysis
+            top_active = sorted(candidates, key=lambda x: (x.get("change", 0.0) * (x.get("volume", 0) ** 0.5)), reverse=True)[:25]
+            
+            opportunities = []
+            for cand in top_active:
+                sym = cand["symbol"]
+                # Fetch history for technical profile
+                history = fetch_stock_history(sym) or []
+                if not history or len(history) < 15:
+                    continue
+                
+                tech_profile = psx_indicators.analyze_symbol_technical_profile(history, cand["price"], cand["volume"])
+                score_res = psx_scoring.calculate_trade_score(tech_profile, cand, regime)
+                
+                card = psx_ai_researcher.generate_trade_card(
+                    symbol=sym,
+                    name=cand["name"],
+                    sector=cand["sector"],
+                    score_data=score_res,
+                    tech_profile=tech_profile,
+                    market_regime=regime
+                )
+                
+                opportunities.append({
+                    "symbol": sym,
+                    "name": cand["name"],
+                    "sector": cand["sector"],
+                    "price": cand["price"],
+                    "change": cand["change"],
+                    "volume": cand["volume"],
+                    "score": score_res["score"],
+                    "strategy": score_res["strategy"],
+                    "conviction": card["conviction"],
+                    "recommendation": card["recommendation"],
+                    "rr_ratio": score_res["rr_ratio"],
+                    "brackets": card["brackets"],
+                    "reasons": score_res["reasons"]
+                })
+
+            # Sort by score descending
+            opportunities.sort(key=lambda x: x["score"], reverse=True)
+            self._send_json({
+                "success": True,
+                "count": len(opportunities),
+                "market_regime": regime,
+                "opportunities": opportunities[:10]  # Top 10 opportunities
+            })
+        except Exception as e:
+            print(f"[PSX Trading] Error in opportunities handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_trading_trade_card(self, symbol):
+        if not symbol:
+            self._send_json({"success": False, "error": "Symbol is required"}, 400)
+            return
+        try:
+            symbol = symbol.upper().strip()
+            stocks, _ = fetch_stock_data()
+            indices, _ = fetch_index_data()
+            stock = next((s for s in stocks if s.get("symbol") == symbol), None)
+            
+            if not stock:
+                self._send_json({"success": False, "error": f"Symbol {symbol} not found"}, 404)
+                return
+
+            history = fetch_stock_history(symbol) or []
+            if not history:
+                self._send_json({"success": False, "error": f"No historical data for {symbol}"}, 404)
+                return
+
+            regime = psx_scanner.classify_market_regime(indices, stocks)
+            cand_meta = {
+                "symbol": symbol,
+                "name": stock.get("name", symbol),
+                "sector": stock.get("sector", "Other"),
+                "price": stock.get("price", 0.0),
+                "change": stock.get("change", 0.0),
+                "volume": stock.get("volume", 0),
+                "lock_info": psx_scanner.calculate_upper_lock_status(stock)
+            }
+            tech_profile = psx_indicators.analyze_symbol_technical_profile(history, stock.get("price", 0.0), stock.get("volume", 0))
+            score_res = psx_scoring.calculate_trade_score(tech_profile, cand_meta, regime)
+            card = psx_ai_researcher.generate_trade_card(
+                symbol=symbol,
+                name=cand_meta["name"],
+                sector=cand_meta["sector"],
+                score_data=score_res,
+                tech_profile=tech_profile,
+                market_regime=regime
+            )
+
+            self._send_json({"success": True, "trade_card": card})
+        except Exception as e:
+            print(f"[PSX Trading] Error in trade card handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_trading_portfolio(self):
+        try:
+            stocks, _ = fetch_stock_data()
+            price_map = {s.get("symbol", "").upper(): s.get("price", 0.0) for s in stocks}
+            acct = paper_broker.get_account_data(price_map)
+            acct["kill_switch_active"] = risk_engine.is_kill_switch_active
+            acct["kill_switch_reason"] = risk_engine.kill_switch_reason
+            self._send_json({"success": True, "portfolio": acct})
+        except Exception as e:
+            print(f"[PSX Trading] Error in portfolio handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_trading_monitor_positions(self):
+        try:
+            stocks, _ = fetch_stock_data()
+            price_map = {s.get("symbol", "").upper(): s.get("price", 0.0) for s in stocks}
+            executed_actions = position_monitor.process_price_ticks(price_map)
+            updated_acct = paper_broker.get_account_data(price_map)
+            updated_acct["kill_switch_active"] = risk_engine.is_kill_switch_active
+            self._send_json({
+                "success": True,
+                "executed_actions": executed_actions,
+                "portfolio": updated_acct
+            })
+        except Exception as e:
+            print(f"[PSX Trading] Error in monitor positions handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_trading_approve_trade(self, body):
+        try:
+            symbol = body.get("symbol", "").upper().strip()
+            name = body.get("name", symbol)
+            sector = body.get("sector", "Other")
+            entry_price = float(body.get("entry_price", 0.0))
+            stop_loss = float(body.get("stop_loss", 0.0))
+            tp1 = float(body.get("take_profit_1", 0.0))
+            tp2 = float(body.get("take_profit_2", 0.0))
+            strategy = body.get("strategy", "Momentum Breakout")
+
+            if not symbol or entry_price <= 0 or stop_loss <= 0:
+                self._send_json({"success": False, "error": "Invalid trade parameters provided."}, 400)
+                return
+
+            stocks, _ = fetch_stock_data()
+            price_map = {s.get("symbol", "").upper(): s.get("price", 0.0) for s in stocks}
+            acct = paper_broker.get_account_data(price_map)
+
+            # 1. Deterministic Risk Engine Validation
+            allowed, reason, sizing = risk_engine.validate_order_proposal(symbol, sector, entry_price, stop_loss, acct)
+            if not allowed:
+                self._send_json({"success": False, "error": f"Risk Engine Rejected Order: {reason}"}, 422)
+                return
+
+            shares = sizing["shares"]
+            # 2. Paper Broker Execution
+            exec_res = paper_broker.place_buy_order(
+                symbol=symbol,
+                name=name,
+                sector=sector,
+                shares=shares,
+                price=entry_price,
+                stop_loss=stop_loss,
+                take_profit_1=tp1,
+                take_profit_2=tp2,
+                strategy=strategy
+            )
+
+            if not exec_res["success"]:
+                self._send_json(exec_res, 400)
+                return
+
+            exec_res["sizing"] = sizing
+            self._send_json(exec_res)
+        except Exception as e:
+            print(f"[PSX Trading] Error approving trade: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_trading_close_position(self, body):
+        try:
+            symbol = body.get("symbol", "").upper().strip()
+            stocks, _ = fetch_stock_data()
+            stock = next((s for s in stocks if s.get("symbol") == symbol), None)
+            cur_price = stock.get("price", 0.0) if stock else 0.0
+
+            if cur_price <= 0:
+                # fallback to entry price if market price unavailable
+                pos = paper_broker.data.get("positions", {}).get(symbol)
+                cur_price = pos.get("entry_price", 1.0) if pos else 1.0
+
+            res = paper_broker.close_position(symbol, cur_price, reason="Manual User Close")
+            self._send_json(res, 200 if res["success"] else 400)
+        except Exception as e:
+            print(f"[PSX Trading] Error closing position: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_trading_kill_switch(self, body):
+        try:
+            action = body.get("action", "activate").lower()
+            if action == "activate":
+                reason = body.get("reason", "Manual Emergency Stop by User")
+                risk_res = risk_engine.trigger_kill_switch(reason)
+                # Unwind all active open positions
+                stocks, _ = fetch_stock_data()
+                price_map = {s.get("symbol", "").upper(): s.get("price", 0.0) for s in stocks}
+                actions = position_monitor.process_price_ticks(price_map)
+                self._send_json({"success": True, "kill_switch": risk_res, "closed_positions": actions})
+            elif action == "reset":
+                res = risk_engine.reset_kill_switch()
+                self._send_json(res)
+            else:
+                self._send_json({"success": False, "error": "Invalid action (use 'activate' or 'reset')"}, 400)
+        except Exception as e:
+            print(f"[PSX Trading] Error in kill switch handler: {e}")
             self._send_json({"success": False, "error": str(e)}, 500)
 
     def _handle_refresh(self):
