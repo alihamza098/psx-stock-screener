@@ -3180,7 +3180,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 "success": True,
                 "config": cfg
             })
-        elif parsed_path.path == "/api/weekly-scan/performance":
+        elif parsed_path.path in ["/api/weekly-scan/performance", "/api/weekly-scan/audits"]:
             query = parse_qs(parsed_path.query)
             grade = query.get("grade", ["ALL"])[0]
             outcome = query.get("outcome", ["ALL"])[0]
@@ -3425,7 +3425,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(res)
 
         # ─── PSX Weekly Trade Options API Contract (Section 5) ───
-        elif self.path == "/api/weekly-scan/rescan":
+        elif self.path in ["/api/weekly-scan/rescan", "/api/weekly-scan/scan"]:
             try:
                 stocks, _ = fetch_stock_data()
                 idx_data, _ = fetch_index_data()
@@ -3458,7 +3458,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 })
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 400)
-        elif self.path == "/api/weekly-scan/audit":
+        elif self.path in ["/api/weekly-scan/audit", "/api/weekly-scan/audits/reanalyze", "/api/weekly-scan/reanalyze"]:
             try:
                 stocks, _ = fetch_stock_data()
                 stocks_dict = {s.get("symbol", "").upper(): s for s in stocks} if stocks else {}

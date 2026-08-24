@@ -482,18 +482,40 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
             stop = stop_atr
             stop_basis = "ATR_MULTIPLE"
         risk_dist = max(entry - stop, 0.2)
-        target = round(entry + (risk_dist * config["risk"]["defaultTargetMultipleIfNoStructure"]), 2)
-        rr = round(abs(target - entry) / risk_dist, 2)
+        tp1 = round(entry + (risk_dist * 1.5), 2)
+        tp2 = round(entry + (risk_dist * 2.5), 2)
+        target = tp1
+        rr = round(abs(tp1 - entry) / risk_dist, 2)
+        risk_pct = round((risk_dist / entry) * 100, 2)
+        reward_pct_tp1 = round(((tp1 - entry) / entry) * 100, 2)
+        reward_pct_tp2 = round(((tp2 - entry) / entry) * 100, 2)
+        entry_zone_min = round(entry * 0.992, 2)
+        entry_zone_max = round(entry * 1.012, 2)
     else:
         stop = stop_atr
         stop_basis = "ATR_MULTIPLE"
         risk_dist = max(stop - entry, 0.2)
-        target = round(entry - (risk_dist * config["risk"]["defaultTargetMultipleIfNoStructure"]), 2)
-        rr = round(abs(entry - target) / risk_dist, 2)
+        tp1 = round(entry - (risk_dist * 1.5), 2)
+        tp2 = round(entry - (risk_dist * 2.5), 2)
+        target = tp1
+        rr = round(abs(entry - tp1) / risk_dist, 2)
+        risk_pct = round((risk_dist / entry) * 100, 2)
+        reward_pct_tp1 = round(((entry - tp1) / entry) * 100, 2)
+        reward_pct_tp2 = round(((entry - tp2) / entry) * 100, 2)
+        entry_zone_min = round(entry * 1.008, 2)
+        entry_zone_max = round(entry * 0.988, 2)
 
     min_rr = config["risk"]["minRewardRiskRatio"]
     if rr < min_rr:
         return None, "rrBelowThreshold"
+
+    # Conviction calculation
+    if grade == "A_PLUS":
+        conviction_pct = int(min(98, 90 + (max_vol_ratio - 1.5) * 6))
+    elif grade == "A":
+        conviction_pct = int(min(88, 80 + (max_vol_ratio - 1.2) * 5))
+    else:
+        conviction_pct = int(min(78, 70 + (max_vol_ratio - 1.0) * 4))
 
     # Rationale Generator
     trigger_names = ", ".join(t["type"].replace("_", " ") for t in triggers)
@@ -502,8 +524,11 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
         f"{symbol} exhibits a strong {direction.lower()} setup ({grade} grade) in {sector}. "
         f"Key triggers include {trigger_names}, {vol_text}. "
         f"Defined risk parameters place Entry at Rs {entry:.2f}, Stop Loss at Rs {stop:.2f} ({stop_basis.replace('_', ' ')}), "
-        f"and Profit Target at Rs {target:.2f} offering a {rr:.1f}x Reward-to-Risk ratio."
+        f"TP1 at Rs {tp1:.2f} (+{reward_pct_tp1}%), and TP2 at Rs {tp2:.2f} (+{reward_pct_tp2}%) offering a {rr:.1f}x Reward-to-Risk ratio."
     )
+
+    action_plan = f"Buy in zone ₨{entry_zone_min:.2f}–₨{entry_zone_max:.2f}. Stop Loss: ₨{stop:.2f} (-{risk_pct}%). TP1: ₨{tp1:.2f} (+{reward_pct_tp1}%), TP2: ₨{tp2:.2f} (+{reward_pct_tp2}%)."
+    urdu_summary = f"{symbol} میں {direction} سوئنگ ٹریڈ سیٹ اپ ({grade} گریڈ)۔ داخلہ زون: ₨{entry_zone_min:.2f}-₨{entry_zone_max:.2f}۔ متوقع ہدف: ₨{tp1:.2f} (+{reward_pct_tp1}%)، سٹاپ لاس: ₨{stop:.2f} (-{risk_pct}%)۔ رسک ٹو ریوارڈ: {rr:.1f}x۔"
 
     candidate = {
         "symbol": symbol,
@@ -511,6 +536,7 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
         "direction": direction,
         "grade": grade,
         "status": "ACTIVE",
+        "conviction": conviction_pct,
         "trend": {
             "stockTrendDirection": stock_trend_dir,
             "stockAboveEma20": stock_above_ema20,
@@ -524,8 +550,15 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
         "triggers": triggers,
         "risk": {
             "entry": entry,
+            "entryZoneMin": entry_zone_min,
+            "entryZoneMax": entry_zone_max,
             "stop": stop,
             "target": target,
+            "takeProfit1": tp1,
+            "takeProfit2": tp2,
+            "riskPct": risk_pct,
+            "rewardPctTp1": reward_pct_tp1,
+            "rewardPctTp2": reward_pct_tp2,
             "stopBasis": stop_basis,
             "atrAtSignal": round(atr, 4),
             "rewardRiskRatio": rr
@@ -544,6 +577,8 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
             "passedLiquidityFilter": passed_liquidity
         },
         "rationale": rationale,
+        "actionPlan": action_plan,
+        "urduSummary": urdu_summary,
         "dataGaps": data_gaps
     }
 

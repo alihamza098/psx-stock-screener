@@ -486,10 +486,15 @@
                 </div>
             </div>
 
+            <!-- 🌟 Weekly Alpha Spotlight: Top 3 Highest Probability Trades -->
+            <div id="weekly-spotlight-section" class="weekly-spotlight-section">
+                <!-- Dynamically populated by renderWeeklySpotlight() -->
+            </div>
+
             <!-- Sub-Tab Selector: Active Candidates vs Performance Ledger -->
             <div class="weekly-subtab-bar">
                 <button class="weekly-subtab-btn active" id="btn-subtab-candidates" onclick="switchWeeklySubtab('candidates')">
-                    ⚡ Active Scan Candidates (<span id="count-subtab-candidates">0</span>)
+                    ⚡ All Qualified Setups (<span id="count-subtab-candidates">0</span>)
                 </button>
                 <button class="weekly-subtab-btn" id="btn-subtab-performance" onclick="switchWeeklySubtab('performance')">
                     🎯 Prediction Accuracy & Performance Ledger (<span id="count-subtab-performance">0</span>)
@@ -498,15 +503,32 @@
 
             <!-- ─── PANE 1: Active Candidates ─── -->
             <div id="weekly-candidates-pane">
-                <!-- Controls: Filters, Capital Allocation, Grade & Status -->
-                <div class="weekly-controls-bar">
-                    <div class="weekly-filter-group capital-input-group" style="background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.3); padding: 4px 10px; border-radius: 8px;">
-                        <label style="color: #a5b4fc; font-weight: 800;">💰 Available Capital:</label>
-                        <span style="color: #94a3b8; font-size: 0.8rem;">PKR</span>
-                        <input type="number" id="weekly-user-capital" class="weekly-input" value="500000" step="50000" min="10000" style="width: 110px; font-weight: 800; font-family: 'JetBrains Mono', monospace;" oninput="onWeeklyCapitalChange()">
-                        <span style="font-size: 0.72rem; color: #64748b;" title="50% allocation ceiling per position">(Max 50% Cap)</span>
+                <!-- Interactive Capital Sizing & Presets Banner -->
+                <div class="weekly-capital-preset-bar">
+                    <div class="cap-preset-left">
+                        <span class="cap-preset-icon">💰</span>
+                        <div>
+                            <div class="cap-preset-title">Total Available Trading Capital</div>
+                            <div class="cap-preset-subtitle">Dynamic sizing calculates exact shares & liquidity limits with a 50% max position ceiling.</div>
+                        </div>
                     </div>
+                    <div class="cap-preset-right">
+                        <div class="cap-chips-group">
+                            <button class="cap-preset-btn" onclick="setWeeklyCapitalPreset(100000)">₨ 100K</button>
+                            <button class="cap-preset-btn" onclick="setWeeklyCapitalPreset(250000)">₨ 250K</button>
+                            <button class="cap-preset-btn active" id="preset-btn-500k" onclick="setWeeklyCapitalPreset(500000)">₨ 500K</button>
+                            <button class="cap-preset-btn" onclick="setWeeklyCapitalPreset(1000000)">₨ 1.0M</button>
+                            <button class="cap-preset-btn" onclick="setWeeklyCapitalPreset(2500000)">₨ 2.5M</button>
+                        </div>
+                        <div class="cap-custom-input-box">
+                            <span>PKR</span>
+                            <input type="number" id="weekly-user-capital" value="500000" step="50000" min="10000" oninput="onWeeklyCapitalChange()">
+                        </div>
+                    </div>
+                </div>
 
+                <!-- Controls: Filters, Grade, Strategy, Direction & Sort -->
+                <div class="weekly-controls-bar">
                     <div class="weekly-filter-group">
                         <label>Grade:</label>
                         <div class="weekly-pill-selector" id="weekly-grade-pills">
@@ -515,6 +537,26 @@
                             <button class="pill-btn pill-a" data-grade="A" onclick="setWeeklyGradeFilter(this, 'A')">A Grade</button>
                             <button class="pill-btn pill-b" data-grade="B" onclick="setWeeklyGradeFilter(this, 'B')">B Grade</button>
                         </div>
+                    </div>
+
+                    <div class="weekly-filter-group">
+                        <label>Strategy:</label>
+                        <select id="weekly-strategy-filter" class="filter-select weekly-select" onchange="filterAndRenderWeeklyCandidates()">
+                            <option value="ALL">All Strategies</option>
+                            <option value="BREAKOUT">⚡ 20D Breakout</option>
+                            <option value="PULLBACK_REJECT">🔄 Pullback Rejection</option>
+                            <option value="MACD_CROSSOVER">📈 MACD Crossover</option>
+                            <option value="RSI_DIVERGENCE">🎯 RSI Divergence</option>
+                        </select>
+                    </div>
+
+                    <div class="weekly-filter-group">
+                        <label>Exit Liquidity:</label>
+                        <select id="weekly-liquidity-filter" class="filter-select weekly-select" onchange="filterAndRenderWeeklyCandidates()">
+                            <option value="ALL">All Liquidity</option>
+                            <option value="Easy">🟢 Easy Exit Only (High Turnover)</option>
+                            <option value="Moderate">🟡 Moderate & Above</option>
+                        </select>
                     </div>
 
                     <div class="weekly-filter-group">
@@ -527,18 +569,16 @@
                     </div>
 
                     <div class="weekly-filter-group">
-                        <label>Status:</label>
-                        <select id="weekly-status-filter" class="filter-select weekly-select" onchange="filterAndRenderWeeklyCandidates()">
-                            <option value="ALL">All Statuses</option>
-                            <option value="ACTIVE" selected>ACTIVE Only</option>
-                            <option value="TARGET_REACHED">TARGET REACHED</option>
-                            <option value="MISSED">MISSED</option>
-                            <option value="INVALIDATED">INVALIDATED</option>
-                            <option value="LOCKED">LOCKED</option>
+                        <label>Sort By:</label>
+                        <select id="weekly-sort-filter" class="filter-select weekly-select" onchange="filterAndRenderWeeklyCandidates()">
+                            <option value="conviction">⭐ AI Conviction Score</option>
+                            <option value="return">🎯 Highest Profit Potential</option>
+                            <option value="rr">⚖️ Best Risk:Reward (R:R)</option>
+                            <option value="volume">💧 Highest Turnover / Volume</option>
                         </select>
                     </div>
 
-                    <div class="weekly-filter-group" style="flex: 1; min-width: 160px;">
+                    <div class="weekly-filter-group" style="flex: 1; min-width: 150px;">
                         <input type="text" id="weekly-symbol-search" class="filter-select weekly-input" placeholder="Search symbol or sector..." oninput="filterAndRenderWeeklyCandidates()" style="width: 100%;">
                     </div>
                 </div>

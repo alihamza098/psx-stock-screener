@@ -7085,6 +7085,366 @@ body {
     font-weight: 700;
 }
 
+/* ═════════════════════════════════════════════════════════════════
+   🌟 WEEKLY ALPHA SPOTLIGHT & ENHANCED POSITION SIZING STYLES
+   ═════════════════════════════════════════════════════════════════ */
+
+.weekly-spotlight-section {
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.85));
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    border-radius: var(--radius-xl);
+    padding: 20px;
+    box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.5), 0 0 25px rgba(99, 102, 241, 0.12);
+}
+
+.weekly-spotlight-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.spotlight-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.spotlight-badge {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.weekly-spotlight-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+}
+
+.spotlight-card {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.spotlight-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(99, 102, 241, 0.6);
+    box-shadow: 0 10px 25px rgba(99, 102, 241, 0.2);
+}
+
+.spotlight-card.rank-1 {
+    border-color: rgba(245, 158, 11, 0.5);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.06), rgba(15, 23, 42, 0.95));
+}
+
+.spotlight-card.rank-1::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #f59e0b, #eab308);
+}
+
+.spotlight-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.spotlight-symbol-title {
+    font-size: 1.25rem;
+    font-weight: 900;
+    color: #ffffff;
+    font-family: 'JetBrains Mono', monospace;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.spotlight-conviction-pill {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.spotlight-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+}
+
+.spotlight-metric-label {
+    font-size: 0.65rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.spotlight-metric-val {
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: #f8fafc;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.spotlight-metric-val.stop { color: #f87171; }
+.spotlight-metric-val.target { color: #34d399; }
+
+.spotlight-profit-estimate {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px dashed rgba(16, 185, 129, 0.3);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.76rem;
+}
+
+.spotlight-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+}
+
+/* Capital Preset Bar */
+.weekly-capital-preset-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.9));
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: var(--radius-lg);
+    padding: 14px 18px;
+    margin-bottom: 14px;
+}
+
+.cap-preset-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cap-preset-icon {
+    font-size: 1.8rem;
+}
+
+.cap-preset-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #f8fafc;
+}
+
+.cap-preset-subtitle {
+    font-size: 0.74rem;
+    color: #94a3b8;
+}
+
+.cap-preset-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.cap-chips-group {
+    display: flex;
+    gap: 6px;
+}
+
+.cap-preset-btn {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #cbd5e1;
+    font-size: 0.76rem;
+    font-weight: 800;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.cap-preset-btn:hover {
+    background: rgba(99, 102, 241, 0.2);
+    color: #fff;
+    border-color: rgba(99, 102, 241, 0.5);
+}
+
+.cap-preset-btn.active {
+    background: #6366f1;
+    color: #ffffff;
+    border-color: #6366f1;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+
+.cap-custom-input-box {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    padding: 4px 10px;
+}
+
+.cap-custom-input-box span {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-weight: 700;
+}
+
+.cap-custom-input-box input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #34d399;
+    font-weight: 800;
+    font-size: 0.88rem;
+    width: 110px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Visual Risk & Progress Gauge Bar */
+.risk-visual-bar {
+    margin: 8px 0;
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.risk-visual-track-container {
+    position: relative;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+    overflow: visible;
+    margin: 8px 0;
+}
+
+.risk-visual-fill-stop {
+    position: absolute;
+    left: 0;
+    width: 30%;
+    height: 100%;
+    background: linear-gradient(90deg, #ef4444, rgba(239, 68, 68, 0.3));
+    border-radius: 4px 0 0 4px;
+}
+
+.risk-visual-fill-target {
+    position: absolute;
+    left: 30%;
+    width: 70%;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.3), #10b981);
+    border-radius: 0 4px 4px 0;
+}
+
+.risk-entry-pointer {
+    position: absolute;
+    left: 30%;
+    top: -4px;
+    width: 3px;
+    height: 16px;
+    background: #ffffff;
+    box-shadow: 0 0 8px #ffffff;
+    border-radius: 2px;
+    transform: translateX(-50%);
+}
+
+.risk-visual-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: #94a3b8;
+}
+
+/* Zone Status Badges */
+.zone-status-badge {
+    font-size: 0.68rem;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-transform: uppercase;
+}
+
+.zone-status-badge.in-buy {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.zone-status-badge.extended {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.zone-status-badge.target-hit {
+    background: rgba(99, 102, 241, 0.15);
+    color: #a5b4fc;
+    border: 1px solid rgba(99, 102, 241, 0.35);
+}
+
+/* Urdu & Action Plan Accordion */
+.urdu-summary-box {
+    direction: rtl;
+    text-align: right;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Nastaliq Urdu", sans-serif;
+    font-size: 0.78rem;
+    color: #93c5fd;
+    line-height: 1.6;
+    background: rgba(30, 58, 138, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin-top: 4px;
+}
+
+
 
 
 

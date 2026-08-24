@@ -6207,39 +6207,83 @@ function getUserAvailableCapital() {
     return (val && val > 0) ? val : 500000;
 }
 
-function onWeeklyCapitalChange() {
+function setWeeklyCapitalPreset(amount) {
+    const el = document.getElementById("weekly-user-capital");
+    if (el) el.value = amount;
+
+    document.querySelectorAll(".cap-preset-btn").forEach(btn => {
+        const text = btn.textContent || "";
+        const isTarget = (amount === 100000 && text.includes("100K")) ||
+                         (amount === 250000 && text.includes("250K")) ||
+                         (amount === 500000 && text.includes("500K")) ||
+                         (amount === 1000000 && text.includes("1.0M")) ||
+                         (amount === 2500000 && text.includes("2.5M"));
+        if (isTarget) btn.classList.add("active");
+        else btn.classList.remove("active");
+    });
+
     filterAndRenderWeeklyCandidates();
+    renderWeeklySpotlight();
+}
+
+function onWeeklyCapitalChange() {
+    const val = getUserAvailableCapital();
+    document.querySelectorAll(".cap-preset-btn").forEach(btn => {
+        const text = btn.textContent || "";
+        const isTarget = (val === 100000 && text.includes("100K")) ||
+                         (val === 250000 && text.includes("250K")) ||
+                         (val === 500000 && text.includes("500K")) ||
+                         (val === 1000000 && text.includes("1.0M")) ||
+                         (val === 2500000 && text.includes("2.5M"));
+        if (isTarget) btn.classList.add("active");
+        else btn.classList.remove("active");
+    });
+
+    filterAndRenderWeeklyCandidates();
+    renderWeeklySpotlight();
 }
 
 function computeCandidateInvestment(candidate, availableCapital) {
-    const stockPrice = candidate.risk?.entry || 1.0;
+    const entryPrice = candidate.risk?.entry || 1.0;
+    const stopPrice = candidate.risk?.stop || (entryPrice * 0.96);
+    const tp1Price = candidate.risk?.takeProfit1 || candidate.risk?.target || (entryPrice * 1.08);
+    const tp2Price = candidate.risk?.takeProfit2 || (entryPrice * 1.15);
     const adtv = candidate.liquidity?.avgDailyTradedValue20d || 20000000.0;
-    const avgVol = candidate.liquidity?.avgDailyVolume20d || (adtv / stockPrice);
+    const avgVol = candidate.liquidity?.avgDailyVolume20d || (adtv / entryPrice);
 
     // 50% Maximum Capital Ceiling
     const maxCeilingPkr = availableCapital * 0.50;
 
     // Safe market capacity (~1.0% of ADTV / volume)
     const liquidityCapPkr = adtv * 0.010;
-    const volCapPkr = (avgVol * 0.010) * stockPrice;
+    const volCapPkr = (avgVol * 0.010) * entryPrice;
     let safeCapacityPkr = Math.min(liquidityCapPkr, volCapPkr);
     safeCapacityPkr = Math.max(Math.min(25000, availableCapital), safeCapacityPkr);
 
     const rawRecommended = Math.min(maxCeilingPkr, safeCapacityPkr);
-    const recommendedShares = stockPrice > 0 ? Math.max(1, Math.floor(rawRecommended / stockPrice)) : 0;
-    const recommendedPkr = Math.round(recommendedShares * stockPrice);
+    const recommendedShares = entryPrice > 0 ? Math.max(1, Math.floor(rawRecommended / entryPrice)) : 0;
+    const recommendedPkr = Math.round(recommendedShares * entryPrice);
+
+    // Estimated Profit & Risk in PKR
+    const profitAtTp1Pkr = Math.round(recommendedShares * Math.abs(tp1Price - entryPrice));
+    const profitAtTp2Pkr = Math.round(recommendedShares * Math.abs(tp2Price - entryPrice));
+    const riskAtStopPkr = Math.round(recommendedShares * Math.abs(entryPrice - stopPrice));
 
     let exitDifficulty = "Moderate";
+    let exitTimeEst = "3-5 Mins";
     let reason = "Moderate turnover; position sized to safe % of daily volume to ensure frictionless exit.";
 
     if (adtv >= 75000000 && recommendedPkr >= (maxCeilingPkr * 0.85)) {
         exitDifficulty = "Easy";
+        exitTimeEst = "Instant (< 1 Min)";
         reason = "Deep institutional liquidity & high daily turnover allow full allocation ceiling.";
     } else if (adtv >= 35000000) {
         exitDifficulty = "Moderate";
+        exitTimeEst = "2-4 Mins";
         reason = "Moderate turnover; position sized to safe % of daily volume to ensure frictionless exit.";
     } else {
         exitDifficulty = "Difficult";
+        exitTimeEst = "8-12 Mins";
         reason = "Limited daily volume & market depth; position strictly scaled down to preserve easy exit.";
     }
 
@@ -6248,8 +6292,12 @@ function computeCandidateInvestment(candidate, availableCapital) {
         maxCeilingPkr: maxCeilingPkr,
         recommendedPkr: recommendedPkr,
         recommendedShares: recommendedShares,
+        profitAtTp1Pkr: profitAtTp1Pkr,
+        profitAtTp2Pkr: profitAtTp2Pkr,
+        riskAtStopPkr: riskAtStopPkr,
         reason: reason,
         exitDifficulty: exitDifficulty,
+        exitTimeEst: exitTimeEst,
         percentOfCapital: Math.round((recommendedPkr / availableCapital) * 1000) / 10
     };
 }
@@ -6305,8 +6353,110 @@ function renderWeeklyScanView() {
     if (trigChip) trigChip.textContent = `⚡ ${ex.noTriggerDetected || 0} No Trig`;
     if (rrChip) rrChip.textContent = `⚖️ ${ex.rrBelowThreshold || 0} Low RR`;
 
-    // 2. Render Candidates
+    // 2. Render Spotlight and Candidates
+    renderWeeklySpotlight();
     filterAndRenderWeeklyCandidates();
+}
+
+function renderWeeklySpotlight() {
+    const spotlightSection = document.getElementById("weekly-spotlight-section");
+    if (!spotlightSection) return;
+
+    if (!currentWeeklyCandidates || currentWeeklyCandidates.length === 0) {
+        spotlightSection.style.display = "none";
+        return;
+    }
+
+    // Pick top 3 A_PLUS or highest score candidates
+    const aPlusList = [...currentWeeklyCandidates].sort((a, b) => {
+        const gradeWeight = { "A_PLUS": 3, "A": 2, "B": 1 };
+        const gDiff = (gradeWeight[b.grade] || 0) - (gradeWeight[a.grade] || 0);
+        if (gDiff !== 0) return gDiff;
+        return (b.conviction || 0) - (a.conviction || 0);
+    }).slice(0, 3);
+
+    if (aPlusList.length === 0) {
+        spotlightSection.style.display = "none";
+        return;
+    }
+
+    spotlightSection.style.display = "block";
+    const availableCap = getUserAvailableCapital();
+
+    let html = `
+    <div class="weekly-spotlight-header">
+        <div class="spotlight-title">
+            <span>🌟 AI Alpha Spotlight: Top ${aPlusList.length} High-Conviction Swing Trades</span>
+        </div>
+        <span class="spotlight-badge">⭐ Highest Probability Setups</span>
+    </div>
+    <div class="weekly-spotlight-grid">`;
+
+    aPlusList.forEach((c, idx) => {
+        const sizing = computeCandidateInvestment(c, availableCap);
+        const tp1 = c.risk?.takeProfit1 || c.risk?.target || (c.risk?.entry * 1.08);
+        const stop = c.risk?.stop || (c.risk?.entry * 0.96);
+        const tp1Pct = c.risk?.rewardPctTp1 || (((tp1 - c.risk?.entry) / c.risk?.entry) * 100);
+        const stopPct = c.risk?.riskPct || (((c.risk?.entry - stop) / c.risk?.entry) * 100);
+        const rr = c.risk?.rewardRiskRatio || 2.0;
+        const conviction = c.conviction || (c.grade === "A_PLUS" ? 94 : 84);
+
+        html += `
+        <div class="spotlight-card ${idx === 0 ? 'rank-1' : ''}">
+            <div class="spotlight-card-top">
+                <div>
+                    <div class="spotlight-symbol-title">
+                        <span>${c.symbol}</span>
+                        <span style="font-size: 0.72rem; color: #94a3b8; font-weight: 500;">(${c.sector || 'PSX'})</span>
+                    </div>
+                    <div style="font-size: 0.72rem; color: #38bdf8; margin-top: 2px;">
+                        ${c.triggers?.[0]?.type?.replace('_', ' ') || 'Breakout'} • ${c.direction}
+                    </div>
+                </div>
+                <div class="spotlight-conviction-pill">
+                    <span>⚡ ${conviction}% AI Conviction</span>
+                </div>
+            </div>
+
+            <div class="spotlight-metrics-grid">
+                <div>
+                    <div class="spotlight-metric-label">Buy Entry</div>
+                    <div class="spotlight-metric-val">₨${c.risk?.entry?.toFixed(2) || '0.00'}</div>
+                </div>
+                <div>
+                    <div class="spotlight-metric-label">Target 1</div>
+                    <div class="spotlight-metric-val target">₨${tp1.toFixed(2)} <span style="font-size:0.65rem;">(+${tp1Pct.toFixed(1)}%)</span></div>
+                </div>
+                <div>
+                    <div class="spotlight-metric-label">Stop Loss</div>
+                    <div class="spotlight-metric-val stop">₨${stop.toFixed(2)} <span style="font-size:0.65rem;">(-${stopPct.toFixed(1)}%)</span></div>
+                </div>
+            </div>
+
+            <div class="spotlight-profit-estimate">
+                <div>
+                    <span style="color: #94a3b8;">Est. Profit (Target 1):</span>
+                    <strong style="color: #34d399; margin-left: 4px;">+PKR ${sizing.profitAtTp1Pkr.toLocaleString()}</strong>
+                </div>
+                <div>
+                    <span style="color: #94a3b8;">Max Risk:</span>
+                    <strong style="color: #f87171; margin-left: 4px;">-PKR ${sizing.riskAtStopPkr.toLocaleString()}</strong>
+                </div>
+            </div>
+
+            <div class="spotlight-actions">
+                <button class="btn btn-primary btn-sm btn-buy-card" onclick="openWeeklyBuyModal('${c.id}')" style="flex: 1;">
+                    ⚡ Buy (${sizing.recommendedShares.toLocaleString()} Shares)
+                </button>
+                <button class="btn btn-secondary btn-sm" onclick="openStockChartModal('${c.symbol}')">
+                    📈 Chart
+                </button>
+            </div>
+        </div>`;
+    });
+
+    html += `</div>`;
+    spotlightSection.innerHTML = html;
 }
 
 function setWeeklyGradeFilter(btn, grade) {
@@ -6327,20 +6477,55 @@ function filterAndRenderWeeklyCandidates() {
     const container = document.getElementById("weekly-candidates-container");
     if (!container) return;
 
-    const statusFilter = document.getElementById("weekly-status-filter")?.value || "ALL";
+    const strategyFilter = document.getElementById("weekly-strategy-filter")?.value || "ALL";
+    const liquidityFilter = document.getElementById("weekly-liquidity-filter")?.value || "ALL";
+    const sortFilter = document.getElementById("weekly-sort-filter")?.value || "conviction";
     const searchVal = (document.getElementById("weekly-symbol-search")?.value || "").trim().toUpperCase();
     const availableCap = getUserAvailableCapital();
 
     let filtered = (currentWeeklyCandidates || []).filter(c => {
         if (weeklyGradeFilter !== "ALL" && c.grade !== weeklyGradeFilter) return false;
         if (weeklyDirFilter !== "ALL" && c.direction !== weeklyDirFilter) return false;
-        if (statusFilter !== "ALL" && c.status !== statusFilter) return false;
+        
+        // Strategy Filter
+        if (strategyFilter !== "ALL") {
+            const hasStrategy = (c.triggers || []).some(t => t.type === strategyFilter);
+            if (!hasStrategy) return false;
+        }
+
+        // Liquidity Filter
+        if (liquidityFilter !== "ALL") {
+            const sizing = computeCandidateInvestment(c, availableCap);
+            if (liquidityFilter === "Easy" && sizing.exitDifficulty !== "Easy") return false;
+            if (liquidityFilter === "Moderate" && sizing.exitDifficulty === "Difficult") return false;
+        }
+
         if (searchVal && !c.symbol.includes(searchVal) && !c.sector.toUpperCase().includes(searchVal)) return false;
         return true;
     });
 
+    // Sorting
+    filtered.sort((a, b) => {
+        if (sortFilter === "conviction") {
+            return (b.conviction || 0) - (a.conviction || 0);
+        } else if (sortFilter === "return") {
+            const rA = a.risk?.rewardPctTp1 || 0;
+            const rB = b.risk?.rewardPctTp1 || 0;
+            return rB - rA;
+        } else if (sortFilter === "rr") {
+            const rrA = a.risk?.rewardRiskRatio || 0;
+            const rrB = b.risk?.rewardRiskRatio || 0;
+            return rrB - rrA;
+        } else if (sortFilter === "volume") {
+            const vA = a.liquidity?.avgDailyTradedValue20d || 0;
+            const vB = b.liquidity?.avgDailyTradedValue20d || 0;
+            return vB - vA;
+        }
+        return 0;
+    });
+
     if (filtered.length === 0) {
-        container.innerHTML = `<div class="weekly-empty-state">No scan candidates match the selected filters.</div>`;
+        container.innerHTML = `<div class="weekly-empty-state">No scan candidates match the selected filters. Try choosing "All Grades" or a different strategy.</div>`;
         return;
     }
 
@@ -6352,11 +6537,35 @@ function filterAndRenderWeeklyCandidates() {
         const dirSymbol = c.direction === "LONG" ? "LONG ↗" : "SHORT ↘";
         const rawScore = c.score?.rawScore || 0;
         const scorePct = Math.round((rawScore / 6) * 100);
+        const conviction = c.conviction || (c.grade === "A_PLUS" ? 92 : (c.grade === "A" ? 82 : 72));
+
+        // Risk Parameters
+        const entry = c.risk?.entry || 1.0;
+        const stop = c.risk?.stop || (entry * 0.96);
+        const tp1 = c.risk?.takeProfit1 || c.risk?.target || (entry * 1.08);
+        const tp2 = c.risk?.takeProfit2 || (entry * 1.15);
+        const entryMin = c.risk?.entryZoneMin || (entry * 0.992);
+        const entryMax = c.risk?.entryZoneMax || (entry * 1.012);
+        const riskPct = c.risk?.riskPct || (((entry - stop) / entry) * 100);
+        const tp1Pct = c.risk?.rewardPctTp1 || (((tp1 - entry) / entry) * 100);
+        const tp2Pct = c.risk?.rewardPctTp2 || (((tp2 - entry) / entry) * 100);
+        const rr = c.risk?.rewardRiskRatio || 2.0;
 
         // Dynamic Sizing Calculation
         const sizing = computeCandidateInvestment(c, availableCap);
         const exitClass = sizing.exitDifficulty === "Easy" ? "easy" : (sizing.exitDifficulty === "Moderate" ? "moderate" : "difficult");
         const exitIcon = sizing.exitDifficulty === "Easy" ? "🟢" : (sizing.exitDifficulty === "Moderate" ? "🟡" : "🔴");
+
+        // Live Stock Quote for Buy Zone check
+        const liveStock = (typeof STOCKS !== "undefined" && STOCKS) ? STOCKS.find(s => s.symbol === c.symbol) : null;
+        const currentLivePrice = liveStock ? liveStock.price : entry;
+        let zoneBadgeHtml = `<span class="zone-status-badge in-buy">🟢 IN BUY ZONE</span>`;
+        if (currentLivePrice > entryMax) {
+            const extPct = (((currentLivePrice - entry) / entry) * 100).toFixed(1);
+            zoneBadgeHtml = `<span class="zone-status-badge extended">🟡 +${extPct}% EXTENDED</span>`;
+        } else if (currentLivePrice >= tp1) {
+            zoneBadgeHtml = `<span class="zone-status-badge target-hit">🎯 TARGET 1 HIT</span>`;
+        }
 
         const triggersHtml = (c.triggers || []).map(t => {
             const volBadge = t.volumeRatioToAvg20d ? `<span class="trigger-vol-badge">${t.volumeRatioToAvg20d}x Vol</span>` : '';
@@ -6383,18 +6592,17 @@ function filterAndRenderWeeklyCandidates() {
                     <div class="candidate-symbol" onclick="showDetail('${c.symbol}')" style="cursor: pointer;">${c.symbol}</div>
                     <div class="candidate-sector">${c.sector}</div>
                 </div>
-                <div class="candidate-grade-badge ${gradeClass}">${gradeLabel}</div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    ${zoneBadgeHtml}
+                    <div class="candidate-grade-badge ${gradeClass}">${gradeLabel}</div>
+                </div>
             </div>
 
             <div class="direction-status-row">
                 <div class="dir-badge ${dirClass}">${dirSymbol}</div>
-                <select class="status-select-btn" onchange="updateWeeklyCandidateStatus('${c.id}', this.value)">
-                    <option value="ACTIVE" ${c.status === 'ACTIVE' ? 'selected' : ''}>🟢 ACTIVE</option>
-                    <option value="TARGET_REACHED" ${c.status === 'TARGET_REACHED' ? 'selected' : ''}>🎯 TARGET REACHED</option>
-                    <option value="MISSED" ${c.status === 'MISSED' ? 'selected' : ''}>⏳ MISSED</option>
-                    <option value="INVALIDATED" ${c.status === 'INVALIDATED' ? 'selected' : ''}>❌ INVALIDATED</option>
-                    <option value="LOCKED" ${c.status === 'LOCKED' ? 'selected' : ''}>🔒 LOCKED</option>
-                </select>
+                <div style="font-size: 0.76rem; color: #34d399; font-weight: 800;">
+                    ⚡ ${conviction}% AI Conviction
+                </div>
             </div>
 
             <!-- Score Progress -->
@@ -6413,53 +6621,56 @@ function filterAndRenderWeeklyCandidates() {
                 ${triggersHtml}
             </div>
 
-            <!-- Risk Structure Matrix -->
-            <div>
-                <div class="risk-structure-grid">
-                    <div>
-                        <div class="risk-col-label">Entry</div>
-                        <div class="risk-col-val">Rs ${c.risk?.entry?.toFixed(2) || '0.00'}</div>
-                    </div>
-                    <div>
-                        <div class="risk-col-label">Stop Loss</div>
-                        <div class="risk-col-val stop">Rs ${c.risk?.stop?.toFixed(2) || '0.00'}</div>
-                    </div>
-                    <div>
-                        <div class="risk-col-label">Target</div>
-                        <div class="risk-col-val target">Rs ${c.risk?.target?.toFixed(2) || '0.00'}</div>
-                    </div>
+            <!-- Visual Risk & Reward Progress Bar -->
+            <div class="risk-visual-bar">
+                <div class="risk-visual-labels">
+                    <span style="color: #f87171;">Stop: ₨${stop.toFixed(2)} (-${riskPct.toFixed(1)}%)</span>
+                    <span style="color: #ffffff; font-weight: 700;">Buy Zone: ₨${entryMin.toFixed(2)}–₨${entryMax.toFixed(2)}</span>
+                    <span style="color: #34d399;">TP1: ₨${tp1.toFixed(2)} (+${tp1Pct.toFixed(1)}%)</span>
                 </div>
-                <div class="rr-badge-row">
-                    <span>Basis: ${c.risk?.stopBasis?.replace('_', ' ') || 'ATR'}</span>
-                    <span class="rr-pill">${c.risk?.rewardRiskRatio?.toFixed(1) || '1.5'}x R:R</span>
+                <div class="risk-visual-track-container">
+                    <div class="risk-visual-fill-stop"></div>
+                    <div class="risk-visual-fill-target"></div>
+                    <div class="risk-entry-pointer" title="Optimal Entry Level"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.68rem; color: #94a3b8;">
+                    <span>Risk: ₨${(entry - stop).toFixed(2)}/share</span>
+                    <span class="rr-pill">${rr.toFixed(1)}x Risk:Reward</span>
+                    <span style="color: #38bdf8;">TP2: ₨${tp2.toFixed(2)} (+${tp2Pct.toFixed(1)}%)</span>
                 </div>
             </div>
 
             <!-- 💰 Capital & Dynamic Liquidity Recommendation Box -->
             <div class="candidate-capital-box">
                 <div class="capital-row-top">
-                    <span style="color: #cbd5e1; font-weight: 600;">Recommended Allocation:</span>
+                    <span style="color: #cbd5e1; font-weight: 700;">Recommended Investment:</span>
                     <span class="capital-rec-amount">PKR ${sizing.recommendedPkr.toLocaleString()} (${sizing.percentOfCapital}%)</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #94a3b8;">
-                    <span>Position Size: <strong>${sizing.recommendedShares.toLocaleString()} Shares</strong></span>
-                    <span>Max Ceiling (50%): PKR ${sizing.maxCeilingPkr.toLocaleString()}</span>
+                <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #94a3b8;">
+                    <span>Position Size: <strong style="color: #fff;">${sizing.recommendedShares.toLocaleString()} Shares</strong></span>
+                    <span title="Expected execution duration">Exit Speed: <strong style="color: #38bdf8;">${sizing.exitTimeEst}</strong></span>
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; margin-top: 2px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; background: rgba(0,0,0,0.25); padding: 4px 8px; border-radius: 4px;">
+                    <span style="color: #34d399;">Est. Gain (TP1): <strong>+PKR ${sizing.profitAtTp1Pkr.toLocaleString()}</strong></span>
+                    <span style="color: #f87171;">Max Risk (SL): <strong>-PKR ${sizing.riskAtStopPkr.toLocaleString()}</strong></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.7rem; margin-top: 2px;">
                     <span class="capital-reason-text">${sizing.reason}</span>
                     <span class="exit-badge ${exitClass}" title="Expected Exit Liquidity">${sizing.exitDifficulty} ${exitIcon}</span>
                 </div>
             </div>
 
-            <!-- AI Rationale -->
+            <!-- Action Plan & Bilingual Urdu Summary -->
             <div class="candidate-rationale-box">
-                ${c.rationale}
+                <div style="font-weight: 700; color: #e2e8f0; margin-bottom: 4px;">📋 Action Plan:</div>
+                <div>${c.actionPlan || c.rationale}</div>
+                ${c.urduSummary ? `<div class="urdu-summary-box">💡 ${c.urduSummary}</div>` : ''}
             </div>
 
             <!-- Bottom Actions -->
             <div class="candidate-actions-row">
                 <button class="btn btn-primary btn-sm btn-buy-card" onclick="openWeeklyBuyModal('${c.id}')">
-                    ⚡ Buy / Paper Trade
+                    ⚡ Quick Buy (${sizing.recommendedShares.toLocaleString()} Shares)
                 </button>
                 <button class="btn btn-secondary btn-sm" onclick="openStockChartModal('${c.symbol}')">
                     📈 4H / Daily Chart
@@ -6471,6 +6682,7 @@ function filterAndRenderWeeklyCandidates() {
         </div>`;
     }).join("");
 }
+
 
 // ═════════════════════════════════════════════════════════════════
 // ⚡ DIRECT BUY EXECUTION MODAL & ORDER ROUTING
