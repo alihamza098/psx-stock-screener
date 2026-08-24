@@ -27,6 +27,8 @@ from psx_risk_engine import risk_engine
 from psx_paper_broker import paper_broker
 from psx_position_monitor import position_monitor
 import weekly_scan_engine as weekly_engine
+import psx_intelligence_engine as intel_module
+
 
 PORT = int(os.environ.get('PORT', 3000))
 CACHE_DURATION = 120  # seconds (2 min to reduce PSX load)
@@ -541,10 +543,21 @@ def _start_continuous_poller():
 
     def poller_loop():
         time.sleep(2)
+        # Init intelligence engine (creates DB on first run)
+        try:
+            intelligence = intel_module.get_engine()
+            print("[Intelligence] Engine ready inside poller loop.")
+        except Exception as e:
+            print(f"[Intelligence] Engine init error: {e}")
+            intelligence = None
+
+        _last_intel_tick = [0]
+        _last_eod_tick   = [0]
+        _last_overnight  = [0]
+
         while True:
             try:
                 now_pkt = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5)
-                # PSX Trading Weekdays 09:00 - 17:00 PKT
                 weekday = now_pkt.weekday()
                 is_trading_hours = (0 <= weekday <= 4) and (8 <= now_pkt.hour < 17)
                 poll_interval = 20 if is_trading_hours else 60
@@ -552,10 +565,54 @@ def _start_continuous_poller():
                 _do_fetch_stocks()
                 _do_fetch_indices()
 
+                # ── Intelligence Engine Ticks ────────────────────────────────
+                if intelligence:
+                    cur_time = time.time()
+
+                    # Every 5 minutes: anomaly detection
+                    if cur_time - _last_intel_tick[0] >= 300:
+                        try:
+                            stocks_snap = stock_cache.get("data") or []
+                            idx_snap    = index_cache.get("data") or {}
+                            intelligence.tick(
+                                stocks=stocks_snap,
+                                index_data=idx_snap,
+                                history_fn=fetch_stock_history
+                            )
+                            _last_intel_tick[0] = cur_time
+                        except Exception as ie:
+                            print(f"[Intelligence] Tick error: {ie}")
+
+                    # 4 PM PKT: end-of-day outcome evaluation
+                    if now_pkt.hour == 16 and now_pkt.minute < 5:
+                        eod_key = now_pkt.strftime("%Y-%m-%d")
+                        if _last_eod_tick[0] != eod_key:
+                            try:
+                                stocks_snap = stock_cache.get("data") or []
+                                intelligence.end_of_day(stocks_snap)
+                                _last_eod_tick[0] = eod_key
+                            except Exception as ie:
+                                print(f"[Intelligence] EOD error: {ie}")
+
+                    # 2 AM PKT: overnight pattern rebuild
+                    if now_pkt.hour == 2 and now_pkt.minute < 5:
+                        overnight_key = now_pkt.strftime("%Y-%m-%d")
+                        if _last_overnight[0] != overnight_key:
+                            try:
+                                stocks_snap = stock_cache.get("data") or []
+                                intelligence.overnight_rebuild(
+                                    stocks=stocks_snap,
+                                    history_fn=fetch_stock_history
+                                )
+                                _last_overnight[0] = overnight_key
+                            except Exception as ie:
+                                print(f"[Intelligence] Overnight error: {ie}")
+
                 time.sleep(poll_interval)
             except Exception as e:
                 print(f"[PSX Poller] Error: {e}")
                 time.sleep(15)
+
 
     poller_t = threading.Thread(target=poller_loop, daemon=True, name="PSXContinuousPoller")
     poller_t.start()
@@ -3206,8 +3263,109 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 "sizing": sizing
             })
 
+        # ─── 🧠 PSX Market Intelligence Engine API ───
+        elif parsed_path.path == "/api/intelligence/summary":
+            try:
+                engine = intel_module.get_engine()
+                data = engine.get_dashboard_summary()
+                self._send_json({"success": True, **data})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/intelligence/live-events":
+            try:
+                query = parse_qs(parsed_path.query)
+                limit = int(query.get("limit", ["50"])[0])
+                symbol = query.get("symbol", [None])[0]
+                engine = intel_module.get_engine()
+                events = engine.get_live_events(limit=limit)
+                if symbol:
+                    events = [e for e in events if e["symbol"] == symbol.upper()]
+                self._send_json({"success": True, "events": events, "count": len(events)})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path.startswith("/api/intelligence/event/"):
+            try:
+                event_id = parsed_path.path.replace("/api/intelligence/event/", "").strip("/")
+                engine = intel_module.get_engine()
+                detail = engine.get_event_detail(event_id)
+                if detail:
+                    self._send_json({"success": True, **detail})
+                else:
+                    self._send_json({"success": False, "error": "Event not found"}, 404)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/intelligence/patterns":
+            try:
+                query = parse_qs(parsed_path.query)
+                min_occ = int(query.get("min_occurrences", ["1"])[0])
+                engine = intel_module.get_engine()
+                patterns = engine.get_patterns_data()
+                self._send_json({"success": True, "patterns": patterns, "count": len(patterns)})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/intelligence/predictions":
+            try:
+                query = parse_qs(parsed_path.query)
+                limit = int(query.get("limit", ["20"])[0])
+                engine = intel_module.get_engine()
+                preds = engine.get_predictions_data(limit=limit)
+                self._send_json({"success": True, "predictions": preds, "count": len(preds)})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path.startswith("/api/intelligence/stock/"):
+            try:
+                parts = parsed_path.path.strip("/").split("/")
+                # /api/intelligence/stock/:symbol/memory  OR  /api/intelligence/stock/:symbol/explain
+                if len(parts) >= 4:
+                    symbol = parts[3].upper()
+                    action = parts[4] if len(parts) > 4 else "explain"
+                    engine = intel_module.get_engine()
+                    query = parse_qs(parsed_path.query)
+                    if action == "memory":
+                        memory = engine.db.get_stock_memory(symbol)
+                        stocks, _ = fetch_stock_data()
+                        stock = next((s for s in stocks if s.get("symbol","").upper() == symbol), None)
+                        # Compute deviation from baseline
+                        deviation = {}
+                        if memory and stock:
+                            cur_vol = float(stock.get("volume", 0) or 0)
+                            avg_vol = memory.get("avg_daily_volume", 1)
+                            cur_chg = float(stock.get("change", 0) or 0)
+                            avg_rng = memory.get("avg_daily_range_pct", 1.5)
+                            deviation = {
+                                "volume_vs_baseline": round(cur_vol / max(avg_vol, 1), 2),
+                                "price_change_vs_normal": round(abs(cur_chg) / max(avg_rng, 0.1), 2),
+                                "is_abnormal": (cur_vol / max(avg_vol, 1) > 2.5 or abs(cur_chg) > avg_rng * 2)
+                            }
+                        self._send_json({
+                            "success": True, "symbol": symbol,
+                            "memory": memory, "current_deviation": deviation
+                        })
+                    else:
+                        days = int(query.get("days", ["15"])[0])
+                        explain = engine.get_stock_explain(symbol, days=days)
+                        self._send_json({"success": True, **explain})
+                else:
+                    self._send_json({"success": False, "error": "Invalid path"}, 400)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/intelligence/learning-stats":
+            try:
+                engine = intel_module.get_engine()
+                stats = engine.db.get_learning_stats()
+                self._send_json({"success": True, "stats": stats})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
         # ─── Tab & Feature Deployment Status Endpoints ───
         elif parsed_path.path == "/api/tabs/status":
+
             tabs = get_tab_status_db()
             self._send_json({"success": True, "tabs": tabs})
         elif parsed_path.path == "/api/admin/tabs/status":

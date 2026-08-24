@@ -380,7 +380,13 @@
                 ⚡ AI Trading Agent
                 <span class="badge-tab-new">LIVE</span>
             </button>
+            <button class="view-tab view-tab-intelligence" data-view="intelligence" id="tab-intelligence">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/><path d="M3.05 11a9 9 0 0 1 .54-2.9"/><path d="M20.41 13a9 9 0 0 1-16.8 3"/></svg>
+                🧠 Intelligence
+                <span class="badge-tab-new" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">AUTO</span>
+            </button>
         </div>
+
 
         <!-- Table View -->
         <section class="stock-table-wrapper" id="view-table">
@@ -1853,8 +1859,129 @@
         </div>
     </div>
 
+    <!-- ─── 🧠 Intelligence Engine Dashboard ─────────────────────────── -->
+    <section class="intelligence-dashboard" id="view-intelligence" style="display:none;">
+
+        <!-- Dashboard Header -->
+        <div class="intelligence-header">
+            <div class="intelligence-header-left">
+                <div class="intelligence-badge">🧠 AUTO</div>
+                <div>
+                    <h2 class="intelligence-title">PSX Market Intelligence Engine</h2>
+                    <p class="intelligence-subtitle">Autonomous anomaly detection • Causal investigation • Pattern learning • Predictive signals</p>
+                </div>
+            </div>
+            <div class="intelligence-stats-row" id="intel-stats-row">
+                <div class="intel-stat">
+                    <span class="intel-stat-value" id="intel-stat-events">—</span>
+                    <span class="intel-stat-label">Events Detected</span>
+                </div>
+                <div class="intel-stat">
+                    <span class="intel-stat-value" id="intel-stat-patterns">—</span>
+                    <span class="intel-stat-label">Patterns Found</span>
+                </div>
+                <div class="intel-stat">
+                    <span class="intel-stat-value" id="intel-stat-winrate">—</span>
+                    <span class="intel-stat-label">Prediction Win Rate</span>
+                </div>
+                <div class="intel-stat">
+                    <span class="intel-stat-value" id="intel-stat-last-tick">—</span>
+                    <span class="intel-stat-label">Last Scan</span>
+                </div>
+            </div>
+            <div class="intel-status-pill" id="intel-engine-status">
+                <span class="intel-pulse"></span> Engine Online
+            </div>
+        </div>
+
+        <!-- 4-Column Grid Dashboard -->
+        <div class="intelligence-grid">
+
+            <!-- ── Column 1: Live Event Feed ───────────────────────── -->
+            <div class="intel-panel">
+                <div class="intel-panel-header">
+                    <span class="intel-panel-icon">📡</span>
+                    <h3>Live Event Feed</h3>
+                    <span class="intel-panel-badge" id="intel-event-count">0 events</span>
+                </div>
+                <div class="intel-panel-body" id="intel-event-feed">
+                    <div class="intel-initializing">
+                        <div class="intel-spinner"></div>
+                        <p>System initializing…<br>Events will appear as anomalies are detected.</p>
+                        <p class="intel-init-note">Runs every 5 minutes during market hours</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Column 2: Why Is It Moving? ─────────────────────── -->
+            <div class="intel-panel">
+                <div class="intel-panel-header">
+                    <span class="intel-panel-icon">🔍</span>
+                    <h3>Why Is It Moving?</h3>
+                    <span class="intel-panel-badge">Cause Analysis</span>
+                </div>
+                <div class="intel-panel-body" id="intel-why-panel">
+                    <div class="intel-initializing">
+                        <div class="intel-spinner"></div>
+                        <p>Awaiting events to investigate…</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Column 3: Pattern Library ───────────────────────── -->
+            <div class="intel-panel">
+                <div class="intel-panel-header">
+                    <span class="intel-panel-icon">📚</span>
+                    <h3>Pattern Library</h3>
+                    <span class="intel-panel-badge" id="intel-pattern-count">Building…</span>
+                </div>
+                <div class="intel-panel-body" id="intel-pattern-panel">
+                    <div class="intel-initializing">
+                        <div class="intel-spinner"></div>
+                        <p>Pattern library builds overnight.<br>Requires ≥3 historical occurrences per pattern.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Column 4: AI Early Warnings ─────────────────────── -->
+            <div class="intel-panel">
+                <div class="intel-panel-header">
+                    <span class="intel-panel-icon">⚠️</span>
+                    <h3>AI Early Warnings</h3>
+                    <span class="intel-panel-badge" id="intel-pred-count">0 active</span>
+                </div>
+                <div class="intel-panel-body" id="intel-prediction-panel">
+                    <div class="intel-initializing">
+                        <div class="intel-spinner"></div>
+                        <p>Predictions generated after each detected event.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /.intelligence-grid -->
+
+        <!-- Learning Stats Footer -->
+        <div class="intel-footer">
+            <div class="intel-footer-stat">
+                <span id="intel-footer-preds">0</span> predictions tracked
+            </div>
+            <div class="intel-footer-stat">
+                <span id="intel-footer-correct">0</span> verified correct
+            </div>
+            <div class="intel-footer-stat">
+                Auto-refreshes every <strong>60 seconds</strong>
+            </div>
+            <div class="intel-footer-stat" id="intel-footer-refreshed">
+                Last refreshed: —
+            </div>
+        </div>
+
+    </section>
+    <!-- ─── End Intelligence Dashboard ─────────────────────────────── -->
+
     <!-- Weekly Trade Direct Buy Modal -->
     <div id="weekly-buy-modal" class="terms-modal-overlay" style="display:none;">
+
         <div class="terms-modal-box" style="max-width: 520px; background: #0f172a; border: 1px solid rgba(16, 185, 129, 0.4); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9);">
             <div class="terms-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding: 18px 24px;">
                 <span class="terms-header-icon">⚡</span>

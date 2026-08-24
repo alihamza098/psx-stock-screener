@@ -7133,3 +7133,304 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 🧠  PSX MARKET INTELLIGENCE ENGINE — FRONTEND MODULE
+// ═══════════════════════════════════════════════════════════════════════════
+
+const intelligenceTab = (() => {
+
+    let _refreshTimer = null;
+    let _isLoading = false;
+
+    const EVENT_LABELS = {
+        UPPER_LOCK:       { label: '🔒 Upper Lock',       cls: 'event-upper-lock' },
+        LOWER_LOCK:       { label: '🔓 Lower Lock',       cls: 'event-lower-lock' },
+        PRICE_SPIKE:      { label: '🚀 Price Spike',      cls: 'event-price-spike' },
+        VOLUME_SURGE:     { label: '📈 Volume Surge',     cls: 'event-volume-surge' },
+        RESISTANCE_BREAK: { label: '💥 Breakout',         cls: 'event-breakout' },
+        RSI_MOMENTUM:     { label: '⚡ RSI Surge',        cls: 'event-rsi' },
+        REVERSAL_SIGNAL:  { label: '🔄 Reversal Signal',  cls: 'event-reversal' },
+        ACCUMULATION:     { label: '🧲 Accumulation',     cls: 'event-accumulation' }
+    };
+
+    const SIGNAL_LABELS = {
+        WATCH:               { label: '👁 WATCH',             cls: 'signal-watch' },
+        POSSIBLE_BREAKOUT:   { label: '💥 BREAKOUT IMMINENT', cls: 'signal-breakout' },
+        CONTINUATION_LIKELY: { label: '→ CONTINUATION',       cls: 'signal-continuation' },
+        REVERSAL_RISK:       { label: '⚠️ REVERSAL RISK',     cls: 'signal-reversal' },
+        EXTENDED_AVOID:      { label: '🛑 EXTENDED',          cls: 'signal-extended' }
+    };
+
+    const FACTOR_LABELS = {
+        TECHNICAL_BREAKOUT:     '📊 Technical Breakout',
+        VOLUME_ACCUMULATION:    '📦 Volume Accumulation',
+        RSI_MOMENTUM:           '⚡ RSI Momentum',
+        MACD_CONFIRMATION:      '✳️ MACD Confirmation',
+        SECTOR_MOMENTUM:        '🏭 Sector Momentum',
+        MARKET_MOMENTUM:        '🌐 Market Momentum',
+        CORPORATE_ANNOUNCEMENT: '📋 Corporate Announcement',
+        UPPER_LOCK_SETUP:       '🔒 Upper Lock Setup'
+    };
+
+    function _timeAgo(isoStr) {
+        if (!isoStr || isoStr === 'Never') return '—';
+        const diff = Math.floor((Date.now() - new Date(isoStr)) / 1000);
+        if (diff < 60)    return `${diff}s ago`;
+        if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+        return `${Math.floor(diff / 86400)}d ago`;
+    }
+
+    function _fmt(num, decimals = 1) {
+        if (num === null || num === undefined || isNaN(num)) return '—';
+        return Number(num).toFixed(decimals);
+    }
+
+    function _confBar(val) {
+        const pct = Math.min(100, Math.max(0, val));
+        const cls = pct >= 75 ? 'conf-high' : pct >= 50 ? 'conf-med' : 'conf-low';
+        return `<div class="intel-conf-bar-wrap"><div class="intel-conf-bar ${cls}" style="width:${pct}%"></div></div>`;
+    }
+
+    function _setText(id, val) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    }
+
+    async function _fetchAll() {
+        const [s, e, p, pr] = await Promise.allSettled([
+            fetch('/api/intelligence/summary').then(r => r.json()),
+            fetch('/api/intelligence/live-events?limit=50').then(r => r.json()),
+            fetch('/api/intelligence/patterns').then(r => r.json()),
+            fetch('/api/intelligence/predictions?limit=20').then(r => r.json())
+        ]);
+        return {
+            summary:     s.status  === 'fulfilled' ? s.value  : null,
+            events:      e.status  === 'fulfilled' ? e.value  : null,
+            patterns:    p.status  === 'fulfilled' ? p.value  : null,
+            predictions: pr.status === 'fulfilled' ? pr.value : null
+        };
+    }
+
+    async function load() {
+        if (_isLoading) return;
+        _isLoading = true;
+        try {
+            const { summary, events, patterns, predictions } = await _fetchAll();
+            if (summary && summary.success) renderHeader(summary);
+            if (events && events.success) {
+                renderEventFeed(events.events || []);
+                renderWhyPanel(events.events || []);
+            }
+            if (patterns && patterns.success) renderPatternPanel(patterns.patterns || []);
+            if (predictions && predictions.success) renderPredictionPanel(predictions.predictions || []);
+            _setText('intel-footer-refreshed', 'Last refreshed: ' + new Date().toLocaleTimeString('en-PK'));
+        } catch (err) {
+            console.error('[Intelligence] load error:', err);
+        } finally {
+            _isLoading = false;
+        }
+    }
+
+    function renderHeader(summary) {
+        const s = summary.stats || {};
+        _setText('intel-stat-events',   s.total_events_detected ?? '—');
+        _setText('intel-stat-patterns', s.patterns_discovered ?? '—');
+        _setText('intel-stat-winrate',  s.evaluated_predictions > 0 ? s.win_rate_pct + '%' : '—');
+        _setText('intel-stat-last-tick', _timeAgo(s.last_anomaly_tick));
+        _setText('intel-footer-preds',   s.total_predictions ?? 0);
+        _setText('intel-footer-correct', s.correct_predictions ?? 0);
+        const pill = document.getElementById('intel-engine-status');
+        if (pill) { pill.className = 'intel-status-pill online'; pill.innerHTML = '<span class="intel-pulse"></span> Engine Online'; }
+    }
+
+    function renderEventFeed(events) {
+        const c = document.getElementById('intel-event-feed');
+        const ct = document.getElementById('intel-event-count');
+        if (!c) return;
+        if (ct) ct.textContent = events.length + ' events';
+        if (!events.length) {
+            c.innerHTML = '<div class="intel-initializing"><div class="intel-spinner"></div><p>No events yet. Check back during market hours (9 AM–3:30 PM PKT).</p></div>';
+            return;
+        }
+        c.innerHTML = events.map(ev => {
+            const et = EVENT_LABELS[ev.event_type] || { label: ev.event_type, cls: 'event-generic' };
+            const sc = ev.price_change_pct >= 0 ? '+' : '';
+            const cc = ev.price_change_pct >= 0 ? 'pos' : 'neg';
+            return `<div class="intel-event-card ${et.cls}" onclick="intelligenceTab.showEventDetail('${ev.id}')">
+                <div class="intel-event-header">
+                    <span class="intel-event-symbol">${ev.symbol}</span>
+                    <span class="intel-event-type-badge ${et.cls}">${et.label}</span>
+                    <span class="intel-event-time">${_timeAgo(ev.detected_at)}</span>
+                </div>
+                <div class="intel-event-meta">
+                    <span class="intel-chg ${cc}">${sc}${_fmt(ev.price_change_pct)}%</span>
+                    <span class="intel-rvol">RVOL ${_fmt(ev.rvol)}×</span>
+                    <span class="intel-rsi">RSI ${_fmt(ev.rsi_at_event, 0)}</span>
+                    <span class="intel-sector">${ev.sector || ''}</span>
+                </div>
+                ${ev.narrative ? `<div class="intel-narrative">${ev.narrative}</div>` : ''}
+                ${ev.top_cause ? `<div class="intel-top-cause"><span>${FACTOR_LABELS[ev.top_cause.factor] || ev.top_cause.factor}</span><span class="intel-cause-conf">${ev.top_cause.confidence}%</span></div>` : ''}
+            </div>`;
+        }).join('');
+    }
+
+    function renderWhyPanel(events) {
+        const c = document.getElementById('intel-why-panel');
+        if (!c) return;
+        if (!events.length) { c.innerHTML = '<div class="intel-initializing"><div class="intel-spinner"></div><p>Awaiting events…</p></div>'; return; }
+        c.innerHTML = events.slice(0, 5).map(ev => {
+            const et = EVENT_LABELS[ev.event_type] || { label: ev.event_type, cls: 'event-generic' };
+            return `<div class="intel-why-card">
+                <div class="intel-why-header">
+                    <span class="intel-event-symbol">${ev.symbol}</span>
+                    <span class="intel-event-type-badge ${et.cls}">${et.label}</span>
+                    <span style="font-size:.73rem;color:#64748b;margin-left:auto">${_timeAgo(ev.detected_at)}</span>
+                </div>
+                <div class="intel-cause-count">${ev.cause_count} factor${ev.cause_count !== 1 ? 's' : ''} identified</div>
+                ${ev.top_cause ? `<div class="intel-cause-row">
+                    <div class="intel-cause-name">${FACTOR_LABELS[ev.top_cause.factor] || ev.top_cause.factor}</div>
+                    ${_confBar(ev.top_cause.confidence)}
+                    <div class="intel-cause-pct">${ev.top_cause.confidence}%</div>
+                </div>` : ''}
+                ${ev.narrative ? `<div class="intel-why-narrative">${ev.narrative}</div>` : ''}
+                <button class="intel-detail-btn" onclick="intelligenceTab.showEventDetail('${ev.id}')">Full Analysis →</button>
+            </div>`;
+        }).join('');
+    }
+
+    function renderPatternPanel(patterns) {
+        const c = document.getElementById('intel-pattern-panel');
+        const ct = document.getElementById('intel-pattern-count');
+        if (!c) return;
+        if (ct) ct.textContent = patterns.length + ' pattern' + (patterns.length !== 1 ? 's' : '');
+        if (!patterns.length) { c.innerHTML = '<div class="intel-initializing"><div class="intel-spinner"></div><p>Pattern library builds overnight.<br>Needs ≥3 occurrences per pattern.</p></div>'; return; }
+        c.innerHTML = patterns.map(p => {
+            const total = (p.win_count || 0) + (p.loss_count || 0);
+            const wr = total > 0 ? Math.round((p.win_count / total) * 100) : null;
+            const wrHtml = wr !== null ? `<span class="intel-win-rate ${wr >= 60 ? 'good' : wr >= 45 ? 'med' : 'low'}">${wr}% win</span>` : '<span class="intel-win-rate neutral">Pending</span>';
+            return `<div class="intel-pattern-card">
+                <div class="intel-pattern-header"><span class="intel-pattern-name">${p.name}</span>${wrHtml}</div>
+                <div class="intel-pattern-meta">
+                    <span class="intel-occ">${p.occurrences} occurrence${p.occurrences !== 1 ? 's' : ''}</span>
+                    ${p.avg_5d_return ? `<span class="intel-avg-return">${p.avg_5d_return >= 0 ? '+' : ''}${_fmt(p.avg_5d_return)}% avg 5D</span>` : ''}
+                    ${p.avg_3d_return ? `<span class="intel-avg-return">${p.avg_3d_return >= 0 ? '+' : ''}${_fmt(p.avg_3d_return)}% avg 3D</span>` : ''}
+                </div>
+                <div class="intel-pattern-desc">${p.description || ''}</div>
+                ${wr !== null && total > 0 ? _confBar(wr) : ''}
+            </div>`;
+        }).join('');
+    }
+
+    function renderPredictionPanel(predictions) {
+        const c = document.getElementById('intel-prediction-panel');
+        const ct = document.getElementById('intel-pred-count');
+        if (!c) return;
+        if (ct) ct.textContent = predictions.length + ' active';
+        if (!predictions.length) { c.innerHTML = '<div class="intel-initializing"><div class="intel-spinner"></div><p>No active predictions yet.</p></div>'; return; }
+        c.innerHTML = predictions.map(pred => {
+            const sig = SIGNAL_LABELS[pred.signal] || { label: pred.signal, cls: 'signal-watch' };
+            const reasoning = pred.reasoning || {};
+            const histText = pred.historical_sample > 0 ? pred.historical_sample + ' hist. matches' : 'First occurrence';
+            const wrText   = pred.historical_win_rate > 0 ? ` · ${_fmt(pred.historical_win_rate, 0)}% win rate` : '';
+            return `<div class="intel-pred-card">
+                <div class="intel-pred-header">
+                    <span class="intel-event-symbol" onclick="typeof showDetail==='function'&&showDetail('${pred.symbol}')" style="cursor:pointer">${pred.symbol}</span>
+                    <span class="intel-signal-badge ${sig.cls}">${sig.label}</span>
+                    <span class="intel-conf-pct">${pred.confidence}%</span>
+                </div>
+                <div class="intel-pred-meta">
+                    <span>₨${pred.price_at_signal ? Number(pred.price_at_signal).toFixed(2) : '—'} at signal</span>
+                    <span>${_timeAgo(pred.predicted_at)}</span>
+                </div>
+                ${pred.pattern_name && pred.pattern_name !== 'No Pattern Matched' ? `<div class="intel-pred-pattern">📚 ${pred.pattern_name}</div>` : ''}
+                <div class="intel-pred-hist">${histText}${wrText}</div>
+                ${reasoning.narrative ? `<div class="intel-why-narrative">${reasoning.narrative}</div>` : ''}
+                ${_confBar(pred.confidence)}
+            </div>`;
+        }).join('');
+    }
+
+    async function showEventDetail(eventId) {
+        try {
+            const res = await fetch('/api/intelligence/event/' + eventId).then(r => r.json());
+            if (!res.success) return;
+            const ev = res.event || {};
+            const causes = res.causes || [];
+            const pattern = res.matched_pattern;
+            const causesHtml = causes.map(cause => `
+                <div class="intel-cause-row-detail">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                        <span class="intel-cause-name">${FACTOR_LABELS[cause.factor] || cause.factor}</span>
+                        <span class="intel-cause-evidence-badge ev-${(cause.evidence||'weak').toLowerCase().replace(' ','-')}">${cause.evidence}</span>
+                        <span class="intel-cause-pct" style="margin-left:auto">${cause.confidence}%</span>
+                    </div>
+                    ${_confBar(cause.confidence)}
+                    ${cause.detail ? `<div class="intel-cause-detail-text">${cause.detail}</div>` : ''}
+                </div>`).join('');
+            const patternHtml = pattern ? `
+                <div class="intel-detail-pattern-match">
+                    <div class="intel-detail-section-title">📚 Matched Pattern</div>
+                    <strong>${pattern.name}</strong><p style="color:#94a3b8;font-size:.8rem;margin:4px 0">${pattern.description || ''}</p>
+                    ${pattern.occurrences ? `<span class="intel-occ">${pattern.occurrences} occurrences</span>` : ''}
+                </div>` : '';
+            let overlay = document.getElementById('intel-detail-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'intel-detail-overlay';
+                overlay.className = 'terms-modal-overlay';
+                overlay.onclick = e => { if (e.target === overlay) overlay.style.display = 'none'; };
+                document.body.appendChild(overlay);
+            }
+            overlay.innerHTML = `<div class="terms-modal-box" style="max-width:640px;max-height:85vh;overflow-y:auto;background:#0f172a;border:1px solid rgba(139,92,246,.4);">
+                <div style="display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.08);">
+                    <span style="font-size:.9rem;font-weight:700;color:#f8fafc;flex:1">🧠 Intelligence Report: ${ev.symbol}</span>
+                    <button onclick="document.getElementById('intel-detail-overlay').style.display='none'" style="background:transparent;border:none;color:#94a3b8;font-size:1.3rem;cursor:pointer">✕</button>
+                </div>
+                <div style="padding:18px 20px">
+                    <div class="intel-detail-snapshot">
+                        <div>Event: <strong>${EVENT_LABELS[ev.event_type]?.label || ev.event_type}</strong></div>
+                        <div>Price: <strong>₨${ev.price ? Number(ev.price).toFixed(2) : '—'}</strong></div>
+                        <div>Change: <strong class="${ev.price_change_pct >= 0 ? 'pos' : 'neg'}">${ev.price_change_pct >= 0 ? '+' : ''}${_fmt(ev.price_change_pct)}%</strong></div>
+                        <div>RVOL: <strong>${_fmt(ev.rvol)}×</strong></div>
+                        <div>RSI: <strong>${_fmt(ev.rsi_at_event, 0)}</strong></div>
+                        <div>Sector: <strong>${ev.sector || '—'}</strong></div>
+                    </div>
+                    ${res.narrative ? `<div class="intel-detail-narrative">${res.narrative}</div>` : ''}
+                    <div class="intel-detail-section-title" style="margin:14px 0 8px">🔍 Causal Analysis (${causes.length} factors)</div>
+                    <div class="intel-causes-list">${causesHtml || '<p style="color:#64748b">No cause data.</p>'}</div>
+                    ${patternHtml}
+                </div>
+            </div>`;
+            overlay.style.display = 'flex';
+        } catch (err) {
+            console.error('[Intelligence] showEventDetail error:', err);
+        }
+    }
+
+    function onTabActivated()   { load(); if (_refreshTimer) clearInterval(_refreshTimer); _refreshTimer = setInterval(load, 60000); }
+    function onTabDeactivated() { if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; } }
+
+    return { load, onTabActivated, onTabDeactivated, showEventDetail };
+
+})();
+
+// ── Wire Intelligence tab into existing view-tab click system ──────────────
+document.addEventListener('DOMContentLoaded', () => {
+    const intelBtn = document.getElementById('tab-intelligence');
+    if (!intelBtn) return;
+    intelBtn.addEventListener('click', () => {
+        // hide all sections (same pattern as app uses)
+        document.querySelectorAll('section[id]').forEach(s => {
+            if (s.id.startsWith('view-')) s.style.display = 'none';
+        });
+        document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
+        intelBtn.classList.add('active');
+        const panel = document.getElementById('view-intelligence');
+        if (panel) panel.style.display = 'block';
+        intelligenceTab.onTabActivated();
+    });
+    document.querySelectorAll('.view-tab:not(#tab-intelligence)').forEach(btn => {
+        btn.addEventListener('click', () => intelligenceTab.onTabDeactivated());
+    });
+});
