@@ -1976,8 +1976,119 @@
             </div>
         </div>
 
+        <!-- ═══ 📊 LEARNING REPORT ════════════════════════════════════════ -->
+        <div class="calib-report-section">
+
+            <!-- Section Header -->
+            <div class="calib-section-header">
+                <div class="calib-section-title-group">
+                    <span class="calib-badge">📊 SELF-LEARNING</span>
+                    <div>
+                        <h3 class="calib-title">Calibration & Learning Report</h3>
+                        <p class="calib-subtitle">The AI continuously tracks every prediction outcome and adjusts its own scoring weights, thresholds, and pattern confidence to improve accuracy on PSX.</p>
+                    </div>
+                </div>
+                <div class="calib-meta-pills">
+                    <div class="calib-meta-pill" id="calib-runs-pill">— runs</div>
+                    <div class="calib-meta-pill" id="calib-changes-pill">— config changes</div>
+                    <div class="calib-meta-pill" id="calib-last-pill">Last: —</div>
+                    <button class="calib-refresh-btn" onclick="calibrationReport.load()">↺ Refresh</button>
+                </div>
+            </div>
+
+            <!-- Performance Overview Row -->
+            <div class="calib-overview-row">
+                <div class="calib-overview-card">
+                    <div class="calib-ov-value" id="calib-ov-total">—</div>
+                    <div class="calib-ov-label">Closed Outcomes</div>
+                </div>
+                <div class="calib-overview-card">
+                    <div class="calib-ov-value" id="calib-ov-winrate">—</div>
+                    <div class="calib-ov-label">Overall Win Rate</div>
+                </div>
+                <div class="calib-overview-card">
+                    <div class="calib-ov-value" id="calib-ov-pf">—</div>
+                    <div class="calib-ov-label">Profit Factor</div>
+                </div>
+                <div class="calib-overview-card">
+                    <div class="calib-ov-value" id="calib-ov-factors">—</div>
+                    <div class="calib-ov-label">Factor Profiles Built</div>
+                </div>
+            </div>
+
+            <!-- 3-Column Grid: Factor Matrix | Sector Stats | Pattern Edge -->
+            <div class="calib-grid">
+
+                <!-- Factor Performance Matrix -->
+                <div class="calib-panel">
+                    <div class="calib-panel-header">
+                        <span>⚖️</span>
+                        <h4>Factor Weight Matrix</h4>
+                        <span class="calib-panel-sub">Which signals actually work on PSX</span>
+                    </div>
+                    <div class="calib-panel-body" id="calib-factor-matrix">
+                        <div class="calib-empty">
+                            <div class="intel-spinner"></div>
+                            <p>Weights calculated after ≥10 closed outcomes.<br>
+                            The AI is observing. Data accumulates each week.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sector Predictability -->
+                <div class="calib-panel">
+                    <div class="calib-panel-header">
+                        <span>🏭</span>
+                        <h4>Sector Predictability</h4>
+                        <span class="calib-panel-sub">Which sectors behave reliably on PSX</span>
+                    </div>
+                    <div class="calib-panel-body" id="calib-sector-table">
+                        <div class="calib-empty">
+                            <div class="intel-spinner"></div>
+                            <p>Sector analysis builds from prediction outcomes.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pattern Edge -->
+                <div class="calib-panel">
+                    <div class="calib-panel-header">
+                        <span>📚</span>
+                        <h4>Pattern Edge on PSX</h4>
+                        <span class="calib-panel-sub">Statistical edge above random 50%</span>
+                    </div>
+                    <div class="calib-panel-body" id="calib-pattern-edge">
+                        <div class="calib-empty">
+                            <div class="intel-spinner"></div>
+                            <p>Pattern edge computed after pattern library builds overnight.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /.calib-grid -->
+
+            <!-- Algorithm Change Log (Full Width) -->
+            <div class="calib-changelog-panel">
+                <div class="calib-panel-header">
+                    <span>🔧</span>
+                    <h4>Algorithm Change Log</h4>
+                    <span class="calib-panel-sub">Every automatic adjustment the AI made and why</span>
+                </div>
+                <div id="calib-changelog" class="calib-changelog-body">
+                    <div class="calib-empty">
+                        <div class="intel-spinner"></div>
+                        <p>No changes recorded yet. The AI needs ≥10 closed outcomes before it can adjust any parameter.<br>
+                        First calibration runs every <strong>Sunday at 11 PM PKT</strong>.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /.calib-report-section -->
+        <!-- ════════════════════════════════════════════════════════════════ -->
+
     </section>
     <!-- ─── End Intelligence Dashboard ─────────────────────────────── -->
+
 
     <!-- Weekly Trade Direct Buy Modal -->
     <div id="weekly-buy-modal" class="terms-modal-overlay" style="display:none;">

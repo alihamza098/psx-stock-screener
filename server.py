@@ -28,6 +28,7 @@ from psx_paper_broker import paper_broker
 from psx_position_monitor import position_monitor
 import weekly_scan_engine as weekly_engine
 import psx_intelligence_engine as intel_module
+import psx_calibration_engine as calib_module
 
 
 PORT = int(os.environ.get('PORT', 3000))
@@ -551,9 +552,19 @@ def _start_continuous_poller():
             print(f"[Intelligence] Engine init error: {e}")
             intelligence = None
 
-        _last_intel_tick = [0]
-        _last_eod_tick   = [0]
-        _last_overnight  = [0]
+        # Init calibration engine
+        try:
+            calibration = calib_module.get_calibration_engine()
+            print("[Calibration] Engine ready inside poller loop.")
+        except Exception as e:
+            print(f"[Calibration] Engine init error: {e}")
+            calibration = None
+
+        _last_intel_tick    = [0]
+        _last_eod_tick      = [0]
+        _last_overnight     = [0]
+        _last_audit_tick    = [0]
+        _last_calibration   = [0]  # weekly calibration
 
         while True:
             try:
@@ -608,10 +619,32 @@ def _start_continuous_poller():
                             except Exception as ie:
                                 print(f"[Intelligence] Overnight error: {ie}")
 
+                # ── Weekly Prediction Audit (every 15 minutes) ───────────────
+                if time.time() - _last_audit_tick[0] >= 900:
+                    try:
+                        stocks_snap = stock_cache.get("data") or []
+                        stocks_dict = {s.get("symbol","").upper(): s for s in stocks_snap if s.get("symbol")}
+                        weekly_engine.audit_and_evaluate_predictions(stocks_dict)
+                        _last_audit_tick[0] = time.time()
+                    except Exception as ae:
+                        print(f"[Audit] Weekly prediction audit error: {ae}")
+
+                # ── Weekly Calibration — Sunday 11 PM PKT ────────────────────
+                if calibration and weekday == 6 and now_pkt.hour == 23 and now_pkt.minute < 5:
+                    calib_key = now_pkt.strftime("%Y-%m-%d")
+                    if _last_calibration[0] != calib_key:
+                        try:
+                            print("[Calibration] Sunday 11 PM — running weekly calibration cycle...")
+                            calibration.run_weekly_calibration()
+                            _last_calibration[0] = calib_key
+                        except Exception as ce:
+                            print(f"[Calibration] Weekly calibration error: {ce}")
+
                 time.sleep(poll_interval)
             except Exception as e:
                 print(f"[PSX Poller] Error: {e}")
                 time.sleep(15)
+
 
 
     poller_t = threading.Thread(target=poller_loop, daemon=True, name="PSXContinuousPoller")
@@ -3363,7 +3396,56 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
+        # ─── Self-Learning Calibration API ───────────────────────────────────
+
+        elif parsed_path.path == "/api/calibration/report":
+            try:
+                engine = calib_module.get_calibration_engine()
+                report = engine.generate_report()
+                self._send_json({"success": True, **report})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/calibration/factor-weights":
+            try:
+                engine = calib_module.get_calibration_engine()
+                weights = engine.db.get_all_factor_weights()
+                sector_stats = engine.db.get_sector_stats()
+                pattern_edge = engine.db.get_pattern_edge()
+                self._send_json({
+                    "success": True,
+                    "factor_weights": weights,
+                    "sector_stats": sector_stats,
+                    "pattern_edge": pattern_edge,
+                    "generated_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                })
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/calibration/history":
+            try:
+                engine = calib_module.get_calibration_engine()
+                runs = engine.db.get_calibration_history(limit=30)
+                recs = engine.db.get_recommendations_history(limit=30)
+                self._send_json({
+                    "success": True,
+                    "runs": runs,
+                    "recommendations": recs
+                })
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/calibration/run":
+            # On-demand calibration trigger (for admin / manual use)
+            try:
+                engine = calib_module.get_calibration_engine()
+                result = engine.run_weekly_calibration()
+                self._send_json({"success": True, **result})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
         # ─── Tab & Feature Deployment Status Endpoints ───
+
         elif parsed_path.path == "/api/tabs/status":
 
             tabs = get_tab_status_db()

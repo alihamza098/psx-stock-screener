@@ -7434,3 +7434,284 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', () => intelligenceTab.onTabDeactivated());
     });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 📊  PSX CALIBRATION & LEARNING REPORT — FRONTEND MODULE
+// ═══════════════════════════════════════════════════════════════════════════
+
+const calibrationReport = (() => {
+
+    let _loaded = false;
+
+    function _setText(id, val) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    }
+
+    function _fmt(num, dec = 1) {
+        if (num === null || num === undefined || isNaN(num)) return '—';
+        return Number(num).toFixed(dec);
+    }
+
+    function _wrColor(wr) {
+        if (wr >= 0.65) return 'wr-excellent';
+        if (wr >= 0.55) return 'wr-good';
+        if (wr >= 0.45) return 'wr-neutral';
+        return 'wr-poor';
+    }
+
+    function _wColor(w) {
+        if (w >= 1.5) return 'weight-high';
+        if (w >= 1.1) return 'weight-med';
+        if (w >= 0.9) return 'weight-neutral';
+        return 'weight-low';
+    }
+
+    function _wrBar(wr) {
+        const pct = Math.min(100, Math.max(0, wr * 100));
+        const cls = _wrColor(wr);
+        return `<div class="calib-wr-bar-wrap"><div class="calib-wr-bar ${cls}" style="width:${pct}%"></div></div>`;
+    }
+
+    function _timeAgo(iso) {
+        if (!iso || iso === 'Never') return '—';
+        const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
+        if (diff < 60)    return `${diff}s ago`;
+        if (diff < 3600)  return `${Math.floor(diff/60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+        return `${Math.floor(diff/86400)}d ago`;
+    }
+
+    // ── Friendly factor label map ─────────────────────────────────────────
+    const FACTOR_LABELS = {
+        'GRADE'              : 'Grade',
+        'TRIGGER_TYPE'       : 'Trigger Type',
+        'TRIGGER_INDIVIDUAL' : 'Trigger Detail',
+        'STOP_BASIS'         : 'Stop Method',
+        'RR_BUCKET'          : 'R:R Range',
+        'RAW_SCORE'          : 'Conviction Score',
+        'INTEL_SIGNAL'       : 'Intelligence Signal',
+        'SECTOR_INTEL'       : 'Sector (AI)',
+        'CAUSAL_FACTOR'      : 'Causal Factor'
+    };
+
+    // ── Load Data ─────────────────────────────────────────────────────────
+    async function load() {
+        try {
+            const [reportRes, histRes] = await Promise.allSettled([
+                fetch('/api/calibration/report').then(r => r.json()),
+                fetch('/api/calibration/history').then(r => r.json())
+            ]);
+
+            if (reportRes.status === 'fulfilled' && reportRes.value.success) {
+                const data = reportRes.value;
+                renderMeta(data.meta, data.performance);
+                renderFactorMatrix(data.factor_weights || {});
+                renderSectorTable(data.sector_stats || []);
+                renderPatternEdge(data.pattern_edge || []);
+            }
+            if (histRes.status === 'fulfilled' && histRes.value.success) {
+                renderChangelog(histRes.value.runs || [], histRes.value.recommendations || []);
+            }
+            _loaded = true;
+        } catch (err) {
+            console.error('[CalibReport] Load error:', err);
+        }
+    }
+
+    // ── Meta / Overview ───────────────────────────────────────────────────
+    function renderMeta(meta, perf) {
+        if (!meta) return;
+        _setText('calib-runs-pill',    (meta.calibration_runs_total ?? 0) + ' runs');
+        _setText('calib-changes-pill', (meta.config_changes_applied ?? 0) + ' config changes');
+        _setText('calib-last-pill',    'Last: ' + _timeAgo(meta.last_calibration_at));
+        _setText('calib-ov-total',     (perf && perf.closed_outcomes != null) ? perf.closed_outcomes : '—');
+        _setText('calib-ov-winrate',   (perf && perf.overall_win_rate_pct != null) ? perf.overall_win_rate_pct + '%' : '—');
+        _setText('calib-ov-pf',        (perf && perf.profit_factor != null) ? _fmt(perf.profit_factor, 2) + 'x' : '—');
+        _setText('calib-ov-factors',   (meta.factor_profiles ?? 0) + '');
+    }
+
+    // ── Factor Weight Matrix ──────────────────────────────────────────────
+    function renderFactorMatrix(grouped) {
+        const c = document.getElementById('calib-factor-matrix');
+        if (!c) return;
+
+        // Flatten, prioritise important factor types
+        const priority = ['GRADE', 'TRIGGER_TYPE', 'STOP_BASIS', 'RR_BUCKET', 'RAW_SCORE', 'INTEL_SIGNAL', 'CAUSAL_FACTOR'];
+        let rows = '';
+        for (const ft of priority) {
+            const items = (grouped[ft] || []).sort((a, b) => b.weight - a.weight);
+            if (!items.length) continue;
+            rows += `<div class="calib-factor-group-header">${FACTOR_LABELS[ft] || ft}</div>`;
+            for (const fw of items) {
+                const wr = fw.smoothed_win_rate || 0;
+                const weight = fw.weight || 1.0;
+                const samples = fw.sample_count || 0;
+                const barPct = Math.min(100, Math.max(0, wr * 100));
+                const wCls = _wColor(weight);
+                rows += `
+                    <div class="calib-factor-row">
+                        <div class="calib-factor-name">${fw.factor_value}</div>
+                        <div class="calib-factor-samples">${samples}×</div>
+                        <div class="calib-factor-bar-wrap">
+                            <div class="calib-wr-bar ${_wrColor(wr)}" style="width:${barPct}%"></div>
+                        </div>
+                        <div class="calib-factor-wr">${Math.round(wr * 100)}%</div>
+                        <div class="calib-weight-badge ${wCls}">${weight.toFixed(2)}×</div>
+                    </div>`;
+            }
+        }
+
+        if (!rows) {
+            c.innerHTML = `<div class="calib-empty"><div class="intel-spinner"></div><p>No factor data yet. Weights computed after ≥10 closed outcomes.</p></div>`;
+        } else {
+            c.innerHTML = `<div class="calib-factor-list">${rows}</div>`;
+        }
+    }
+
+    // ── Sector Stats Table ────────────────────────────────────────────────
+    function renderSectorTable(stats) {
+        const c = document.getElementById('calib-sector-table');
+        if (!c) return;
+        if (!stats.length) {
+            c.innerHTML = `<div class="calib-empty"><div class="intel-spinner"></div><p>Sector data builds from prediction outcomes.</p></div>`;
+            return;
+        }
+        const rows = stats.map(s => {
+            const wr = s.win_rate || 0;
+            const wrPct = Math.round(wr * 100);
+            const pf = s.profit_factor || 1.0;
+            const wrCls = _wrColor(wr);
+            return `
+                <div class="calib-sector-row">
+                    <div class="calib-sector-name">${s.sector}</div>
+                    <div class="calib-sector-stats">
+                        <span class="calib-sector-wr ${wrCls}">${wrPct}% win</span>
+                        <span class="calib-sector-pf">PF ${_fmt(pf, 2)}</span>
+                        <span class="calib-sector-samples">${s.sample_count}×</span>
+                    </div>
+                    ${_wrBar(wr)}
+                    <div class="calib-sector-meta">
+                        Avg ${_fmt(s.avg_days_to_outcome, 0)}d · +${_fmt(s.avg_winner_gain)}% win / -${_fmt(s.avg_loser_loss)}% loss
+                    </div>
+                </div>`;
+        }).join('');
+        c.innerHTML = `<div class="calib-sector-list">${rows}</div>`;
+    }
+
+    // ── Pattern Edge Table ────────────────────────────────────────────────
+    function renderPatternEdge(patterns) {
+        const c = document.getElementById('calib-pattern-edge');
+        if (!c) return;
+        const shown = patterns.filter(p => p.sample_count >= 1);
+        if (!shown.length) {
+            c.innerHTML = `<div class="calib-empty"><div class="intel-spinner"></div><p>Pattern edge builds overnight after events are detected.</p></div>`;
+            return;
+        }
+        const rows = shown.map(p => {
+            const edge = p.psxEdge || 0;
+            const wr = p.raw_win_rate || 0;
+            const edgeCls = edge >= 0.15 ? 'edge-positive' : edge >= 0.0 ? 'edge-neutral' : 'edge-negative';
+            const edgeSign = edge >= 0 ? '+' : '';
+            return `
+                <div class="calib-pattern-row">
+                    <div class="calib-pattern-name-col">${p.pattern_name}</div>
+                    <div class="calib-pattern-stats">
+                        <span class="calib-edge-badge ${edgeCls}">${edgeSign}${Math.round(edge * 100)}% edge</span>
+                        <span class="calib-pattern-wr">${Math.round(wr * 100)}% win</span>
+                        <span class="calib-pattern-samples">${p.sample_count}×</span>
+                    </div>
+                    ${_wrBar(wr)}
+                    <div class="calib-pattern-conf-floor">Min confidence: ${p.recommended_confidence_floor}%</div>
+                </div>`;
+        }).join('');
+        c.innerHTML = `<div class="calib-pattern-list">${rows}</div>`;
+    }
+
+    // ── Change Log ────────────────────────────────────────────────────────
+    function renderChangelog(runs, recs) {
+        const c = document.getElementById('calib-changelog');
+        if (!c) return;
+
+        let html = '';
+
+        // Show applied config changes first
+        const applied = recs.filter(r => r.applied);
+        if (applied.length) {
+            html += applied.map(r => `
+                <div class="calib-change-entry applied">
+                    <div class="calib-change-header">
+                        <span class="calib-change-type applied-badge">✅ APPLIED</span>
+                        <span class="calib-change-param">${r.param_name}</span>
+                        <span class="calib-change-arrow">${r.old_value} → <strong>${r.new_value}</strong></span>
+                        <span class="calib-change-time">${_timeAgo(r.recommended_at)}</span>
+                    </div>
+                    <div class="calib-change-reason">${r.reason}</div>
+                    <div class="calib-change-proof">
+                        Backtest: PF ${_fmt(r.backtest_pf_before, 2)} → ${_fmt(r.backtest_pf_after, 2)}
+                        · ${r.sample_count} samples
+                    </div>
+                </div>`).join('');
+        }
+
+        // Show rejected / not-yet-applied recommendations
+        const rejected = recs.filter(r => !r.applied);
+        if (rejected.length) {
+            html += rejected.map(r => `
+                <div class="calib-change-entry rejected">
+                    <div class="calib-change-header">
+                        <span class="calib-change-type rejected-badge">❌ INSUFFICIENT IMPROVEMENT</span>
+                        <span class="calib-change-param">${r.param_name}</span>
+                        <span class="calib-change-arrow">${r.old_value} → ${r.new_value}</span>
+                        <span class="calib-change-time">${_timeAgo(r.recommended_at)}</span>
+                    </div>
+                    <div class="calib-change-reason">${r.reason}</div>
+                    <div class="calib-change-proof">
+                        Backtest: PF ${_fmt(r.backtest_pf_before, 2)} → ${_fmt(r.backtest_pf_after, 2)}
+                        (improvement ${_fmt((r.backtest_pf_after - r.backtest_pf_before), 3)} < 0.05 required)
+                    </div>
+                </div>`).join('');
+        }
+
+        // Show calibration run history (observation mode entries)
+        if (runs.length) {
+            html += `<div class="calib-runs-header">Calibration Runs</div>`;
+            html += runs.map(r => `
+                <div class="calib-run-entry">
+                    <div class="calib-run-header">
+                        <span class="calib-run-date">${r.run_at ? r.run_at.replace('T',' ').replace('Z','') + ' UTC' : '—'}</span>
+                        <span class="calib-run-samples">${r.closed_samples} closed outcomes</span>
+                        <span class="calib-run-wr">Win: ${Math.round((r.overall_win_rate || 0) * 100)}%</span>
+                        <span class="calib-run-pf">PF: ${_fmt(r.profit_factor, 2)}</span>
+                        <span class="calib-run-changes ${r.changes_applied > 0 ? 'has-changes' : ''}">${r.changes_applied} changes</span>
+                    </div>
+                    <div class="calib-run-summary">${r.summary || ''}</div>
+                </div>`).join('');
+        }
+
+        if (!html) {
+            c.innerHTML = `<div class="calib-empty"><div class="intel-spinner"></div>
+                <p>No calibration data yet. First run every <strong>Sunday at 11 PM PKT</strong>.<br>
+                The AI requires ≥10 closed outcomes before making any changes.</p></div>`;
+        } else {
+            c.innerHTML = html;
+        }
+    }
+
+    // ── Public API ────────────────────────────────────────────────────────
+    return { load };
+
+})();
+
+// ── Load calibration when intelligence tab is activated ────────────────────
+(function patchCalibLoad() {
+    document.addEventListener('DOMContentLoaded', () => {
+        const intelBtn = document.getElementById('tab-intelligence');
+        if (intelBtn) {
+            intelBtn.addEventListener('click', () => {
+                // Load calibration data slightly after main intel data
+                setTimeout(() => calibrationReport.load(), 800);
+            });
+        }
+    });
+})();
