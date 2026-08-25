@@ -1,13 +1,13 @@
 {
-  "dev_mw02ym3fgmsvlipqh": {
+  "dev_t8by2dyvomt8kvher": {
     "email": "",
     "client_ip": "127.0.0.1",
-    "device_id": "dev_mw02ym3fgmsvlipqh",
-    "created_at": 1787387280.752023,
-    "first_seen": 1787387280.752023,
-    "last_active": 1787390082.5506601,
-    "visit_count": 105,
-    "trial_end": 1787646480.752023,
+    "device_id": "dev_t8by2dyvomt8kvher",
+    "created_at": 1787658302.999708,
+    "first_seen": 1787658302.999708,
+    "last_active": 1787659149.8863308,
+    "visit_count": 20,
+    "trial_end": 1787917502.999708,
     "is_paid": false,
     "license_key": "\u2014",
     "location": {
@@ -20,15 +20,15 @@
     "device_info": "\ud83d\udcbb Desktop (macOS Chrome)",
     "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
   },
-  "dev_n3pke6go2mt45od2v": {
+  "dev_mw02ym3fgmsvlipqh": {
     "email": "",
     "client_ip": "127.0.0.1",
-    "device_id": "dev_n3pke6go2mt45od2v",
-    "created_at": 1787389697.339545,
-    "first_seen": 1787389697.339545,
-    "last_active": 1787389822.3715599,
-    "visit_count": 9,
-    "trial_end": 1787648897.339545,
+    "device_id": "dev_mw02ym3fgmsvlipqh",
+    "created_at": 1787659284.475971,
+    "first_seen": 1787659284.475971,
+    "last_active": 1787659727.8962078,
+    "visit_count": 18,
+    "trial_end": 1787918484.475971,
     "is_paid": false,
     "license_key": "\u2014",
     "location": {
@@ -39,6 +39,6 @@
       "isp": "Localhost"
     },
     "device_info": "\ud83d\udcbb Desktop (macOS Chrome)",
-    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Cursor/3.17.8 Chrome/144.0.7559.236 Electron/40.10.3 Safari/537.36"
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
   }
 }
