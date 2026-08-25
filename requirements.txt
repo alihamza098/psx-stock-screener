@@ -1,1 +1,6 @@
-# No external dependencies — pure Python stdlib!
+# PSX Stock Screener — Python dependencies
+# All core features use pure Python stdlib.
+# anthropic is optional — enables Claude AI narrative synthesis in the Long-Term tab.
+# The engine gracefully falls back to deterministic template narratives if this package
+# is absent or if ANTHROPIC_API_KEY environment variable is not set.
+anthropic>=0.34.0

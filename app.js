@@ -7715,3 +7715,376 @@ const calibrationReport = (() => {
         }
     });
 })();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 📈  PSX LONG-TERM INVESTING ENGINE — FRONTEND MODULE
+// ═══════════════════════════════════════════════════════════════════════════
+
+const longtermTab = (() => {
+
+    let _currentGrade = 'B+';
+    let _currentSector = '';
+    let _currentMinDiv = 0;
+    let _kse100Only = false;
+    let _allRows = [];
+    let _loaded = false;
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    const GRADE_ORDER = {'A+': 0, 'A': 1, 'A-': 2, 'B+': 3, 'B': 4, 'C': 5, 'D': 6};
+    const GRADE_COLORS = {
+        'A+': '#10b981', 'A': '#34d399', 'A-': '#6ee7b7',
+        'B+': '#fbbf24', 'B': '#f97316', 'C': '#ef4444', 'D': '#6b7280'
+    };
+
+    function _fmt(n, dec=1) {
+        if (n === null || n === undefined || isNaN(n)) return '—';
+        return Number(n).toFixed(dec);
+    }
+    function _setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
+    function _timeAgo(iso) {
+        if (!iso) return '—';
+        const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
+        if (diff < 60) return `${diff}s ago`;
+        if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+        return `${Math.floor(diff/86400)}d ago`;
+    }
+    function _gradeClass(g) {
+        return ({
+            'A+': 'ap', 'A': 'a', 'A-': 'am', 'B+': 'bp',
+            'B': 'b', 'C': 'c', 'D': 'd'
+        })[g] || 'b';
+    }
+    function _scoreBar(score, max=25, color='#10b981') {
+        const pct = Math.min(100, Math.max(0, (score / max) * 100));
+        return `<div class="lt-score-bar-wrap"><div class="lt-score-bar" style="width:${pct}%;background:${color}"></div></div>`;
+    }
+
+    // ── Macro Banner ─────────────────────────────────────────────────────
+    function _renderMacro(macro) {
+        if (!macro) return;
+        _setText('lt-macro-rate',     `SBP Rate: ${macro.sbp_rate_pct}%`);
+        _setText('lt-macro-inflation', `Inflation: ${macro.inflation_pct}% YoY`);
+        _setText('lt-macro-rating',    `Moody's ${macro.moodys_rating}${macro.moodys_upgraded ? ' ↑' : ''} · S&P ${macro.sp_rating}${macro.sp_upgraded ? ' ↑' : ''}`);
+        _setText('lt-macro-imf',       `IMF: $${macro.imf_disbursed_bn}B of $${macro.imf_total_bn}B · Next $${macro.imf_next_tranche_bn}B pending`);
+        _setText('lt-macro-fx',        `PKR/USD: ${macro.fx_usd_pkr}`);
+        _setText('lt-macro-kse',       `KSE P/E: ${macro.kse100_pe}x · Yield: ${macro.kse100_div_yield}%`);
+        _setText('lt-macro-cgt',       `CGT (ATL filer): ${macro.cgt_filer_pct}% · Div WHT: ${macro.dividend_wht_filer_pct}%`);
+        _setText('lt-macro-debt',      `Circular Debt: Rs ${macro.circular_debt_trn_pkr}T ⚠️`);
+        const noteEl = document.getElementById('lt-macro-note');
+        if (noteEl) {
+            noteEl.textContent = macro.iran_war_risk
+                ? '⚠️ Iran conflict risk: Pakistan net oil importer — SBP rate, PKR, and market sentiment tied to oil price trajectory.'
+                : '';
+        }
+    }
+
+    // ── Sector Dropdown ───────────────────────────────────────────────────
+    function _populateSectors(sectors) {
+        const sel = document.getElementById('lt-sector-filter');
+        if (!sel) return;
+        const existing = Array.from(sel.options).map(o => o.value);
+        (sectors || []).forEach(s => {
+            if (!existing.includes(s)) {
+                const opt = document.createElement('option');
+                opt.value = s; opt.textContent = s;
+                sel.appendChild(opt);
+            }
+        });
+    }
+
+    // ── Grade Summary Row ─────────────────────────────────────────────────
+    function _renderGradeSummary(rows) {
+        const counts = {'A+': 0, 'A': 0, 'A-': 0, 'B+': 0};
+        rows.forEach(r => { if (r.grade in counts) counts[r.grade]++; });
+        _setText('lt-count-ap', counts['A+']);
+        _setText('lt-count-a',  counts['A']);
+        _setText('lt-count-am', counts['A-']);
+        _setText('lt-count-bp', counts['B+']);
+    }
+
+    // ── Stock Card ────────────────────────────────────────────────────────
+    function _buildCard(r) {
+        const gc = _gradeClass(r.grade);
+        const gradColor = GRADE_COLORS[r.grade] || '#6b7280';
+        const cdFlag = r.circular_debt_risk ? '<span class="lt-risk-tag cd">⚠️ Circular Debt</span>' : '';
+        const rbFlag = r.rate_beneficiary   ? '<span class="lt-risk-tag rb">✅ Rate Beneficiary</span>' : '';
+        const exFlag = r.exporter           ? '<span class="lt-risk-tag ex">📦 Exporter</span>' : '';
+
+        const s2p = Math.round(r.stage2_score || 0);
+        const s3p = Math.round(r.stage3_score || 0);
+        const s4p = Math.round(r.stage4_score || 0);
+        const s5p = Math.round(r.stage5_score || 0);
+
+        return `
+        <div class="lt-card" onclick="longtermTab.showDetail('${r.symbol}')">
+            <div class="lt-card-header">
+                <div>
+                    <div class="lt-card-symbol">${r.symbol}</div>
+                    <div class="lt-card-name">${(r.name || '').substring(0, 38)}</div>
+                    <div class="lt-card-sector">${r.sector || '—'}</div>
+                </div>
+                <div class="lt-card-grade-wrap">
+                    <div class="lt-grade-badge ${gc}">${r.grade}</div>
+                    <div class="lt-card-score">${Math.round(r.total_score)}/100</div>
+                </div>
+            </div>
+
+            <div class="lt-card-metrics">
+                <div class="lt-metric">
+                    <div class="lt-metric-val">${r.pe ? _fmt(r.pe, 1) + 'x' : '—'}</div>
+                    <div class="lt-metric-label">P/E</div>
+                </div>
+                <div class="lt-metric">
+                    <div class="lt-metric-val ${r.div_yield >= 11 ? 'highlight-green' : ''}">${r.div_yield ? _fmt(r.div_yield, 1) + '%' : '—'}</div>
+                    <div class="lt-metric-label">Div Yield</div>
+                </div>
+                <div class="lt-metric">
+                    <div class="lt-metric-val">${r.revenue_cagr !== null && r.revenue_cagr !== undefined ? _fmt(r.revenue_cagr, 1) + '%' : '—'}</div>
+                    <div class="lt-metric-label">Rev CAGR</div>
+                </div>
+                <div class="lt-metric">
+                    <div class="lt-metric-val">${r.market_cap ? 'Rs ' + _fmt(r.market_cap / 1e9, 1) + 'B' : '—'}</div>
+                    <div class="lt-metric-label">Mkt Cap</div>
+                </div>
+            </div>
+
+            <div class="lt-card-stages">
+                <div class="lt-stage-row">
+                    <span class="lt-stage-name">Financial Health</span>
+                    ${_scoreBar(s2p, 25, '#60a5fa')}
+                    <span class="lt-stage-pts">${s2p}/25</span>
+                </div>
+                <div class="lt-stage-row">
+                    <span class="lt-stage-name">Profitability</span>
+                    ${_scoreBar(s3p, 25, '#34d399')}
+                    <span class="lt-stage-pts">${s3p}/25</span>
+                </div>
+                <div class="lt-stage-row">
+                    <span class="lt-stage-name">Valuation</span>
+                    ${_scoreBar(s4p, 25, '#fbbf24')}
+                    <span class="lt-stage-pts">${s4p}/25</span>
+                </div>
+                <div class="lt-stage-row">
+                    <span class="lt-stage-name">Governance/Macro</span>
+                    ${_scoreBar(s5p, 25, '#f472b6')}
+                    <span class="lt-stage-pts">${s5p}/25</span>
+                </div>
+            </div>
+
+            <div class="lt-card-flags">${cdFlag}${rbFlag}${exFlag}</div>
+            <div class="lt-card-cta">Click for AI analysis ›</div>
+        </div>`;
+    }
+
+    // ── Render Cards ──────────────────────────────────────────────────────
+    function _renderCards(rows) {
+        const grid = document.getElementById('lt-cards-grid');
+        if (!grid) return;
+        _setText('lt-result-count', `${rows.length} result${rows.length !== 1 ? 's' : ''}`);
+        if (!rows.length) {
+            grid.innerHTML = `<div class="lt-empty"><p>No stocks match your current filters.</p><p>Try relaxing the grade or sector filter.</p></div>`;
+            return;
+        }
+        grid.innerHTML = rows.map(_buildCard).join('');
+    }
+
+    // ── Apply Filters ─────────────────────────────────────────────────────
+    function _applyFilters() {
+        const minScore = {'A+': 80, 'A': 68, 'A-': 55, 'B+': 42, 'B': 28, 'C': 14, 'D': 0}[_currentGrade] || 42;
+        let filtered = _allRows.filter(r => r.total_score >= minScore);
+        if (_currentSector) filtered = filtered.filter(r => r.sector === _currentSector);
+        if (_kse100Only)    filtered = filtered.filter(r => r.is_kse100);
+        if (_currentMinDiv > 0) filtered = filtered.filter(r => (r.div_yield || 0) >= _currentMinDiv);
+        _renderCards(filtered);
+        _renderGradeSummary(filtered);
+    }
+
+    // ── Stock Detail Modal ─────────────────────────────────────────────────
+    async function showDetail(symbol) {
+        const modal = document.getElementById('lt-stock-modal');
+        const content = document.getElementById('lt-modal-content');
+        if (!modal || !content) return;
+        content.innerHTML = `<div class="lt-modal-loading"><div class="intel-spinner"></div><p>Loading analysis for ${symbol}…</p></div>`;
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+
+        try {
+            const res = await fetch(`/api/longterm/stock/${symbol}`);
+            const data = await res.json();
+            if (!data.success) { content.innerHTML = `<p class="lt-error">${data.error}</p>`; return; }
+
+            const d = data.detail;
+            const n = data.narrative || {};
+            const gc = _gradeClass(d.grade);
+
+            const s2bd = d.stage2_breakdown || {};
+            const s3bd = d.stage3_breakdown || {};
+            const s4bd = d.stage4_breakdown || {};
+            const s5bd = d.stage5_breakdown || {};
+
+            function _bdRow(label, bd) {
+                if (!bd || bd.pts === undefined) return '';
+                return `<div class="lt-bd-row">
+                    <span class="lt-bd-label">${label}</span>
+                    <span class="lt-bd-pts">${bd.pts}/10</span>
+                    <span class="lt-bd-note">${bd.note || '—'}</span>
+                </div>`;
+            }
+
+            const narrativeHtml = n.narrative
+                ? `<div class="lt-narrative">${n.narrative.replace(/\n\n/g, '</p><p>').replace(/^/, '<p>').replace(/$/, '</p>')}</div>
+                   <div class="lt-verdict-box"><strong>Verdict:</strong> ${n.one_line_verdict || '—'}</div>
+                   <div class="lt-model-badge">AI: ${n.model_used || 'template'}</div>`
+                : `<div class="lt-narrative-empty">AI analysis will be available after next Monday 9 AM scan.</div>`;
+
+            content.innerHTML = `
+                <div class="lt-modal-header">
+                    <div>
+                        <div class="lt-modal-symbol">${d.symbol}</div>
+                        <div class="lt-modal-name">${d.name || ''}</div>
+                        <div class="lt-modal-sector">${d.sector || ''}</div>
+                    </div>
+                    <div class="lt-modal-grade-wrap">
+                        <div class="lt-grade-badge ${gc} large">${d.grade}</div>
+                        <div class="lt-modal-score">${Math.round(d.total_score || 0)}/100</div>
+                    </div>
+                </div>
+
+                <div class="lt-modal-metrics">
+                    <div class="lt-modal-metric"><div class="lt-metric-val">${d.pe ? _fmt(d.pe,1)+'x' : '—'}</div><div class="lt-metric-label">P/E</div></div>
+                    <div class="lt-modal-metric"><div class="lt-metric-val">${d.div_yield ? _fmt(d.div_yield,1)+'%' : '—'}</div><div class="lt-metric-label">Div Yield</div></div>
+                    <div class="lt-modal-metric"><div class="lt-metric-val">${d.revenue_cagr !== null ? _fmt(d.revenue_cagr,1)+'%' : '—'}</div><div class="lt-metric-label">Rev CAGR</div></div>
+                    <div class="lt-modal-metric"><div class="lt-metric-val">${d.price ? 'Rs '+_fmt(d.price,2) : '—'}</div><div class="lt-metric-label">Price</div></div>
+                    <div class="lt-modal-metric"><div class="lt-metric-val">${d.market_cap ? 'Rs '+_fmt(d.market_cap/1e9,1)+'B' : '—'}</div><div class="lt-metric-label">Mkt Cap</div></div>
+                </div>
+
+                <div class="lt-modal-stages">
+                    <div class="lt-modal-stage">
+                        <div class="lt-stage-header"><span>🏦 Financial Health</span><span class="lt-stage-score-big">${Math.round(d.stage2_score||0)}/25</span></div>
+                        ${_bdRow('Debt/Equity', s2bd.debt_equity)}
+                        ${_bdRow('Current Ratio', s2bd.current_ratio)}
+                        ${_bdRow('Revenue Stability', s2bd.revenue_stability)}
+                    </div>
+                    <div class="lt-modal-stage">
+                        <div class="lt-stage-header"><span>📈 Profitability</span><span class="lt-stage-score-big">${Math.round(d.stage3_score||0)}/25</span></div>
+                        ${_bdRow('Revenue CAGR', s3bd.revenue_cagr)}
+                        ${_bdRow('EPS Growth', s3bd.eps_growth)}
+                        ${_bdRow('Net Margin', s3bd.net_margin)}
+                        ${_bdRow('Momentum', s3bd.momentum_proxy)}
+                    </div>
+                    <div class="lt-modal-stage">
+                        <div class="lt-stage-header"><span>💰 Valuation</span><span class="lt-stage-score-big">${Math.round(d.stage4_score||0)}/25</span></div>
+                        ${_bdRow('P/E vs Sector', s4bd.pe_vs_sector)}
+                        ${_bdRow('Div Yield', s4bd.div_yield)}
+                        ${_bdRow('Price/Book', s4bd.price_to_book)}
+                    </div>
+                    <div class="lt-modal-stage">
+                        <div class="lt-stage-header"><span>🏛️ Governance & Macro</span><span class="lt-stage-score-big">${Math.round(d.stage5_score||0)}/25</span></div>
+                        ${_bdRow('Free Float', s5bd.free_float)}
+                        ${_bdRow('Sector/Macro', s5bd.macro_sector)}
+                        ${_bdRow('Rate Sensitivity', s5bd.rate_sensitivity)}
+                        ${_bdRow('Sponsor/Governance', s5bd.sponsor_governance)}
+                    </div>
+                </div>
+
+                <div class="lt-modal-narrative-section">
+                    <h4 class="lt-narrative-title">🤖 AI Investment Analysis</h4>
+                    ${narrativeHtml}
+                </div>`;
+        } catch(err) {
+            content.innerHTML = `<p class="lt-error">Failed to load: ${err.message}</p>`;
+        }
+    }
+
+    function closeModal(e) {
+        if (e && e.target !== document.getElementById('lt-stock-modal')) return;
+        const modal = document.getElementById('lt-stock-modal');
+        if (modal) modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+
+    // ── Main Load ─────────────────────────────────────────────────────────
+    async function load() {
+        const grid = document.getElementById('lt-cards-grid');
+        if (grid && !_loaded) {
+            grid.innerHTML = `<div class="lt-loading"><div class="intel-spinner"></div>
+                <p>Running 7-stage pipeline on 410 eligible PSX stocks…</p>
+                <p class="lt-loading-note">This takes ~20 seconds on first load. Results persist for the week.</p></div>`;
+        }
+
+        try {
+            // Load macro context and shortlist in parallel
+            const [macroRes, shortRes] = await Promise.all([
+                fetch('/api/longterm/macro-context').then(r => r.json()),
+                fetch(`/api/longterm/shortlist?grade=${encodeURIComponent(_currentGrade)}&sector=${encodeURIComponent(_currentSector)}&kse100=${_kse100Only?1:0}&min_div=${_currentMinDiv}`)
+                    .then(r => r.json())
+            ]);
+
+            if (macroRes.success) {
+                _renderMacro(macroRes.macro);
+                _populateSectors(macroRes.sectors || []);
+            }
+
+            if (shortRes.success) {
+                _allRows = shortRes.shortlist || [];
+                const lastRun = shortRes.last_run || {};
+                _setText('lt-last-scan', `Last scan: ${_timeAgo(lastRun.triggered_at)}`);
+                _setText('lt-shortlist-count', `${_allRows.length} stocks in shortlist`);
+                _applyFilters();
+                _loaded = true;
+            } else {
+                if (grid) grid.innerHTML = `<div class="lt-error"><p>⚠️ ${shortRes.error || 'Load failed'}</p></div>`;
+            }
+        } catch(err) {
+            if (grid) grid.innerHTML = `<div class="lt-error"><p>Connection error: ${err.message}</p></div>`;
+        }
+    }
+
+    // ── Wire up filter controls ───────────────────────────────────────────
+    function _initControls() {
+        // Grade pills
+        document.querySelectorAll('#lt-grade-filter .lt-grade-pill').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#lt-grade-filter .lt-grade-pill').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                _currentGrade = btn.dataset.grade;
+                _applyFilters();
+            });
+        });
+        // Sector select
+        const secSel = document.getElementById('lt-sector-filter');
+        if (secSel) secSel.addEventListener('change', () => { _currentSector = secSel.value; _applyFilters(); });
+        // Div yield
+        const divSel = document.getElementById('lt-div-filter');
+        if (divSel) divSel.addEventListener('change', () => { _currentMinDiv = parseFloat(divSel.value) || 0; _applyFilters(); });
+        // KSE-100 toggle
+        const kseChk = document.getElementById('lt-kse100-filter');
+        if (kseChk) kseChk.addEventListener('change', () => { _kse100Only = kseChk.checked; _applyFilters(); });
+        // Grade summary click-to-filter
+        document.querySelectorAll('.lt-grade-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const g = card.dataset.grade;
+                document.querySelectorAll('#lt-grade-filter .lt-grade-pill').forEach(b => {
+                    b.classList.toggle('active', b.dataset.grade === g);
+                });
+                _currentGrade = g;
+                _applyFilters();
+            });
+        });
+    }
+
+    // ── DOMContentLoaded wire-up ──────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => {
+        _initControls();
+        const ltBtn = document.getElementById('tab-longterm');
+        if (ltBtn) {
+            ltBtn.addEventListener('click', () => {
+                if (!_loaded) load();
+            });
+        }
+    });
+
+    return { load, showDetail, closeModal };
+
+})();

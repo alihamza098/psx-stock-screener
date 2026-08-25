@@ -385,7 +385,13 @@
                 🧠 Intelligence
                 <span class="badge-tab-new" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">AUTO</span>
             </button>
+            <button class="view-tab view-tab-longterm" data-view="longterm" id="tab-longterm">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                📈 Long-Term
+                <span class="badge-tab-new" style="background:linear-gradient(135deg,#10b981,#059669);">AI</span>
+            </button>
         </div>
+
 
 
         <!-- Table View -->
@@ -2088,6 +2094,137 @@
 
     </section>
     <!-- ─── End Intelligence Dashboard ─────────────────────────────── -->
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 📈  LONG-TERM INVESTING ENGINE                                     -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <section class="lt-dashboard" id="view-longterm" style="display:none;">
+
+        <!-- ── Header ──────────────────────────────────────────────────── -->
+        <div class="lt-header">
+            <div class="lt-header-left">
+                <div class="lt-badge">📈 FUNDAMENTALS</div>
+                <div>
+                    <h2 class="lt-title">PSX Long-Term Investing Engine</h2>
+                    <p class="lt-subtitle">7-stage fundamentals pipeline · AI-graded shortlist A+ to D · Updated weekly</p>
+                </div>
+            </div>
+            <div class="lt-header-right">
+                <div class="lt-header-stat" id="lt-last-scan">Last scan: —</div>
+                <div class="lt-header-stat" id="lt-shortlist-count">— stocks</div>
+                <button class="lt-refresh-btn" onclick="longtermTab.load()">↺ Refresh</button>
+            </div>
+        </div>
+
+        <!-- ── Pakistan Macro Context Banner ───────────────────────────── -->
+        <div class="lt-macro-banner" id="lt-macro-banner">
+            <div class="lt-macro-title">🇵🇰 Pakistan Macro Context — Live Investment Environment</div>
+            <div class="lt-macro-pills">
+                <div class="lt-macro-pill rate" id="lt-macro-rate">SBP Rate: —%</div>
+                <div class="lt-macro-pill inflation" id="lt-macro-inflation">Inflation: —%</div>
+                <div class="lt-macro-pill rating" id="lt-macro-rating">Moody's — · S&P —</div>
+                <div class="lt-macro-pill imf" id="lt-macro-imf">IMF: —</div>
+                <div class="lt-macro-pill fx" id="lt-macro-fx">PKR/USD: —</div>
+                <div class="lt-macro-pill kse" id="lt-macro-kse">KSE P/E: —x</div>
+                <div class="lt-macro-pill cgt" id="lt-macro-cgt">CGT (filer): —%</div>
+                <div class="lt-macro-pill debt warning" id="lt-macro-debt">Circular Debt: Rs —T</div>
+            </div>
+            <div class="lt-macro-note" id="lt-macro-note"></div>
+        </div>
+
+        <!-- ── Filter Bar ───────────────────────────────────────────────── -->
+        <div class="lt-filter-bar">
+            <div class="lt-filter-group">
+                <label class="lt-filter-label">Min Grade</label>
+                <div class="lt-grade-pills" id="lt-grade-filter">
+                    <button class="lt-grade-pill active" data-grade="B+">B+ & above</button>
+                    <button class="lt-grade-pill" data-grade="A-">A- & above</button>
+                    <button class="lt-grade-pill" data-grade="A">A & above</button>
+                    <button class="lt-grade-pill" data-grade="A+">A+ only</button>
+                </div>
+            </div>
+            <div class="lt-filter-group">
+                <label class="lt-filter-label">Sector</label>
+                <select class="lt-select" id="lt-sector-filter">
+                    <option value="">All Sectors</option>
+                </select>
+            </div>
+            <div class="lt-filter-group">
+                <label class="lt-filter-label">Min Div Yield</label>
+                <select class="lt-select" id="lt-div-filter">
+                    <option value="0">Any</option>
+                    <option value="5">≥ 5%</option>
+                    <option value="8">≥ 8%</option>
+                    <option value="10">≥ 10%</option>
+                    <option value="12">≥ 12% (above risk-free)</option>
+                </select>
+            </div>
+            <div class="lt-filter-group lt-filter-toggle">
+                <label class="lt-filter-label">KSE-100 Only</label>
+                <label class="lt-toggle-wrap">
+                    <input type="checkbox" id="lt-kse100-filter">
+                    <span class="lt-toggle-slider"></span>
+                </label>
+            </div>
+            <div class="lt-filter-group">
+                <span class="lt-result-count" id="lt-result-count">— results</span>
+            </div>
+        </div>
+
+        <!-- ── Grade Summary Row ─────────────────────────────────────────── -->
+        <div class="lt-grade-summary" id="lt-grade-summary">
+            <div class="lt-grade-card" data-grade="A+">
+                <div class="lt-grade-badge ap">A+</div>
+                <div class="lt-grade-count" id="lt-count-ap">—</div>
+                <div class="lt-grade-label">Exceptional</div>
+            </div>
+            <div class="lt-grade-card" data-grade="A">
+                <div class="lt-grade-badge a">A</div>
+                <div class="lt-grade-count" id="lt-count-a">—</div>
+                <div class="lt-grade-label">Strong</div>
+            </div>
+            <div class="lt-grade-card" data-grade="A-">
+                <div class="lt-grade-badge am">A-</div>
+                <div class="lt-grade-count" id="lt-count-am">—</div>
+                <div class="lt-grade-label">Solid</div>
+            </div>
+            <div class="lt-grade-card" data-grade="B+">
+                <div class="lt-grade-badge bp">B+</div>
+                <div class="lt-grade-count" id="lt-count-bp">—</div>
+                <div class="lt-grade-label">Watchlist</div>
+            </div>
+        </div>
+
+        <!-- ── Stock Cards Grid ─────────────────────────────────────────── -->
+        <div class="lt-cards-grid" id="lt-cards-grid">
+            <div class="lt-loading">
+                <div class="intel-spinner"></div>
+                <p>Loading fundamentals analysis…</p>
+                <p class="lt-loading-note">First load runs a full 7-stage scan on 410 eligible PSX stocks (~20s)</p>
+            </div>
+        </div>
+
+        <!-- ── Footer ──────────────────────────────────────────────────── -->
+        <div class="lt-footer">
+            <div class="lt-footer-note">
+                Fundamentals scraped from DPS weekly · Scoring: Financial Health + Profitability + Valuation + Governance (25 pts each) · AI synthesis via Claude
+            </div>
+            <div class="lt-footer-note">
+                <strong>Disclaimer:</strong> For informational purposes only. Not financial advice. Always verify fundamentals independently before investing.
+            </div>
+        </div>
+
+    </section>
+    <!-- ─── End Long-Term Dashboard ─────────────────────────────────── -->
+
+    <!-- ─── Long-Term Stock Detail Modal ────────────────────────────── -->
+    <div id="lt-stock-modal" class="lt-modal-overlay" style="display:none;" onclick="longtermTab.closeModal(event)">
+        <div class="lt-modal-box" onclick="event.stopPropagation()">
+            <button class="lt-modal-close" onclick="longtermTab.closeModal()">✕</button>
+            <div id="lt-modal-content"><!-- filled by JS --></div>
+        </div>
+    </div>
+    <!-- ─────────────────────────────────────────────────────────────── -->
 
 
     <!-- Weekly Trade Direct Buy Modal -->

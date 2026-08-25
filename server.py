@@ -29,6 +29,7 @@ from psx_position_monitor import position_monitor
 import weekly_scan_engine as weekly_engine
 import psx_intelligence_engine as intel_module
 import psx_calibration_engine as calib_module
+import psx_longterm_engine as lt_module
 
 
 PORT = int(os.environ.get('PORT', 3000))
@@ -560,11 +561,22 @@ def _start_continuous_poller():
             print(f"[Calibration] Engine init error: {e}")
             calibration = None
 
+        # Init long-term investing engine
+        try:
+            longterm = lt_module.get_longterm_engine()
+            print("[LongTerm] Engine ready inside poller loop.")
+        except Exception as e:
+            print(f"[LongTerm] Engine init error: {e}")
+            longterm = None
+
         _last_intel_tick    = [0]
         _last_eod_tick      = [0]
         _last_overnight     = [0]
         _last_audit_tick    = [0]
-        _last_calibration   = [0]  # weekly calibration
+        _last_calibration   = [0]   # Sunday 11 PM
+        _last_lt_scrape     = [0]   # Monday 7 AM — DPS fundamentals scrape
+        _last_lt_scan       = [0]   # Monday 9 AM — 7-stage pipeline scan
+
 
         while True:
             try:
@@ -640,10 +652,38 @@ def _start_continuous_poller():
                         except Exception as ce:
                             print(f"[Calibration] Weekly calibration error: {ce}")
 
+                # ── Long-Term Fundamentals Scrape — Monday 7 AM PKT ──────────
+                # Scrapes DPS company pages for EPS, DE, CR, BV, margins
+                if longterm and weekday == 0 and now_pkt.hour == 7 and now_pkt.minute < 5:
+                    lt_scrape_key = now_pkt.strftime("%Y-%m-%d-scrape")
+                    if _last_lt_scrape[0] != lt_scrape_key:
+                        try:
+                            print("[LongTerm] Monday 7 AM — starting weekly fundamentals scrape...")
+                            stocks_snap = stock_cache.get("data") or []
+                            longterm.run_fundamentals_scrape(stocks_snap)
+                            _last_lt_scrape[0] = lt_scrape_key
+                        except Exception as lte:
+                            print(f"[LongTerm] Fundamentals scrape error: {lte}")
+
+                # ── Long-Term 7-Stage Scan — Monday 9 AM PKT ─────────────────
+                # Full pipeline: Financial Health → Profitability → Valuation →
+                # Governance/Macro → AI Synthesis → Graded Shortlist A+ to D
+                if longterm and weekday == 0 and now_pkt.hour == 9 and now_pkt.minute < 5:
+                    lt_scan_key = now_pkt.strftime("%Y-%m-%d-scan")
+                    if _last_lt_scan[0] != lt_scan_key:
+                        try:
+                            print("[LongTerm] Monday 9 AM — running weekly 7-stage scan...")
+                            stocks_snap = stock_cache.get("data") or []
+                            longterm.run_scan(stocks=stocks_snap, run_type="SCHEDULED_WEEKLY")
+                            _last_lt_scan[0] = lt_scan_key
+                        except Exception as lte:
+                            print(f"[LongTerm] Weekly scan error: {lte}")
+
                 time.sleep(poll_interval)
             except Exception as e:
                 print(f"[PSX Poller] Error: {e}")
                 time.sleep(15)
+
 
 
 
@@ -3444,7 +3484,62 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
+        # ─── Long-Term Investing API ──────────────────────────────────────────
+
+        elif parsed_path.path == "/api/longterm/shortlist":
+            try:
+                query = parse_qs(parsed_path.query)
+                min_grade  = query.get("grade", ["B+"])[0]
+                sector     = query.get("sector", [None])[0]
+                kse100     = query.get("kse100", ["0"])[0] == "1"
+                min_div    = float(query.get("min_div", ["0"])[0])
+                engine = lt_module.get_longterm_engine()
+                # On first call with no scan data, run a quick scan
+                if not engine.db.get_latest_run_id():
+                    stocks_snap = stock_cache.get("data") or []
+                    engine.run_scan(stocks=stocks_snap, run_type="ON_DEMAND_FIRST_RUN")
+                resp = engine.get_shortlist_response(min_grade, sector, kse100, min_div)
+                self._send_json({"success": True, **resp})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path.startswith("/api/longterm/stock/"):
+            try:
+                symbol = parsed_path.path.split("/api/longterm/stock/")[1].upper().strip("/")
+                engine = lt_module.get_longterm_engine()
+                resp = engine.get_stock_detail_response(symbol)
+                self._send_json(resp)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/longterm/macro-context":
+            try:
+                engine = lt_module.get_longterm_engine()
+                resp = engine.get_macro_response()
+                resp["sectors"] = engine.get_sectors_list()
+                self._send_json(resp)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/longterm/scan-history":
+            try:
+                engine = lt_module.get_longterm_engine()
+                history = engine.db.get_run_history(limit=10)
+                self._send_json({"success": True, "history": history})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/longterm/run":
+            try:
+                engine = lt_module.get_longterm_engine()
+                stocks_snap = stock_cache.get("data") or []
+                result = engine.run_scan(stocks=stocks_snap, run_type="ON_DEMAND")
+                self._send_json({"success": True, **result})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
         # ─── Tab & Feature Deployment Status Endpoints ───
+
 
         elif parsed_path.path == "/api/tabs/status":
 
