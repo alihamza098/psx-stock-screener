@@ -346,10 +346,6 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="8" height="8" rx="1"/><rect x="14" y="3" width="8" height="8" rx="1"/><rect x="2" y="13" width="8" height="8" rx="1"/><rect x="14" y="13" width="8" height="8" rx="1"/></svg>
                 Card View
             </button>
-            <button class="view-tab" data-view="scorecard" id="tab-scorecard">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                Scorecard
-            </button>
             <button class="view-tab view-tab-weekly" data-view="weekly-scan" id="tab-weekly-scan">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 🎯 Weekly Trade Options
@@ -359,11 +355,8 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                 ⚡ Live Trading
             </button>
-            <button class="view-tab" data-view="education" id="tab-education">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
-                🎓 Market Mechanics
-            </button>
             <button class="view-tab" data-view="simulator" id="tab-simulator">
+
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
                 🎮 Paper Simulator
             </button>
@@ -426,24 +419,8 @@
             <!-- Populated by JS -->
         </section>
 
-        <!-- Scorecard View -->
-        <section class="scorecard-view" id="view-scorecard" style="display:none;">
-            <div class="scorecard-intro">
-                <h3>Investment Scorecard</h3>
-                <p>Each stock is scored (0–100) based on a weighted composite of P/E, dividend yield, 1-year growth, and liquidity. Click any stock for details.</p>
-                <div class="score-legend">
-                    <span class="legend-item"><span class="dot excellent"></span>Excellent (80–100)</span>
-                    <span class="legend-item"><span class="dot good"></span>Good (60–79)</span>
-                    <span class="legend-item"><span class="dot average"></span>Average (40–59)</span>
-                    <span class="legend-item"><span class="dot weak"></span>Weak (0–39)</span>
-                </div>
-            </div>
-            <div class="scorecard-grid" id="scorecard-grid">
-                <!-- Populated by JS -->
-            </div>
-        </section>
-
         <!-- Weekly Trade Options Section (Section 7 Spec) -->
+
         <section class="weekly-scan-view" id="view-weekly-scan" style="display:none;">
             <!-- Header Card & Meta Dashboard -->
             <div class="weekly-header-card">
@@ -740,102 +717,9 @@
                 </div>
             </div>
         </section>
-
-        <!-- 1. Market Mechanics & Education View Section -->
-        <section class="education-view" id="view-education" style="display:none;">
-            <div class="edu-header">
-                <h2>🎓 Pakistan Stock Exchange (PSX) Market Mechanics</h2>
-                <p>Master essential market infrastructure concepts: Primary vs. Secondary markets, T+2 Settlement timelines, and Central Depository Company (CDC) account custody.</p>
-            </div>
-
-            <!-- Primary vs Secondary Market Diagram Card -->
-            <div class="edu-card">
-                <div class="edu-card-title">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                    Primary Market (IPO) vs. Secondary Market (PSX Trading Floor)
-                </div>
-                <div class="market-comparison-grid">
-                    <div class="comp-col primary-col">
-                        <div class="comp-tag">Primary Market (IPO)</div>
-                        <h4>Direct Company Capital Raising</h4>
-                        <ul>
-                            <li><strong>Issuer:</strong> Company sells newly issued shares directly to investors.</li>
-                            <li><strong>Price:</strong> Fixed IPO price or determined via Dutch Auction Book Building.</li>
-                            <li><strong>Capital Flow:</strong> Money goes directly to the company for business expansion.</li>
-                            <li><strong>Example:</strong> Initial Public Offering (IPO) of Air Link, Octopus Digital.</li>
-                        </ul>
-                    </div>
-                    <div class="comp-divider">⚡</div>
-                    <div class="comp-col secondary-col">
-                        <div class="comp-tag">Secondary Market (PSX)</div>
-                        <h4>Investor-to-Investor Trading Floor</h4>
-                        <ul>
-                            <li><strong>Traders:</strong> Investors buy and sell existing shares among each other.</li>
-                            <li><strong>Price:</strong> Real-time supply & demand matching via KATS (Karachi Automated Trading System).</li>
-                            <li><strong>Capital Flow:</strong> Money transfers between buyer and seller (company gets ₨0).</li>
-                            <li><strong>Example:</strong> Daily trading of UNITY, OGDC, TRG on PSX screen.</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Interactive T+2 Settlement Cycle Timeline -->
-            <div class="edu-card">
-                <div class="edu-card-title">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    The PSX T+2 Settlement Cycle Timeline
-                </div>
-                <p class="edu-subtitle">Trades executed on PSX take 2 business days to settle cash and deliver shares electronically via NCCPL & CDC.</p>
-
-                <div class="t2-timeline">
-                    <div class="timeline-step step-t0 active" data-step="0">
-                        <div class="step-badge">Day T (Trade Date)</div>
-                        <h4>Order Execution</h4>
-                        <p>Buyer and seller orders match on PSX KATS engine. Contract note is generated.</p>
-                    </div>
-                    <div class="timeline-arrow">➔</div>
-                    <div class="timeline-step step-t1" data-step="1">
-                        <div class="step-badge">Day T+1 (Clearing)</div>
-                        <h4>NCCPL Netting & Clearing</h4>
-                        <p>National Clearing Company (NCCPL) calculates net cash and share obligations for all brokers.</p>
-                    </div>
-                    <div class="timeline-arrow">➔</div>
-                    <div class="timeline-step step-t2" data-step="2">
-                        <div class="step-badge">Day T+2 (Settlement)</div>
-                        <h4>CDC Delivery & Cash Transfer</h4>
-                        <p>Shares are electronically credited to buyer's CDC Sub-Account; seller receives funds.</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Central Depository Company (CDC) Custody Explainer -->
-            <div class="edu-card">
-                <div class="edu-card-title">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-                    Role of Central Depository Company (CDC)
-                </div>
-                <div class="cdc-features-grid">
-                    <div class="cdc-feature">
-                        <span class="cdc-icon">🔒</span>
-                        <h4>Dematerialized Shares Custody</h4>
-                        <p>Replaces physical paper share certificates with electronic 100% secure depository accounts registered in your CNIC.</p>
-                    </div>
-                    <div class="cdc-feature">
-                        <span class="cdc-icon">🆔</span>
-                        <h4>Investor Account System (IAS)</h4>
-                        <p>Direct CDC IAS account gives 100% individual control independent of broker insolvency or custody risk.</p>
-                    </div>
-                    <div class="cdc-feature">
-                        <span class="cdc-icon">📲</span>
-                        <h4>eAccess & Dividend SMS Alerts</h4>
-                        <p>Instant SMS & email notifications from CDC whenever shares enter/leave your sub-account or cash dividends credit.</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
         <!-- 2. Paper Trading Simulator View Section -->
         <section class="simulator-view" id="view-simulator" style="display:none;">
+
             <!-- Simulator Header Summary -->
             <div class="sim-header-card">
                 <div class="sim-stat">
@@ -2131,6 +2015,64 @@
             </div>
             <div class="lt-macro-note" id="lt-macro-note"></div>
         </div>
+
+        <!-- ── Symbol Search & Deep-Dive Module ────────────────────────── -->
+        <div class="lt-deepdive-section" id="lt-deepdive-section">
+            <div class="lt-search-card">
+                <div class="lt-search-header">
+                    <div class="lt-search-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="lt-search-title">Symbol Search & Institutional Deep-Dive</h3>
+                        <p class="lt-search-subtitle">Search any PSX stock for on-demand 4-layer synthesis (Technical, Fundamental, Corporate, Risk) with Bull/Bear thesis, holding horizon, and unified confidence grade.</p>
+                    </div>
+                </div>
+
+                <div class="lt-search-input-wrap">
+                    <div class="lt-search-bar">
+                        <svg class="lt-search-bar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        <input type="text" id="lt-symbol-search-input" class="lt-search-input" placeholder="Search PSX stock (e.g. OGDC, LUCK, SYS, MEBL, ENGRO, FFC)..." autocomplete="off">
+                        <button class="lt-search-clear-btn" id="lt-search-clear-btn" style="display:none;" title="Clear search">✕</button>
+                        <button class="lt-search-submit-btn" id="lt-search-submit-btn">Run Deep-Dive</button>
+                    </div>
+                    <div class="lt-autocomplete-dropdown" id="lt-symbol-autocomplete" style="display:none;"></div>
+                </div>
+
+                <div class="lt-quick-chips">
+                    <span class="lt-chips-label">Popular Symbols:</span>
+                    <button class="lt-quick-chip" data-symbol="OGDC">OGDC</button>
+                    <button class="lt-quick-chip" data-symbol="LUCK">LUCK</button>
+                    <button class="lt-quick-chip" data-symbol="SYS">SYS</button>
+                    <button class="lt-quick-chip" data-symbol="MEBL">MEBL</button>
+                    <button class="lt-quick-chip" data-symbol="ENGRO">ENGRO</button>
+                    <button class="lt-quick-chip" data-symbol="FFC">FFC</button>
+                    <button class="lt-quick-chip" data-symbol="MCB">MCB</button>
+                    <button class="lt-quick-chip" data-symbol="HUBC">HUBC</button>
+                    <button class="lt-quick-chip" data-symbol="PPL">PPL</button>
+                    <button class="lt-quick-chip" data-symbol="MARI">MARI</button>
+                </div>
+            </div>
+
+            <!-- Deep-Dive Loading Indicator -->
+            <div class="lt-deepdive-loading" id="lt-deepdive-loading" style="display:none;">
+                <div class="loading-spinner">
+                    <svg viewBox="0 0 50 50">
+                        <circle cx="25" cy="25" r="20" fill="none" stroke="url(#spinGrad)" stroke-width="4" stroke-linecap="round" stroke-dasharray="80 200" stroke-dashoffset="0">
+                            <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/>
+                        </circle>
+                    </svg>
+                </div>
+                <div class="lt-loading-text">Synthesizing 4-layer institutional deep-dive for <span id="lt-loading-symbol">—</span>...</div>
+                <div class="lt-loading-subtext">Evaluating Technical Momentum · Fundamental Health · Macro Sensitivity · Risk Dimensions</div>
+            </div>
+
+            <!-- Deep-Dive Result Container -->
+            <div class="lt-deepdive-result" id="lt-deepdive-result">
+                <!-- Populated dynamically by app.js -->
+            </div>
+        </div>
+
 
         <!-- ── Filter Bar ───────────────────────────────────────────────── -->
         <div class="lt-filter-bar">

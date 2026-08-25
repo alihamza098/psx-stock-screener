@@ -547,61 +547,6 @@ function renderCards(stocks) {
     }).join("");
 }
 
-function renderScorecard(stocks) {
-    const grid = document.getElementById("scorecard-grid");
-    const sorted = [...stocks].sort((a, b) => b.score - a.score);
-
-    if (sorted.length === 0) {
-        grid.innerHTML = `<p style="text-align:center; padding:48px; color:var(--text-tertiary); grid-column:1/-1;">No stocks match your criteria.</p>`;
-        return;
-    }
-
-    grid.innerHTML = sorted.slice(0, 50).map(stock => {
-        const breakdown = getScoreBreakdown(stock);
-        const scoreClass = getScoreClass(stock.score);
-        const scoreColor = scoreClass === "excellent" ? "var(--gradient-score-excellent)" :
-                          scoreClass === "good" ? "var(--gradient-score-good)" :
-                          scoreClass === "average" ? "var(--gradient-score-average)" : "var(--gradient-score-weak)";
-
-        const barColor = scoreClass === "excellent" ? "var(--accent-emerald)" :
-                        scoreClass === "good" ? "var(--accent-cyan)" :
-                        scoreClass === "average" ? "var(--accent-amber)" : "var(--accent-rose)";
-
-        return `
-        <div class="scorecard-item" data-symbol="${stock.symbol}">
-            <div class="scorecard-top">
-                <div>
-                    <div class="scorecard-symbol">${stock.symbol}</div>
-                    <div style="font-size:0.78rem;color:var(--text-tertiary)">${stock.name}</div>
-                </div>
-                <div class="scorecard-total" style="background:${scoreColor};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">${stock.score}</div>
-            </div>
-            <div class="scorecard-bars">
-                <div class="score-row">
-                    <span class="score-row-label">Valuation</span>
-                    <div class="score-row-bar"><div class="score-row-fill" style="width:${(breakdown.pe / 25) * 100}%;background:${barColor}"></div></div>
-                    <span class="score-row-value">${breakdown.pe}</span>
-                </div>
-                <div class="score-row">
-                    <span class="score-row-label">Dividend</span>
-                    <div class="score-row-bar"><div class="score-row-fill" style="width:${(breakdown.dividend / 25) * 100}%;background:${barColor}"></div></div>
-                    <span class="score-row-value">${breakdown.dividend}</span>
-                </div>
-                <div class="score-row">
-                    <span class="score-row-label">Growth</span>
-                    <div class="score-row-bar"><div class="score-row-fill" style="width:${(breakdown.growth / 25) * 100}%;background:${barColor}"></div></div>
-                    <span class="score-row-value">${breakdown.growth}</span>
-                </div>
-                <div class="score-row">
-                    <span class="score-row-label">Liquidity</span>
-                    <div class="score-row-bar"><div class="score-row-fill" style="width:${(breakdown.liquidity / 25) * 100}%;background:${barColor}"></div></div>
-                    <span class="score-row-value">${breakdown.liquidity}</span>
-                </div>
-            </div>
-        </div>`;
-    }).join("");
-}
-
 function renderAll() {
     const filtered = getFilteredStocks();
     const sorted = sortStocks(filtered);
@@ -610,9 +555,9 @@ function renderAll() {
 
     renderTable(sorted);
     renderCards(sorted);
-    renderScorecard(sorted);
     runTradingIntelligenceEngine();
 }
+
 
 // ─── Watchlist ───
 function toggleWatchlist(symbol) {
@@ -727,7 +672,8 @@ async function showDetail(symbol) {
                     </div>
                     <div class="detail-score-total" style="background:${scoreGradient};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">${score}/100</div>
                 </div>
-                <div class="scorecard-bars" style="margin-top:16px">
+                <div class="detail-score-bars" style="margin-top:16px">
+
                     <div class="score-row">
                         <span class="score-row-label">Valuation (P/E)</span>
                         <div class="score-row-bar"><div class="score-row-fill" style="width:${(breakdown.pe / 25) * 100}%;background:${barColor}"></div></div>
@@ -1059,7 +1005,7 @@ function switchView(view) {
     const activeMobileTab = document.querySelector(`.mobile-nav-item[data-view="${view}"]`);
     if (activeMobileTab) activeMobileTab.classList.add("active");
 
-    const views = ["table", "cards", "scorecard", "weekly-scan", "live-trading", "education", "simulator", "corporate", "financials", "trading-intelligence", "intelligence", "longterm"];
+    const views = ["table", "cards", "weekly-scan", "live-trading", "simulator", "corporate", "financials", "trading-intelligence", "intelligence", "longterm"];
     views.forEach(v => {
         const el = document.getElementById(`view-${v}`);
         if (el) el.style.display = (view === v) ? (v === "cards" ? "grid" : "block") : "none";
@@ -1069,8 +1015,9 @@ function switchView(view) {
     document.getElementById("search-container")?.classList.remove("mobile-active");
     document.getElementById("screener-controls")?.classList.remove("expanded");
 
-    // Show screener filters & market overview cards ONLY on main Dashboard screener views (table, cards, scorecard)
-    const isScreenerView = ["table", "cards", "scorecard"].includes(view);
+    // Show screener filters & market overview cards ONLY on main Dashboard screener views (table, cards)
+    const isScreenerView = ["table", "cards"].includes(view);
+
     const marketOverview = document.getElementById("market-overview");
     const screenerControls = document.getElementById("screener-controls");
     const searchContainer = document.getElementById("search-container");
@@ -1212,11 +1159,12 @@ function initEventListeners() {
 
     // Row click for detail
     document.addEventListener("click", (e) => {
-        const row = e.target.closest("tr[data-symbol], .stock-card[data-symbol], .scorecard-item[data-symbol]");
+        const row = e.target.closest("tr[data-symbol], .stock-card[data-symbol]");
         if (row && !e.target.closest("[data-star]")) {
             showDetail(row.dataset.symbol);
         }
     });
+
 
     // Watchlist modal
     document.getElementById("btn-watchlist-toggle").addEventListener("click", () => {
@@ -8085,9 +8033,425 @@ const longtermTab = (() => {
         });
     }
 
+    // ── Symbol Search & Institutional Deep-Dive ───────────────────────────
+    function _initSearch() {
+        const input = document.getElementById('lt-symbol-search-input');
+        const dropdown = document.getElementById('lt-symbol-autocomplete');
+        const clearBtn = document.getElementById('lt-search-clear-btn');
+        const submitBtn = document.getElementById('lt-search-submit-btn');
+
+        if (!input) return;
+
+        let selectedIndex = -1;
+
+        function getStockList() {
+            if (typeof STOCKS !== 'undefined' && STOCKS.length) return STOCKS;
+            return _allRows.map(r => ({ symbol: r.symbol, name: r.name, sector: r.sector, price: r.price }));
+        }
+
+        function closeDropdown() {
+            if (dropdown) {
+                dropdown.style.display = 'none';
+                dropdown.innerHTML = '';
+            }
+            selectedIndex = -1;
+        }
+
+        input.addEventListener('input', () => {
+            const q = input.value.trim().toUpperCase();
+            if (clearBtn) clearBtn.style.display = q.length ? 'flex' : 'none';
+
+            if (!q) {
+                closeDropdown();
+                return;
+            }
+
+            const list = getStockList();
+            const matches = list.filter(s =>
+                s.symbol.toUpperCase().includes(q) || (s.name && s.name.toUpperCase().includes(q))
+            ).slice(0, 8);
+
+            if (!matches.length || !dropdown) {
+                closeDropdown();
+                return;
+            }
+
+            dropdown.innerHTML = matches.map((m, idx) => `
+                <div class="lt-autocomplete-item ${idx === selectedIndex ? 'selected' : ''}" data-symbol="${m.symbol}">
+                    <div class="lt-ac-left">
+                        <span class="lt-ac-sym">${m.symbol}</span>
+                        <span class="lt-ac-name">${m.name || m.symbol}</span>
+                    </div>
+                    <div class="lt-ac-right">
+                        <span class="lt-ac-sector">${m.sector || 'General'}</span>
+                        <span class="lt-ac-price">₨${_fmt(m.price, 2)}</span>
+                    </div>
+                </div>
+            `).join('');
+            dropdown.style.display = 'block';
+
+            dropdown.querySelectorAll('.lt-autocomplete-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const sym = item.dataset.symbol;
+                    input.value = sym;
+                    closeDropdown();
+                    runDeepDive(sym);
+                });
+            });
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (!dropdown || dropdown.style.display === 'none') {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const val = input.value.trim().toUpperCase();
+                    if (val) runDeepDive(val);
+                }
+                return;
+            }
+
+            const items = dropdown.querySelectorAll('.lt-autocomplete-item');
+            if (!items.length) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                selectedIndex = (selectedIndex + 1) % items.length;
+                items.forEach((it, i) => it.classList.toggle('selected', i === selectedIndex));
+                items[selectedIndex].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+                items.forEach((it, i) => it.classList.toggle('selected', i === selectedIndex));
+                items[selectedIndex].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (selectedIndex >= 0 && items[selectedIndex]) {
+                    const sym = items[selectedIndex].dataset.symbol;
+                    input.value = sym;
+                    closeDropdown();
+                    runDeepDive(sym);
+                } else {
+                    const val = input.value.trim().toUpperCase();
+                    closeDropdown();
+                    if (val) runDeepDive(val);
+                }
+            } else if (e.key === 'Escape') {
+                closeDropdown();
+            }
+        });
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                input.value = '';
+                clearBtn.style.display = 'none';
+                closeDropdown();
+                input.focus();
+            });
+        }
+
+        if (submitBtn) {
+            submitBtn.addEventListener('click', () => {
+                const val = input.value.trim().toUpperCase();
+                closeDropdown();
+                if (val) runDeepDive(val);
+            });
+        }
+
+        // Quick chips
+        document.querySelectorAll('.lt-quick-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const sym = chip.dataset.symbol;
+                if (input) input.value = sym;
+                if (clearBtn) clearBtn.style.display = 'flex';
+                closeDropdown();
+                runDeepDive(sym);
+            });
+        });
+
+        // Close dropdown on outside click
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.lt-search-input-wrap')) {
+                closeDropdown();
+            }
+        });
+    }
+
+    // ── Deep-Dive Execution & Rendering ───────────────────────────────────
+    async function runDeepDive(symbol, force = false) {
+        if (!symbol) return;
+        symbol = symbol.trim().toUpperCase();
+
+        const loading = document.getElementById('lt-deepdive-loading');
+        const loadSym = document.getElementById('lt-loading-symbol');
+        const resultContainer = document.getElementById('lt-deepdive-result');
+
+        if (loadSym) loadSym.textContent = symbol;
+        if (loading) loading.style.display = 'block';
+        if (resultContainer) resultContainer.innerHTML = '';
+
+        const section = document.getElementById('lt-deepdive-section');
+        if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        try {
+            const url = `/api/longterm/deep-dive/${encodeURIComponent(symbol)}${force ? '?force=true' : ''}`;
+            const res = await fetch(url);
+            const json = await res.json();
+
+            if (loading) loading.style.display = 'none';
+
+            if (!json.success) {
+                if (resultContainer) {
+                    resultContainer.innerHTML = `
+                        <div class="lt-dd-card" style="border-color:rgba(239,68,68,0.4);">
+                            <p style="color:#f87171;font-weight:700;margin:0;">⚠️ Analysis failed: ${json.error || 'Unknown error'}</p>
+                        </div>
+                    `;
+                }
+                return;
+            }
+
+            _renderDeepDive(json.deep_dive);
+        } catch (err) {
+            if (loading) loading.style.display = 'none';
+            if (resultContainer) {
+                resultContainer.innerHTML = `
+                    <div class="lt-dd-card" style="border-color:rgba(239,68,68,0.4);">
+                        <p style="color:#f87171;font-weight:700;margin:0;">⚠️ Connection error: ${err.message}</p>
+                    </div>
+                `;
+            }
+        }
+    }
+
+    function _renderDeepDive(d) {
+        const container = document.getElementById('lt-deepdive-result');
+        if (!container || !d) return;
+
+        const gc = _gradeClass(d.confidence_grade);
+        const gradeColor = GRADE_COLORS[d.confidence_grade] || '#34d399';
+
+        // Verdict class
+        let vClass = 'verdict-hold';
+        let vIcon = '⏸';
+        let vLabel = d.verdict ? d.verdict.replace(/_/g, ' ') : 'HOLD';
+        if (d.verdict === 'BUY') {
+            vClass = 'verdict-buy'; vIcon = '▲';
+        } else if (d.verdict === 'ACCUMULATE_ON_DIPS') {
+            vClass = 'verdict-accumulate'; vIcon = '◆'; vLabel = 'ACCUMULATE ON DIPS';
+        } else if (d.verdict === 'AVOID') {
+            vClass = 'verdict-avoid'; vIcon = '▼';
+        }
+
+        // Layer tag class helper
+        function _layerTagClass(layer) {
+            const l = (layer || '').toLowerCase();
+            if (l.includes('tech')) return 'tag-tech';
+            if (l.includes('fund')) return 'tag-fund';
+            if (l.includes('corp') || l.includes('macro')) return 'tag-corp';
+            return 'tag-risk';
+        }
+
+        // Bull Case HTML
+        const bullList = (d.bull_case || []).map((b, i) => `
+            <div class="lt-dd-item">
+                <span class="lt-dd-layer-tag ${_layerTagClass(b.layer)}">${b.layer || 'Fundamental'}</span>
+                <div><strong>${i + 1}.</strong> ${b.point}</div>
+            </div>
+        `).join('');
+
+        // Bear Case HTML
+        const bearList = (d.bear_case || []).map((b, i) => `
+            <div class="lt-dd-item">
+                <span class="lt-dd-layer-tag ${_layerTagClass(b.layer)}">${b.layer || 'Risk'}</span>
+                <div><strong>${i + 1}.</strong> ${b.point}</div>
+            </div>
+        `).join('');
+
+        // Ranked Threats HTML
+        const threatsList = (d.ranked_risks || []).map(t => {
+            const sev = (t.severity || 'MEDIUM').toLowerCase();
+            const sevClass = sev === 'high' ? 'sev-high' : sev === 'low' ? 'sev-low' : 'sev-medium';
+            return `
+                <div class="lt-dd-threat-item">
+                    <div class="lt-dd-threat-header">
+                        <span class="lt-dd-threat-name">${t.rank || 1}. ${t.title}</span>
+                        <span class="lt-dd-severity-pill ${sevClass}">${t.severity}</span>
+                    </div>
+                    <div class="lt-dd-threat-desc">${t.description}</div>
+                </div>
+            `;
+        }).join('');
+
+        // 4-Layer Evidence Breakdown
+        const ev = d.evidence || {};
+        const tech = ev.technical || {};
+        const fund = ev.fundamental || {};
+        const corp = ev.corporate_macro || {};
+        const risk = ev.risk || {};
+
+        container.innerHTML = `
+            <div class="lt-dd-card">
+                <!-- Header -->
+                <div class="lt-dd-top">
+                    <div>
+                        <div class="lt-dd-sym-row">
+                            <span class="lt-dd-sym">${d.symbol}</span>
+                            <span class="lt-dd-sector-badge">${d.sector}</span>
+                        </div>
+                        <div class="lt-dd-name">${d.name} · <strong style="color:#f1f5f9;font-family:var(--font-mono);">₨${_fmt(tech.price || d.raw_metrics?.price, 2)}</strong></div>
+                    </div>
+                    <div class="lt-dd-top-actions">
+                        <span class="lt-dd-timestamp">Analyzed: ${_timeAgo(d.analyzed_at)}</span>
+                        ${d.is_stale ? `<span class="lt-dd-stale-badge">⚠️ 7d+ Stale</span>` : ''}
+                        <button class="lt-dd-rerun-btn" onclick="longtermTab.runDeepDive('${d.symbol}', true)">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+                            <span>Re-run Analysis</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Hero Verdict Banner -->
+                <div class="lt-dd-hero-banner">
+                    <div class="lt-dd-hero-block">
+                        <span class="lt-dd-hero-label">Institutional Verdict</span>
+                        <div class="lt-dd-verdict-pill ${vClass}">
+                            <span>${vIcon}</span>
+                            <span>${vLabel}</span>
+                        </div>
+                    </div>
+                    <div class="lt-dd-hero-block">
+                        <span class="lt-dd-hero-label">Suggested Holding Horizon</span>
+                        <div class="lt-dd-horizon-text">⏱ ${d.holding_horizon}</div>
+                    </div>
+                    <div class="lt-dd-hero-block">
+                        <span class="lt-dd-hero-label">Unified Confidence Grade</span>
+                        <div class="lt-dd-grade-wrap">
+                            <div class="lt-dd-grade-badge ${gc}" style="color:${gradeColor};">${d.confidence_grade}</div>
+                            <div class="lt-dd-score-val">Score: <span>${d.composite_score}</span>/100</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dual Column Bull & Bear Grid -->
+                <div class="lt-dd-dual-grid">
+                    <!-- Bull Case -->
+                    <div class="lt-dd-case-card bull">
+                        <div class="lt-dd-case-header">
+                            <span class="lt-dd-case-title">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                                Bull Case (Why choose this)
+                            </span>
+                            <span class="lt-dd-case-count">${d.bull_case?.length || 0} Factors</span>
+                        </div>
+                        <div class="lt-dd-items-list">
+                            ${bullList}
+                        </div>
+                    </div>
+
+                    <!-- Bear Case -->
+                    <div class="lt-dd-case-card bear">
+                        <div class="lt-dd-case-header">
+                            <span class="lt-dd-case-title">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+                                Bear Case (Counter-signals & Cautions)
+                            </span>
+                            <span class="lt-dd-case-count">${d.bear_case?.length || 0} Watch-Items</span>
+                        </div>
+                        <div class="lt-dd-items-list">
+                            ${bearList}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Model Reconciliation & Flip Triggers -->
+                <div class="lt-dd-reconciliation">
+                    <div class="lt-dd-rec-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                        Model Synthesis & Flip Triggers
+                    </div>
+                    <div class="lt-dd-rec-body">
+                        ${d.reconciliation}
+                    </div>
+                </div>
+
+                <!-- Ranked Key Threats -->
+                <div class="lt-dd-threats-card">
+                    <div class="lt-dd-threats-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        Ranked Key Threats & Risks
+                    </div>
+                    <div class="lt-dd-threats-list">
+                        ${threatsList}
+                    </div>
+                </div>
+
+                <!-- 4-Layer Evidence Breakdown -->
+                <div class="lt-dd-evidence-card">
+                    <div class="lt-dd-evidence-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                        4-Layer Evidence Matrix
+                    </div>
+                    <div class="lt-dd-evidence-grid">
+                        <!-- Layer 1: Technical -->
+                        <div class="lt-dd-layer-col">
+                            <h4>📈 Technical Layer</h4>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Trend</span><span class="lt-dd-metric-v" style="color:#38bdf8;">${tech.trend_status || '—'}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">4H MACD</span><span class="lt-dd-metric-v" style="color:${tech.macd_bullish ? '#34d399' : '#f87171'};">${tech.macd_bullish ? 'Bullish ▲' : 'Bearish ▼'}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">RSI (14)</span><span class="lt-dd-metric-v">${_fmt(tech.rsi, 1)}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">50-day EMA</span><span class="lt-dd-metric-v">₨${_fmt(tech.ema50, 2)}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">200-day EMA</span><span class="lt-dd-metric-v">₨${_fmt(tech.ema200, 2)}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Support S1</span><span class="lt-dd-metric-v">₨${_fmt(tech.support_s1, 2)}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Resistance R1</span><span class="lt-dd-metric-v">₨${_fmt(tech.resistance_r1, 2)}</span></div>
+                        </div>
+
+                        <!-- Layer 2: Fundamental -->
+                        <div class="lt-dd-layer-col">
+                            <h4>🏛 Fundamental Layer</h4>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Trailing P/E</span><span class="lt-dd-metric-v">${_fmt(fund.pe_ratio, 1)}x</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Dividend Yield</span><span class="lt-dd-metric-v" style="color:#34d399;">${_fmt(fund.div_yield, 1)}%</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Net Margin</span><span class="lt-dd-metric-v">${fund.net_profit_margin ? _fmt(fund.net_profit_margin > 1 ? fund.net_profit_margin : fund.net_profit_margin * 100, 1) + '%' : '—'}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Debt / Equity</span><span class="lt-dd-metric-v">${_fmt(fund.debt_equity_ratio, 2)}x</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Current Ratio</span><span class="lt-dd-metric-v">${_fmt(fund.current_ratio, 2)}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Book Value</span><span class="lt-dd-metric-v">₨${_fmt(fund.book_value_ps, 1)}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Latest EPS</span><span class="lt-dd-metric-v">₨${_fmt(fund.eps_latest, 2)}</span></div>
+                        </div>
+
+                        <!-- Layer 3: Corporate & Macro -->
+                        <div class="lt-dd-layer-col">
+                            <h4>🇵🇰 Corporate & Macro</h4>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Sponsor Holding</span><span class="lt-dd-metric-v">${_fmt(corp.sponsor_holding_pct, 1)}%</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Div Consistency</span><span class="lt-dd-metric-v">${corp.dividend_years_paid || 0}/3 Yrs</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Circular Debt</span><span class="lt-dd-metric-v" style="color:${corp.is_circular_debt ? '#f87171' : '#34d399'};">${corp.is_circular_debt ? 'Exposed ⚠️' : 'None'}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Rate Beneficiary</span><span class="lt-dd-metric-v">${corp.is_rate_beneficiary ? 'Yes (NIM+)' : 'Standard'}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Exporter FX</span><span class="lt-dd-metric-v">${corp.is_exporter ? 'Yes ($ Hedged)' : 'Domestic'}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">KSE-100 Index</span><span class="lt-dd-metric-v">${corp.is_kse100 ? 'Constituent' : 'All-Share'}</span></div>
+                        </div>
+
+                        <!-- Layer 4: Risk & Liquidity -->
+                        <div class="lt-dd-layer-col">
+                            <h4>🛡 Risk & Liquidity</h4>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Liquidity Tier</span><span class="lt-dd-metric-v" style="font-size:0.7rem;">${risk.liquidity_tier || 'Moderate'}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Daily Value</span><span class="lt-dd-metric-v">₨${_fmt(risk.daily_traded_val_m_pkr, 1)}M</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Free Float</span><span class="lt-dd-metric-v">₨${_fmt(risk.free_float_m_pkr, 0)}M</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Solvency</span><span class="lt-dd-metric-v" style="font-size:0.7rem;">${risk.solvency_risk || 'Normal'}</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Macro Volatility</span><span class="lt-dd-metric-v">SBP 11.5% Base</span></div>
+                            <div class="lt-dd-metric-row"><span class="lt-dd-metric-k">Tax / CGT Rate</span><span class="lt-dd-metric-v">15% Filer</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Compliance Disclaimer -->
+                <div class="lt-dd-disclaimer">
+                    ⚠️ <strong>Compliance Notice:</strong> This analysis is synthesized algorithmically across multi-stage technical and fundamental datasets for research and educational purposes only. It does not constitute investment advice, financial planning, or a regulated solicitation. Always conduct independent due diligence before allocating capital.
+                </div>
+            </div>
+        `;
+    }
+
     // ── Safe initialization ──────────────────────────────────────────────
     function _init() {
         _initControls();
+        _initSearch();
         const ltBtn = document.getElementById('tab-longterm');
         if (ltBtn) {
             ltBtn.addEventListener('click', () => {
@@ -8102,8 +8466,9 @@ const longtermTab = (() => {
         _init();
     }
 
-    window.longtermTab = { load, showDetail, closeModal };
+    window.longtermTab = { load, showDetail, closeModal, runDeepDive };
     return window.longtermTab;
 
 })();
+
 

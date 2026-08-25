@@ -2961,15 +2961,6 @@ DEFAULT_TAB_STATUSES = {
         "message": "Visual Stock Cards Grid",
         "eta": "Live Now"
     },
-    "scorecard": {
-        "id": "scorecard",
-        "name": "Investment Scorecard",
-        "category": "Main Navigation",
-        "icon": "🏆",
-        "status": "ONLINE",
-        "message": "Algorithmic 0-100 Fundamental & Technical Scoring",
-        "eta": "Live Now"
-    },
     "weekly-scan": {
         "id": "weekly-scan",
         "name": "Weekly Trade Options",
@@ -2988,16 +2979,8 @@ DEFAULT_TAB_STATUSES = {
         "message": "Single Stock Multi-Timeframe Technicals & Real-Time Signals",
         "eta": "Live Now"
     },
-    "education": {
-        "id": "education",
-        "name": "Market Mechanics",
-        "category": "Main Navigation",
-        "icon": "🎓",
-        "status": "ONLINE",
-        "message": "PSX Trading Education, Upper Locks & Circuit Rules",
-        "eta": "Live Now"
-    },
     "simulator": {
+
         "id": "simulator",
         "name": "Paper Simulator & Broker",
         "category": "Main Navigation",
@@ -3529,6 +3512,26 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json(resp)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path.startswith("/api/longterm/deep-dive/"):
+            try:
+                symbol = parsed_path.path.split("/api/longterm/deep-dive/")[1].upper().strip("/")
+                query = parse_qs(parsed_path.query)
+                force = query.get("force", ["0"])[0].lower() in ("1", "true", "yes")
+                engine = lt_module.get_longterm_engine()
+                stocks_snap = stock_cache.get("data") or []
+                stock_data = next((s for s in stocks_snap if s.get("symbol", "").upper() == symbol), None)
+                candles = fetch_stock_history(symbol) or []
+                resp = engine.get_deep_dive_response(
+                    symbol, stock_data=stock_data,
+                    history_candles=candles,
+                    all_stocks=stocks_snap,
+                    force=force
+                )
+                self._send_json(resp)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
 
         elif parsed_path.path == "/api/longterm/macro-context":
             try:
