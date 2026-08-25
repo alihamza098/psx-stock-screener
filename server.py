@@ -3050,6 +3050,24 @@ DEFAULT_TAB_STATUSES = {
         "status": "ONLINE",
         "message": "Historical Price & Volume Trend Analytics",
         "eta": "Live Now"
+    },
+    "intelligence": {
+        "id": "intelligence",
+        "name": "🧠 Market Intelligence",
+        "category": "Main Navigation",
+        "icon": "🧠",
+        "status": "ONLINE",
+        "message": "Autonomous Market Intelligence & Anomaly Detection",
+        "eta": "Live Now"
+    },
+    "longterm": {
+        "id": "longterm",
+        "name": "📈 Long-Term Investing",
+        "category": "Main Navigation",
+        "icon": "📈",
+        "status": "ONLINE",
+        "message": "7-Stage Fundamentals Pipeline & AI Investment Synthesis",
+        "eta": "Live Now"
     }
 }
 

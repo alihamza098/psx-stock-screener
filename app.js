@@ -1059,7 +1059,7 @@ function switchView(view) {
     const activeMobileTab = document.querySelector(`.mobile-nav-item[data-view="${view}"]`);
     if (activeMobileTab) activeMobileTab.classList.add("active");
 
-    const views = ["table", "cards", "scorecard", "weekly-scan", "live-trading", "education", "simulator", "corporate", "financials", "trading-intelligence"];
+    const views = ["table", "cards", "scorecard", "weekly-scan", "live-trading", "education", "simulator", "corporate", "financials", "trading-intelligence", "intelligence", "longterm"];
     views.forEach(v => {
         const el = document.getElementById(`view-${v}`);
         if (el) el.style.display = (view === v) ? (v === "cards" ? "grid" : "block") : "none";
@@ -1112,6 +1112,17 @@ function switchView(view) {
             return;
         }
         runTradingIntelligenceEngine();
+    } else if (view === "intelligence") {
+        if (typeof intelligenceTab !== "undefined" && intelligenceTab.load) {
+            intelligenceTab.load();
+        }
+        if (typeof calibrationReport !== "undefined" && calibrationReport.load) {
+            setTimeout(() => calibrationReport.load(), 500);
+        }
+    } else if (view === "longterm") {
+        if (typeof longtermTab !== "undefined" && longtermTab.load) {
+            longtermTab.load();
+        }
     }
 }
 
@@ -8074,8 +8085,8 @@ const longtermTab = (() => {
         });
     }
 
-    // ── DOMContentLoaded wire-up ──────────────────────────────────────────
-    document.addEventListener('DOMContentLoaded', () => {
+    // ── Safe initialization ──────────────────────────────────────────────
+    function _init() {
         _initControls();
         const ltBtn = document.getElementById('tab-longterm');
         if (ltBtn) {
@@ -8083,8 +8094,16 @@ const longtermTab = (() => {
                 if (!_loaded) load();
             });
         }
-    });
+    }
 
-    return { load, showDetail, closeModal };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _init);
+    } else {
+        _init();
+    }
+
+    window.longtermTab = { load, showDetail, closeModal };
+    return window.longtermTab;
 
 })();
+
