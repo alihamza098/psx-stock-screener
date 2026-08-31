@@ -21,6 +21,48 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 _db_lock = threading.RLock()
 
+# ─── Calibration Weight Loader ───
+_cal_weights_cache: dict = {}
+_cal_weights_ts: float = 0.0
+_CAL_CACHE_TTL = 300  # refresh every 5 minutes
+
+def _load_sector_weights_from_calibration() -> dict:
+    """
+    Read SECTOR_INTEL and GRADE weights from cache/calibration.db.
+    Returns a dict: { "sector": {name: weight}, "grade": {name: weight} }
+    Cached for 5 minutes. SAFE: read-only, never modifies calibration.db.
+    """
+    global _cal_weights_cache, _cal_weights_ts
+    import time as _time
+    if _cal_weights_cache and (_time.time() - _cal_weights_ts) < _CAL_CACHE_TTL:
+        return _cal_weights_cache
+
+    cal_path = Path("cache/calibration.db")
+    if not cal_path.exists():
+        return {}
+    try:
+        conn = sqlite3.connect(str(cal_path), timeout=5)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT factor_type, factor_value, weight, sample_count FROM factor_weights"
+            " WHERE factor_type IN ('SECTOR_INTEL', 'GRADE', 'RR_BUCKET')"
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return {}
+
+    result: dict = {"sector": {}, "grade": {}, "rr_bucket": {}}
+    bucket_map = {"SECTOR_INTEL": "sector", "GRADE": "grade", "RR_BUCKET": "rr_bucket"}
+    for r in rows:
+        bucket = bucket_map.get(r["factor_type"])
+        if bucket and int(r["sample_count"]) >= 5:
+            result[bucket][r["factor_value"]] = float(r["weight"])
+
+    _cal_weights_cache = result
+    _cal_weights_ts = _time.time()
+    return result
+
+
 # ─── Default Configuration (Section 3 of spec) ───
 DEFAULT_SCAN_CONFIG = {
     "version": "1.0.0",
@@ -516,6 +558,27 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
         conviction_pct = int(min(88, 80 + (max_vol_ratio - 1.2) * 5))
     else:
         conviction_pct = int(min(78, 70 + (max_vol_ratio - 1.0) * 4))
+
+    # ── Apply calibration learnings to conviction ─────────────────────────────
+    try:
+        cal_w = _load_sector_weights_from_calibration()
+        if cal_w:
+            # 1. Sector weight (±10 points max)
+            sec_w = cal_w["sector"].get(sector)
+            if sec_w is not None:
+                sec_adj = max(-10, min(10, (sec_w - 1.0) * 20))
+                conviction_pct = int(conviction_pct + sec_adj)
+            # 2. Grade weight (±5 points max)
+            grade_w = cal_w["grade"].get(grade)
+            if grade_w is not None:
+                grade_adj = max(-5, min(5, (grade_w - 1.0) * 10))
+                conviction_pct = int(conviction_pct + grade_adj)
+            # Clamp to valid range
+            conviction_pct = max(30, min(98, conviction_pct))
+    except Exception:
+        pass  # Calibration unavailable — use base conviction
+    # ── End calibration adjustment ────────────────────────────────────────────
+
 
     # Rationale Generator
     trigger_names = ", ".join(t["type"].replace("_", " ") for t in triggers)

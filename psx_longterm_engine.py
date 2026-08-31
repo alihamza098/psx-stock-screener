@@ -1721,6 +1721,34 @@ class DeepDiveEngine:
         else:
             solvency_risk = "Conservative Balance Sheet (D/E < 1.0x)"
 
+        # ── Pull calibration sector signal ────────────────────────────────────
+        cal_sector_signal = None
+        cal_sector_weight = None
+        try:
+            cal_db = Path("cache/calibration.db")
+            if cal_db.exists():
+                _cal_conn = __import__("sqlite3").connect(str(cal_db), timeout=5)
+                _cal_conn.row_factory = __import__("sqlite3").Row
+                row = _cal_conn.execute(
+                    "SELECT weight, smoothed_win_rate, sample_count FROM factor_weights"
+                    " WHERE factor_type='SECTOR_INTEL' AND factor_value=? AND sample_count>=5",
+                    (stock.get("sector", ""),)
+                ).fetchone()
+                _cal_conn.close()
+                if row:
+                    cal_sector_weight = round(float(row["weight"]), 3)
+                    wr_pct = round(float(row["smoothed_win_rate"]) * 100, 1)
+                    n = int(row["sample_count"])
+                    if cal_sector_weight >= 1.1:
+                        cal_sector_signal = f"AI Engine FAVORS this sector (win-rate {wr_pct}%, n={n})"
+                    elif cal_sector_weight <= 0.85:
+                        cal_sector_signal = f"AI Engine AVOIDS this sector (win-rate {wr_pct}%, n={n})"
+                    else:
+                        cal_sector_signal = f"AI Engine NEUTRAL on sector (win-rate {wr_pct}%, n={n})"
+        except Exception:
+            pass
+        # ── End calibration sector signal ──────────────────────────────────────
+
         return {
             "daily_traded_val_m_pkr": daily_traded_val_m,
             "free_float_m_pkr": free_float_m,
@@ -1728,7 +1756,9 @@ class DeepDiveEngine:
             "debt_equity_ratio": de_ratio,
             "current_ratio": current_ratio,
             "solvency_risk": solvency_risk,
-            "concentration_risk": "Standard Sector Cyclicality"
+            "concentration_risk": "Standard Sector Cyclicality",
+            "calibration_sector_signal": cal_sector_signal,
+            "calibration_sector_weight": cal_sector_weight
         }
 
     def _synthesize_deep_recommendation(
@@ -1938,6 +1968,24 @@ class DeepDiveEngine:
                 "description": f"Traded value of ₨{risk.get('daily_traded_val_m_pkr'):.1f}M requires phased order execution to prevent adverse market impact."
             })
 
+        # ── Append calibration sector signal as insight ───────────────────────
+        cal_sig = risk.get("calibration_sector_signal")
+        cal_w = risk.get("calibration_sector_weight")
+        if cal_sig:
+            if cal_w is not None and cal_w <= 0.85:
+                threats.append({
+                    "rank": len(threats) + 1,
+                    "severity": "MEDIUM",
+                    "title": "AI Engine Sector Caution Signal",
+                    "description": f"{cal_sig}. The PSX Intelligence Engine's real trading data suggests caution for this sector based on actual PSX price outcomes."
+                })
+            elif cal_w is not None and cal_w >= 1.1:
+                bull_case.append({
+                    "layer": "AI Calibration Layer",
+                    "point": f"PSX Intelligence Engine FAVORS this sector based on real outcome data: {cal_sig}"
+                })
+        # ── End calibration threat injection ─────────────────────────────────
+
         return {
             "verdict": verdict,
             "holding_horizon": horizon,
@@ -1945,7 +1993,9 @@ class DeepDiveEngine:
             "bear_case": bear_case,
             "reconciliation": reconciliation,
             "ranked_risks": threats,
-            "model_used": "deterministic_institutional_engine"
+            "model_used": "deterministic_institutional_engine",
+            "calibration_sector_signal": cal_sig,
+            "calibration_sector_weight": cal_w
         }
 
 

@@ -1196,6 +1196,8 @@ class PredictionEngine:
     """
     After each event, matches it to historical patterns and emits a
     forward-looking signal with confidence and historical context.
+    Applies calibrated sector/causal/signal weights from calibration.db
+    to adjust prediction confidence based on real PSX outcomes.
     """
 
     def __init__(self, db: IntelligenceDB, pattern_lib: PatternLibrary,
@@ -1249,6 +1251,61 @@ class PredictionEngine:
         if historical_win_rate > 0 and historical_win_rate < 45:
             pred_confidence = int(pred_confidence * 0.75)
 
+        # ── Apply calibration learnings to confidence ─────────────────────────
+        calibration_applied = False
+        calibration_note = ""
+        try:
+            cal_weights = self._load_calibration_weights()
+            if cal_weights:
+                sector = event.get("sector", "")
+                # 1. Sector weight adjustment (only if sample_count >= 5)
+                sector_w = cal_weights["sector_intel"].get(sector)
+                if sector_w and sector_w["n"] >= 5:
+                    # Cap adjustment to ±15 points
+                    raw_adj = (sector_w["w"] - 1.0) * 25  # 1.2w → +5pts, 0.7w → -7.5pts
+                    sector_adj = max(-15, min(15, raw_adj))
+                    pred_confidence = int(pred_confidence + sector_adj)
+                    calibration_note += f"sector={sector}({sector_w['w']:.2f}x) "
+                    calibration_applied = True
+
+                # 2. Causal factor weight adjustment
+                causal_adj_total = 0.0
+                causal_adj_count = 0
+                for cause in causes[:3]:
+                    f = cause["factor"]
+                    c = cause.get("confidence", 0)
+                    # Map evidence level to key suffix
+                    if c >= 75:
+                        lvl = "HIGH"
+                    elif c >= 50:
+                        lvl = "MED"
+                    else:
+                        lvl = "LOW"
+                    causal_key = f"{f}::{lvl}"
+                    cw = cal_weights["causal_factor"].get(causal_key)
+                    if cw and cw["n"] >= 5:
+                        causal_adj_total += (cw["w"] - 1.0) * 15
+                        causal_adj_count += 1
+                        calibration_note += f"cause={causal_key}({cw['w']:.2f}x) "
+                if causal_adj_count > 0:
+                    avg_causal_adj = causal_adj_total / causal_adj_count
+                    causal_adj = max(-10, min(10, avg_causal_adj))
+                    pred_confidence = int(pred_confidence + causal_adj)
+                    calibration_applied = True
+
+                # 3. Signal weight adjustment
+                sig_w = cal_weights["intel_signal"].get(signal)
+                if sig_w and sig_w["n"] >= 5:
+                    sig_adj = max(-8, min(8, (sig_w["w"] - 1.0) * 15))
+                    pred_confidence = int(pred_confidence + sig_adj)
+                    calibration_note += f"signal={signal}({sig_w['w']:.2f}x) "
+                    calibration_applied = True
+
+                pred_confidence = max(20, min(97, pred_confidence))
+        except Exception as _cal_err:
+            pass  # Calibration DB unavailable — use base confidence
+        # ── End calibration adjustment ─────────────────────────────────────────
+
         # Build reasoning
         cause_narrative = self.investigator.build_narrative(causes)
         reasoning = {
@@ -1258,8 +1315,11 @@ class PredictionEngine:
             "narrative": cause_narrative,
             "pattern_matched": pattern_name,
             "historical_win_rate": historical_win_rate,
-            "historical_sample": historical_sample
+            "historical_sample": historical_sample,
+            "calibration_applied": calibration_applied,
+            "calibration_note": calibration_note.strip() if calibration_note else None
         }
+
 
         pred = {
             "id": _make_pred_id(symbol, signal),
@@ -1279,6 +1339,49 @@ class PredictionEngine:
         }
 
         self.db.insert_prediction(pred)
+
+    def _load_calibration_weights(self) -> Optional[Dict]:
+        """
+        Load factor weights from calibration.db.
+        Returns dict with keys: sector_intel, causal_factor, intel_signal.
+        Returns None if calibration DB is unavailable or empty.
+        SAFE: read-only connection, wrapped in try/except at call site.
+        """
+        cal_db_path = Path("cache/calibration.db")
+        if not cal_db_path.exists():
+            return None
+        conn = sqlite3.connect(str(cal_db_path), timeout=5)
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute(
+                "SELECT factor_type, factor_value, weight, sample_count FROM factor_weights"
+            ).fetchall()
+        except Exception:
+            conn.close()
+            return None
+        conn.close()
+
+        if not rows:
+            return None
+
+        result: Dict[str, Dict] = {
+            "sector_intel": {},
+            "causal_factor": {},
+            "intel_signal": {}
+        }
+        key_map = {
+            "SECTOR_INTEL": "sector_intel",
+            "CAUSAL_FACTOR": "causal_factor",
+            "INTEL_SIGNAL": "intel_signal"
+        }
+        for r in rows:
+            bucket = key_map.get(r["factor_type"])
+            if bucket is not None:
+                result[bucket][r["factor_value"]] = {
+                    "w": float(r["weight"]),
+                    "n": int(r["sample_count"])
+                }
+        return result
 
     def _determine_signal(self, event_type: str, rvol: float,
                           rsi: float, top_confidence: int) -> str:
