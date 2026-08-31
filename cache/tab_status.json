@@ -1,0 +1,94 @@
+{
+  "table": {
+    "id": "table",
+    "name": "Table View (Screener)",
+    "category": "Main Navigation",
+    "icon": "\ud83d\udcca",
+    "status": "ONLINE",
+    "message": "Market Screener & Real-Time Technical Filters",
+    "eta": "Live Now"
+  },
+  "cards": {
+    "id": "cards",
+    "name": "Card View",
+    "category": "Main Navigation",
+    "icon": "\ud83d\uddc2\ufe0f",
+    "status": "ONLINE",
+    "message": "Visual Stock Cards Grid",
+    "eta": "Live Now"
+  },
+  "weekly-scan": {
+    "id": "weekly-scan",
+    "name": "Weekly Trade Options",
+    "category": "Main Navigation",
+    "icon": "\ud83c\udfaf",
+    "status": "ONLINE",
+    "message": "Multi-Trigger Weekly Swing Scanner & Dynamic Position Sizing",
+    "eta": "Live Now"
+  },
+  "live-trading": {
+    "id": "live-trading",
+    "name": "Live Trading Analysis",
+    "category": "Main Navigation",
+    "icon": "\u26a1",
+    "status": "ONLINE",
+    "message": "Single Stock Multi-Timeframe Technicals & Real-Time Signals",
+    "eta": "Live Now"
+  },
+  "simulator": {
+
+    "id": "simulator",
+    "name": "Paper Simulator & Broker",
+    "category": "Main Navigation",
+    "icon": "\ud83c\udfae",
+    "status": "ONLINE",
+    "message": "Virtual Paper Trading Portfolio with Live Margin Accounting",
+    "eta": "Live Now"
+  },
+  "corporate": {
+    "id": "corporate",
+    "name": "Dividends & Corporate Actions",
+    "category": "Main Navigation",
+    "icon": "\ud83d\udcc5",
+    "status": "ONLINE",
+    "message": "Dividend Payouts, AGMs & Bonus Issues Calendar",
+    "eta": "Live Now"
+  },
+  "financials": {
+    "id": "financials",
+    "name": "Financial Statements & Ratios",
+    "category": "Main Navigation",
+    "icon": "\ud83d\udcca",
+    "status": "ONLINE",
+    "message": "Balance Sheet, Income Statement, Cash Flows & 10 Key Ratios",
+    "eta": "Live Now"
+  },
+  "trading-intelligence": {
+    "id": "trading-intelligence",
+    "name": "AI Trading Agent",
+    "category": "Main Navigation",
+    "icon": "\ud83e\udd16",
+    "status": "ONLINE",
+    "message": "Autonomous AI Screener & Multi-Factor Position Monitor",
+    "eta": "Live Now",
+    "updated_at": "2026-08-22 18:59:17 PKT"
+  },
+  "upper-lock": {
+    "id": "upper-lock",
+    "name": "Upper Lock Analysis",
+    "category": "Top Module",
+    "icon": "\ud83d\udd12",
+    "status": "ONLINE",
+    "message": "Circuit Breakers & Upper Lock Price Band Detector",
+    "eta": "Live Now"
+  },
+  "stock-history": {
+    "id": "stock-history",
+    "name": "Stock History & Trends",
+    "category": "Top Module",
+    "icon": "\ud83d\udcc8",
+    "status": "ONLINE",
+    "message": "Historical Price & Volume Trend Analytics",
+    "eta": "Live Now"
+  }
+}

@@ -1,0 +1,201 @@
+{
+  "account_id": "PSX-PAPER-001",
+  "cash": 454145.0000000001,
+  "initial_capital": 1000000.0,
+  "positions": {
+    "BBFL": {
+      "symbol": "BBFL",
+      "name": "Big Bird Foods Limited",
+      "sector": "Food & Personal Care Products",
+      "shares": 3528,
+      "entry_price": 42.98,
+      "initial_shares": 3528,
+      "stop_loss": 41.87,
+      "take_profit_1": 44.44,
+      "take_profit_2": 45.95,
+      "trailing_stop": 41.87,
+      "highest_price_seen": 42.98,
+      "strategy": "Momentum",
+      "entry_time": "2026-08-25 22:26:20 PKT",
+      "tp1_hit": false,
+      "commission_paid": 227.45
+    }
+  },
+  "orders": [
+    {
+      "order_id": "ORD-24577E71",
+      "type": "BUY",
+      "symbol": "SYS",
+      "shares": 1608,
+      "requested_price": 155.4,
+      "fill_price": 155.56,
+      "total_cost": 250515.69,
+      "commission": 375.21,
+      "timestamp": "2026-08-22 12:53:26 PKT"
+    },
+    {
+      "order_id": "ORD-3E157F3A",
+      "type": "BUY",
+      "symbol": "ATRL",
+      "shares": 214,
+      "requested_price": 1117.47,
+      "fill_price": 1118.59,
+      "total_cost": 239737.33,
+      "commission": 359.07,
+      "timestamp": "2026-08-22 13:26:34 PKT"
+    },
+    {
+      "order_id": "ORD-73855C8D",
+      "type": "BUY",
+      "symbol": "AICL",
+      "shares": 1000,
+      "requested_price": 86.25,
+      "fill_price": 86.34,
+      "total_cost": 86469.51,
+      "commission": 129.51,
+      "timestamp": "2026-08-22 13:40:58 PKT"
+    },
+    {
+      "order_id": "ORD-5A551F3E",
+      "type": "BUY",
+      "symbol": "ATRL",
+      "shares": 223,
+      "requested_price": 1117.47,
+      "fill_price": 1118.59,
+      "total_cost": 249819.74,
+      "commission": 374.17,
+      "timestamp": "2026-08-22 13:47:11 PKT"
+    },
+    {
+      "order_id": "ORD-88BD03E9",
+      "type": "BUY",
+      "symbol": "AICL",
+      "shares": 200,
+      "requested_price": 86.25,
+      "fill_price": 86.34,
+      "total_cost": 17293.9,
+      "commission": 25.9,
+      "timestamp": "2026-08-22 13:47:31 PKT"
+    },
+    {
+      "order_id": "ORD-5A057C04",
+      "type": "BUY",
+      "symbol": "DBCI",
+      "shares": 1698,
+      "requested_price": 13.37,
+      "fill_price": 13.38,
+      "total_cost": 22753.32,
+      "commission": 34.08,
+      "timestamp": "2026-08-22 13:49:02 PKT"
+    },
+    {
+      "order_id": "ORD-E18C3C66",
+      "type": "BUY",
+      "symbol": "FCEPL",
+      "shares": 109,
+      "requested_price": 129.24,
+      "fill_price": 129.37,
+      "total_cost": 14122.48,
+      "commission": 21.15,
+      "timestamp": "2026-08-22 13:49:15 PKT"
+    },
+    {
+      "order_id": "ORD-C67271CE",
+      "type": "BUY",
+      "symbol": "AICL",
+      "shares": 289,
+      "requested_price": 86.25,
+      "fill_price": 86.34,
+      "total_cost": 24989.69,
+      "commission": 37.43,
+      "timestamp": "2026-08-22 13:55:44 PKT"
+    },
+    {
+      "order_id": "ORD-A9EA8BFF",
+      "type": "BUY",
+      "symbol": "BBFL",
+      "shares": 3528,
+      "requested_price": 42.94,
+      "fill_price": 42.98,
+      "total_cost": 151860.89,
+      "commission": 227.45,
+      "timestamp": "2026-08-25 22:26:20 PKT"
+    }
+  ],
+  "closed_trades": [
+    {
+      "trade_id": "TRD-43FCF760",
+      "symbol": "SYS",
+      "name": "Systems Limited",
+      "shares_sold": 1608,
+      "entry_price": 155.56,
+      "exit_price": 126.38,
+      "net_proceeds": 202914.21,
+      "realized_pnl": -47226.27,
+      "realized_pnl_pct": -18.88,
+      "reason": "EMERGENCY KILL SWITCH: User Activated Emergency Kill Switch",
+      "entry_time": "2026-08-22 12:53:26 PKT",
+      "exit_time": "2026-08-24 16:12:51 PKT"
+    },
+    {
+      "trade_id": "TRD-C85E8747",
+      "symbol": "ATRL",
+      "name": "ATRL",
+      "shares_sold": 223,
+      "entry_price": 1118.59,
+      "exit_price": 1104.1,
+      "net_proceeds": 245844.98,
+      "realized_pnl": -3600.59,
+      "realized_pnl_pct": -1.44,
+      "reason": "EMERGENCY KILL SWITCH: User Activated Emergency Kill Switch",
+      "entry_time": "2026-08-22 13:47:11 PKT",
+      "exit_time": "2026-08-24 16:12:51 PKT"
+    },
+    {
+      "trade_id": "TRD-97B790A6",
+      "symbol": "AICL",
+      "name": "AICL",
+      "shares_sold": 289,
+      "entry_price": 86.34,
+      "exit_price": 87.08,
+      "net_proceeds": 25128.37,
+      "realized_pnl": 176.11,
+      "realized_pnl_pct": 0.71,
+      "reason": "EMERGENCY KILL SWITCH: User Activated Emergency Kill Switch",
+      "entry_time": "2026-08-22 13:55:44 PKT",
+      "exit_time": "2026-08-24 16:12:51 PKT"
+    },
+    {
+      "trade_id": "TRD-8DC9730E",
+      "symbol": "DBCI",
+      "name": "DBCI",
+      "shares_sold": 1698,
+      "entry_price": 13.38,
+      "exit_price": 13.19,
+      "net_proceeds": 22363.03,
+      "realized_pnl": -356.21,
+      "realized_pnl_pct": -1.57,
+      "reason": "EMERGENCY KILL SWITCH: User Activated Emergency Kill Switch",
+      "entry_time": "2026-08-22 13:49:02 PKT",
+      "exit_time": "2026-08-24 16:12:51 PKT"
+    },
+    {
+      "trade_id": "TRD-B04A9ED3",
+      "symbol": "FCEPL",
+      "name": "FCEPL",
+      "shares_sold": 109,
+      "entry_price": 129.37,
+      "exit_price": 142.02,
+      "net_proceeds": 15456.96,
+      "realized_pnl": 1355.63,
+      "realized_pnl_pct": 9.61,
+      "reason": "EMERGENCY KILL SWITCH: User Activated Emergency Kill Switch",
+      "entry_time": "2026-08-22 13:49:15 PKT",
+      "exit_time": "2026-08-24 16:12:51 PKT"
+    }
+  ],
+  "daily_realized_loss": 0.0,
+  "total_realized_pnl": -49651.33,
+  "last_trade_date": "2026-08-27",
+  "created_at": "2026-08-22T07:53:26Z"
+}
