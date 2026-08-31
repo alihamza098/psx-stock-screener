@@ -2053,8 +2053,8 @@ class LongTermEngine:
         return self.scraper.run_weekly_scrape(symbols)
 
     def run_scan(self, stocks: Optional[List[Dict]] = None,
-                 run_type: str = "SCHEDULED_WEEKLY") -> Dict:
-        """Monday 9 AM PKT — full 7-stage pipeline scan."""
+                 run_type: str = "SCHEDULED_DAILY") -> Dict:
+        """Daily 9 AM PKT — full 7-stage pipeline scan."""
         print(f"[LongTerm] Starting {run_type} scan...")
         t0 = time.time()
 

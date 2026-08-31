@@ -574,8 +574,8 @@ def _start_continuous_poller():
         _last_overnight     = [0]
         _last_audit_tick    = [0]
         _last_calibration   = [0]   # Sunday 11 PM
-        _last_lt_scrape     = [0]   # Monday 7 AM — DPS fundamentals scrape
-        _last_lt_scan       = [0]   # Monday 9 AM — 7-stage pipeline scan
+        _last_lt_scrape     = [0]   # Daily 7 AM — DPS fundamentals scrape
+        _last_lt_scan       = [0]   # Daily 9 AM — 7-stage pipeline scan
 
 
         while True:
@@ -652,32 +652,32 @@ def _start_continuous_poller():
                         except Exception as ce:
                             print(f"[Calibration] Weekly calibration error: {ce}")
 
-                # ── Long-Term Fundamentals Scrape — Monday 7 AM PKT ──────────
+                # ── Long-Term Fundamentals Scrape — Daily 7 AM PKT ──────────
                 # Scrapes DPS company pages for EPS, DE, CR, BV, margins
-                if longterm and weekday == 0 and now_pkt.hour == 7 and now_pkt.minute < 5:
+                if longterm and (0 <= weekday <= 4) and now_pkt.hour == 7 and now_pkt.minute < 5:
                     lt_scrape_key = now_pkt.strftime("%Y-%m-%d-scrape")
                     if _last_lt_scrape[0] != lt_scrape_key:
                         try:
-                            print("[LongTerm] Monday 7 AM — starting weekly fundamentals scrape...")
+                            print("[LongTerm] Daily 7 AM — starting fundamentals scrape...")
                             stocks_snap = stock_cache.get("data") or []
                             longterm.run_fundamentals_scrape(stocks_snap)
                             _last_lt_scrape[0] = lt_scrape_key
                         except Exception as lte:
                             print(f"[LongTerm] Fundamentals scrape error: {lte}")
 
-                # ── Long-Term 7-Stage Scan — Monday 9 AM PKT ─────────────────
+                # ── Long-Term 7-Stage Scan — Daily 9 AM PKT ─────────────────
                 # Full pipeline: Financial Health → Profitability → Valuation →
                 # Governance/Macro → AI Synthesis → Graded Shortlist A+ to D
-                if longterm and weekday == 0 and now_pkt.hour == 9 and now_pkt.minute < 5:
+                if longterm and (0 <= weekday <= 4) and now_pkt.hour == 9 and now_pkt.minute < 5:
                     lt_scan_key = now_pkt.strftime("%Y-%m-%d-scan")
                     if _last_lt_scan[0] != lt_scan_key:
                         try:
-                            print("[LongTerm] Monday 9 AM — running weekly 7-stage scan...")
+                            print("[LongTerm] Daily 9 AM — running daily 7-stage scan...")
                             stocks_snap = stock_cache.get("data") or []
-                            longterm.run_scan(stocks=stocks_snap, run_type="SCHEDULED_WEEKLY")
+                            longterm.run_scan(stocks=stocks_snap, run_type="SCHEDULED_DAILY")
                             _last_lt_scan[0] = lt_scan_key
                         except Exception as lte:
-                            print(f"[LongTerm] Weekly scan error: {lte}")
+                            print(f"[LongTerm] Daily scan error: {lte}")
 
                 time.sleep(poll_interval)
             except Exception as e:
