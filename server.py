@@ -3777,7 +3777,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 if not _tg.is_enabled():
                     self._send_json({"success": False, "error": "Telegram not configured. POST to /api/telegram/config first."}, 400)
                     return
-                ok = _tg._send_message(
+                ok, err_detail = _tg._send_message(
                     "🟢 <b>PSX Alert Bot — Test Message</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     "✅ Connection successful!\n"
@@ -3790,7 +3790,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 if ok:
                     self._send_json({"success": True, "message": "Test message sent! Check your Telegram."})
                 else:
-                    self._send_json({"success": False, "error": "Failed to send. Check bot_token and chat_id."}, 500)
+                    self._send_json({"success": False, "error": err_detail or "Failed to send. Check bot_token and chat_id."}, 500)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 400)
         elif self.path == "/api/admin/tabs/status":

@@ -102,18 +102,22 @@ def _send_message(text: str, parse_mode: str = "HTML") -> bool:
                                   method="POST")
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return resp.status == 200
+            return True, None
     except urllib.error.HTTPError as e:
         body_txt = e.read().decode(errors="ignore")[:300]
         print(f"[Telegram] HTTP {e.code}: {body_txt}")
+        return False, f"HTTP {e.code}: {body_txt}"
     except Exception as ex:
         print(f"[Telegram] Send error: {ex}")
-    return False
+        return False, str(ex)
+    return False, "Unknown error"
 
 
 def _send_async(text: str) -> None:
     """Fire-and-forget in background thread so it never blocks the engine."""
-    t = threading.Thread(target=_send_message, args=(text,), daemon=True)
+    def _worker():
+        _send_message(text)  # tuple return is intentionally discarded
+    t = threading.Thread(target=_worker, daemon=True)
     t.start()
 
 
