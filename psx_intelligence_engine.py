@@ -1340,6 +1340,27 @@ class PredictionEngine:
 
         self.db.insert_prediction(pred)
 
+        # ── Telegram alert — fire-and-forget, never blocks engine ────────────
+        try:
+            import psx_telegram_bot as _tg
+            # Intelligence signal alert (confidence + signal gate inside)
+            _tg.alert_intelligence_signal(pred, event, causes)
+            # Pattern-specific alert for high-value patterns (P001, P003, P006)
+            if pattern_id:
+                _tg.alert_pattern_match(
+                    symbol=symbol,
+                    pattern_name=pattern_name,
+                    pattern_id=pattern_id,
+                    confidence=pred_confidence,
+                    price=price,
+                    event_type=event.get("event_type", ""),
+                    sector=event.get("sector", "")
+                )
+        except Exception:
+            pass  # Telegram failures never interrupt prediction flow
+        # ── End Telegram ─────────────────────────────────────────────────────
+
+
     def _load_calibration_weights(self) -> Optional[Dict]:
         """
         Load factor weights from calibration.db.

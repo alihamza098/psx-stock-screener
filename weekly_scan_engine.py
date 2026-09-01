@@ -819,7 +819,18 @@ def execute_weekly_scan(stocks, index_data=None, run_type="SCHEDULED_WEEKLY", co
         conn.commit()
         conn.close()
 
+    # ── Telegram alerts for Grade A / A+ candidates ───────────────────────────
+    try:
+        import psx_telegram_bot as _tg
+        for cand in candidates:
+            if cand.get("grade") in ("A_PLUS", "A"):
+                _tg.alert_weekly_scan_candidate(cand)
+    except Exception:
+        pass  # Telegram failures never block scan results
+    # ── End Telegram ──────────────────────────────────────────────────────────
+
     return scan_run, candidates
+
 
 
 # ─── API Query Handlers ───

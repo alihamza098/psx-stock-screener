@@ -3559,7 +3559,30 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
+        # ─── Telegram Alert Bot Endpoints ────────────────────────────────────────
+        # GET  /api/telegram/config          — view current config (admin)
+        # POST /api/telegram/config          — save bot_token + chat_id
+        # POST /api/telegram/test            — send a test message
+
+        elif parsed_path.path == "/api/telegram/config" and self.command == "GET":
+            query = parse_qs(parsed_path.query)
+            secret = query.get("secret", [""])[0]
+            if not verify_admin_secret(secret):
+                self._send_json({"success": False, "error": "Unauthorized"}, 401)
+                return
+            try:
+                import psx_telegram_bot as _tg
+                cfg = _tg.load_config()
+                # Mask the bot token for display
+                token = cfg.get("bot_token", "")
+                if token:
+                    cfg["bot_token"] = token[:10] + "..." + token[-4:]
+                self._send_json({"success": True, "config": cfg, "is_enabled": _tg.is_enabled()})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
         # ─── Tab & Feature Deployment Status Endpoints ───
+
 
 
         elif parsed_path.path == "/api/tabs/status":
@@ -3719,7 +3742,59 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json(res, 200 if res["success"] else 400)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/telegram/config":
+            # POST body: {"secret":"...", "bot_token":"...", "chat_id":"...", ...}
+            try:
+                body = json.loads(post_data.decode('utf-8'))
+                secret = body.get('secret', '')
+                if not verify_admin_secret(secret):
+                    self._send_json({"success": False, "error": "Unauthorized"}, 401)
+                    return
+                import psx_telegram_bot as _tg
+                existing = _tg.load_config()
+                # Merge — keep existing token if new one not provided
+                new_cfg = {
+                    "bot_token":               body.get("bot_token") or existing.get("bot_token", ""),
+                    "chat_id":                 str(body.get("chat_id") or existing.get("chat_id", "")),
+                    "weekly_scan_min_grade":   body.get("weekly_scan_min_grade", existing.get("weekly_scan_min_grade", "A")),
+                    "intel_min_confidence":    int(body.get("intel_min_confidence", existing.get("intel_min_confidence", 65))),
+                    "intel_signals_to_alert":  body.get("intel_signals_to_alert", existing.get("intel_signals_to_alert", ["POSSIBLE_BREAKOUT", "WATCH"])),
+                    "enabled":                 bool(body.get("enabled", existing.get("enabled", True))),
+                }
+                _tg.save_config(new_cfg)
+                self._send_json({"success": True, "message": "Telegram config saved.", "enabled": _tg.is_enabled()})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/telegram/test":
+            # POST body: {"secret":"..."}
+            try:
+                body = json.loads(post_data.decode('utf-8'))
+                secret = body.get('secret', '')
+                if not verify_admin_secret(secret):
+                    self._send_json({"success": False, "error": "Unauthorized"}, 401)
+                    return
+                import psx_telegram_bot as _tg
+                if not _tg.is_enabled():
+                    self._send_json({"success": False, "error": "Telegram not configured. POST to /api/telegram/config first."}, 400)
+                    return
+                ok = _tg._send_message(
+                    "🟢 <b>PSX Alert Bot — Test Message</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    "✅ Connection successful!\n"
+                    "You will now receive:\n"
+                    "  • 📈 Weekly Scan Grade A/A+ setups\n"
+                    "  • 🚨 Intelligence Engine signals\n"
+                    "  • 📊 Daily Long-Term scan summaries\n\n"
+                    "<i>psx.up.railway.app</i>"
+                )
+                if ok:
+                    self._send_json({"success": True, "message": "Test message sent! Check your Telegram."})
+                else:
+                    self._send_json({"success": False, "error": "Failed to send. Check bot_token and chat_id."}, 500)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
         elif self.path == "/api/admin/tabs/status":
+
             try:
                 body = json.loads(post_data.decode('utf-8'))
                 secret = body.get('secret', '')

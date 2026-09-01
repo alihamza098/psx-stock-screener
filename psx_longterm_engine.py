@@ -2180,6 +2180,28 @@ class LongTermEngine:
               f"(A+={shortlist_grades['A+']}, A={shortlist_grades['A']}, "
               f"A-={shortlist_grades['A-']}, B+={shortlist_grades['B+']}). "
               f"Elapsed {time.time()-t0:.1f}s")
+
+        # ── Telegram daily summary ──────────────────────────────────────────────
+        try:
+            import psx_telegram_bot as _tg
+            run_meta = {
+                "run_id":         run_id,
+                "a_plus_count":   shortlist_grades.get("A+", 0),
+                "a_count":        shortlist_grades.get("A", 0),
+                "shortlist_count": len(shortlist),
+                "eligible_count": len(eligible),
+                "avg_score":      avg_score,
+            }
+            # Top 5 by score — from A+/A stocks
+            top5 = sorted(
+                [r for r in shortlist if r.get("grade") in ("A+", "A", "A-")],
+                key=lambda r: r["total_score"], reverse=True
+            )[:5]
+            _tg.alert_daily_scan_summary(run_meta, top5)
+        except Exception:
+            pass  # Telegram errors never block scan
+        # ── End Telegram ────────────────────────────────────────────────────────
+
         return {"run_id": run_id, "shortlist_count": len(shortlist), "shortlist_grades": shortlist_grades}
 
     # ── API response builders ─────────────────────────────────────────────────
