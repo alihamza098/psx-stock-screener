@@ -3753,9 +3753,11 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 import psx_telegram_bot as _tg
                 existing = _tg.load_config()
                 # Merge — keep existing token if new one not provided
+                raw_token = (body.get("bot_token") or existing.get("bot_token", ""))
+                raw_chat  = str(body.get("chat_id") or existing.get("chat_id", ""))
                 new_cfg = {
-                    "bot_token":               body.get("bot_token") or existing.get("bot_token", ""),
-                    "chat_id":                 str(body.get("chat_id") or existing.get("chat_id", "")),
+                    "bot_token":               raw_token.strip().replace(" ", ""),  # strip accidental spaces
+                    "chat_id":                 raw_chat.strip().replace(" ", ""),
                     "weekly_scan_min_grade":   body.get("weekly_scan_min_grade", existing.get("weekly_scan_min_grade", "A")),
                     "intel_min_confidence":    int(body.get("intel_min_confidence", existing.get("intel_min_confidence", 65))),
                     "intel_signals_to_alert":  body.get("intel_signals_to_alert", existing.get("intel_signals_to_alert", ["POSSIBLE_BREAKOUT", "WATCH"])),
