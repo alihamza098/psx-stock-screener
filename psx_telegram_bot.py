@@ -135,7 +135,130 @@ def _is_cooldown(key: str) -> bool:
 
 # ── FORMATTER 1: Weekly Scan Grade A/A+ candidate ────────────────────────────
 
+def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT") -> bool:
+    """
+    Send intraday trade alert via Telegram.
+    mode: "INSTANT" | "MORNING_PICK" | "AFTERNOON_PICK"
+    Returns True if alert dispatched.
+    """
+    if not is_enabled():
+        return False
+
+    sym    = candidate.get("symbol", "?")
+    key    = f"intraday_{sym}"
+    if _is_cooldown(key):
+        return False
+
+    name   = candidate.get("name", sym)
+    sector = candidate.get("sector", "?")
+    score  = candidate.get("score", 0)
+    rvol   = candidate.get("rvol", 0)
+    change = candidate.get("change", 0)
+    price  = candidate.get("price", 0)
+    lvl    = candidate.get("levels", {})
+    at     = candidate.get("scanned_at", "")
+
+    entry_min  = lvl.get("entry_min", price)
+    entry_max  = lvl.get("entry_max", price)
+    stop       = lvl.get("stop", 0)
+    target     = lvl.get("target", 0)
+    risk_pct   = lvl.get("risk_pct", 0)
+    reward_pct = lvl.get("reward_pct", 0)
+    rr         = lvl.get("rr", 0)
+
+    mode_badge = {
+        "INSTANT":       "⚡ INSTANT — High Conviction Setup",
+        "MORNING_PICK":  "🌅 MORNING PICK — Best Setup (10:30 AM)",
+        "AFTERNOON_PICK":"🌆 AFTERNOON PICK — Best Setup (1:00 PM)",
+    }.get(mode, "⚡ INTRADAY ALERT")
+
+    # Catalyst text
+    catalysts = []
+    if rvol >= 3.0:
+        catalysts.append(f"Volume {rvol}x above average 🔥")
+    elif rvol >= 2.0:
+        catalysts.append(f"Volume {rvol}x above average")
+    if change >= 3.0:
+        catalysts.append(f"+{change}% strong momentum")
+    elif change >= 1.5:
+        catalysts.append(f"+{change}% positive momentum")
+    if not catalysts:
+        catalysts.append(f"Score {score}/100 — multi-factor setup")
+
+    catalyst_str = "\n".join(f"  • {c}" for c in catalysts[:3])
+
+    text = (
+        f"⚡ <b>PSX INTRADAY SETUP</b>\n"
+        f"<i>{mode_badge}</i>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"<b>Symbol:</b>  {sym} 📈 LONG\n"
+        f"<b>Sector:</b>  {sector}\n"
+        f"<b>Score:</b>   {score}/100  |  <b>RVol:</b> {rvol}x  |  <b>Move:</b> +{change}%\n\n"
+        f"📍 <b>TRADE LEVELS</b>\n"
+        f"  • <b>Entry:</b>   ₨{entry_min:.2f} – ₨{entry_max:.2f}\n"
+        f"  • <b>Stop:</b>    ₨{stop:.2f} (-{risk_pct}%) [Session low basis] 🛡\n"
+        f"  • <b>Target:</b>  ₨{target:.2f} (+{reward_pct}%) 🎯\n"
+        f"  • <b>R:R:</b>     {rr}x\n\n"
+        f"⚡ <b>WHY NOW?</b>\n"
+        f"{catalyst_str}\n\n"
+        f"⏱ <i>Intraday only — close by 3:00 PM PKT · Scanned at {at}</i>\n"
+        f"<i>PSX Alert · psx.up.railway.app</i>"
+    )
+
+    _send_async(text)
+    print(f"[Telegram] Intraday alert dispatched → {sym} ({mode}, score {score})")
+    return True
+
+
+def alert_intraday_close(symbol: str, entry: float, live_price: float,
+                          target: float, stop: float,
+                          hit_target: bool, mode: str = "INTRADAY") -> bool:
+    """
+    Send "Close Trade Now" alert when intraday target or stop is reached.
+    Returns True if alert dispatched.
+    """
+    if not is_enabled():
+        return False
+
+    key = f"intraday_close_{symbol}"
+    if _is_cooldown(key):
+        return False
+
+    pnl_pct  = round((live_price - entry) / entry * 100, 2)
+    pnl_sign = "+" if pnl_pct >= 0 else ""
+
+    if hit_target:
+        emoji      = "✅"
+        result     = "TARGET HIT"
+        action_msg = "Book profits now — target reached! 🎯"
+        pnl_color  = f"+{abs(pnl_pct)}%"
+    else:
+        emoji      = "🛑"
+        result     = "STOP LOSS HIT"
+        action_msg = "Exit now — stop loss triggered. Cut the loss. 🛡"
+        pnl_color  = f"-{abs(pnl_pct)}%"
+
+    text = (
+        f"{emoji} <b>PSX INTRADAY — {result}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"<b>Symbol:</b>      {symbol}\n"
+        f"<b>Entry:</b>       ₨{entry:.2f}\n"
+        f"<b>Live Price:</b>  ₨{live_price:.2f}\n"
+        f"<b>P&amp;L:</b>          {pnl_sign}{pnl_pct}%\n\n"
+        f"<b>Target was:</b>  ₨{target:.2f}\n"
+        f"<b>Stop was:</b>    ₨{stop:.2f}\n\n"
+        f"🔔 <b>{action_msg}</b>\n\n"
+        f"<i>PSX Intraday Monitor · psx.up.railway.app</i>"
+    )
+
+    _send_async(text)
+    print(f"[Telegram] Close alert dispatched → {symbol} ({'TARGET' if hit_target else 'STOP'}) @ ₨{live_price:.2f}")
+    return True
+
+
 def alert_weekly_scan_candidate(candidate: Dict[str, Any]) -> bool:
+
+
     """
     Call this for every Grade A / A+ candidate from execute_weekly_scan().
     Returns True if an alert was dispatched.

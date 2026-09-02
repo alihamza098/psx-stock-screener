@@ -394,7 +394,15 @@ def parse_index_data(html):
         html,
         re.DOTALL,
     )
-    market_state = state_match.group(1).upper() if state_match else "OPEN"
+    if state_match:
+        market_state = state_match.group(1).upper()
+    else:
+        # Scrape failed — fall back to time-based PKT clock (always accurate)
+        try:
+            _fb = get_psx_market_status()
+            market_state = "OPEN" if _fb.get("is_open") else "CLOSED"
+        except Exception:
+            market_state = "CLOSED"
 
     vol_match = re.search(
         r'<div class="markets__item__title c0">Regular</div>.*?'
@@ -576,6 +584,15 @@ def _start_continuous_poller():
         _last_calibration   = [0]   # Sunday 11 PM
         _last_lt_scrape     = [0]   # Daily 7 AM — DPS fundamentals scrape
         _last_lt_scan       = [0]   # Daily 9 AM — 7-stage pipeline scan
+        _last_intraday_tick = [0]   # Every 5 min — intraday scanner
+
+        # Import intraday engine once at startup
+        try:
+            import psx_intraday_engine as intraday_engine
+            print("[Intraday] Intraday trade alert engine loaded.")
+        except Exception as _ie:
+            intraday_engine = None
+            print(f"[Intraday] Engine load failed (non-fatal): {_ie}")
 
 
         while True:
@@ -641,7 +658,7 @@ def _start_continuous_poller():
                     except Exception as ae:
                         print(f"[Audit] Weekly prediction audit error: {ae}")
 
-                # ── Weekly Calibration — Sunday 11 PM PKT ────────────────────
+                 # ── Weekly Calibration — Sunday 11 PM PKT ────────────────────
                 if calibration and weekday == 6 and now_pkt.hour == 23 and now_pkt.minute < 5:
                     calib_key = now_pkt.strftime("%Y-%m-%d")
                     if _last_calibration[0] != calib_key:
@@ -653,7 +670,6 @@ def _start_continuous_poller():
                             print(f"[Calibration] Weekly calibration error: {ce}")
 
                 # ── Long-Term Fundamentals Scrape — Daily 7 AM PKT ──────────
-                # Scrapes DPS company pages for EPS, DE, CR, BV, margins
                 if longterm and (0 <= weekday <= 4) and now_pkt.hour == 7 and now_pkt.minute < 5:
                     lt_scrape_key = now_pkt.strftime("%Y-%m-%d-scrape")
                     if _last_lt_scrape[0] != lt_scrape_key:
@@ -666,8 +682,6 @@ def _start_continuous_poller():
                             print(f"[LongTerm] Fundamentals scrape error: {lte}")
 
                 # ── Long-Term 7-Stage Scan — Daily 9 AM PKT ─────────────────
-                # Full pipeline: Financial Health → Profitability → Valuation →
-                # Governance/Macro → AI Synthesis → Graded Shortlist A+ to D
                 if longterm and (0 <= weekday <= 4) and now_pkt.hour == 9 and now_pkt.minute < 5:
                     lt_scan_key = now_pkt.strftime("%Y-%m-%d-scan")
                     if _last_lt_scan[0] != lt_scan_key:
@@ -679,7 +693,53 @@ def _start_continuous_poller():
                         except Exception as lte:
                             print(f"[LongTerm] Daily scan error: {lte}")
 
+                # ── Intraday Engine — Every 5 min during market hours ────────
+                # Scan + instant alerts (score >= 75) + close/target monitoring
+                if intraday_engine and (0 <= weekday <= 4):
+                    cur_time = time.time()
+                    if cur_time - _last_intraday_tick[0] >= 300:
+                        try:
+                            stocks_snap = stock_cache.get("data") or []
+                            idx_snap    = index_cache.get("data") or {}
+
+                            # Memory DB fn for avg volume baseline
+                            mem_fn = None
+                            if intelligence:
+                                try:
+                                    mem_fn = intelligence.db.get_stock_memory
+                                except Exception:
+                                    pass
+
+                            # 1. Scan all stocks
+                            candidates = intraday_engine.scan_for_opportunities(
+                                stocks_snap, idx_snap, mem_fn
+                            )
+
+                            # 2. Instant alerts (Option A — fires any time if score >= 75)
+                            if candidates:
+                                intraday_engine.check_instant_alerts(candidates)
+
+                            # 3. Close / target monitor — runs even outside alert window
+                            if stocks_snap:
+                                intraday_engine.check_target_hits(stocks_snap)
+
+                            # 4. Scheduled morning pick — 10:30 AM PKT
+                            if (now_pkt.hour == 10 and
+                                    now_pkt.minute >= 30 and now_pkt.minute < 35):
+                                if candidates:
+                                    intraday_engine.check_scheduled_morning(candidates)
+
+                            # 5. Scheduled afternoon pick — 1:00 PM PKT
+                            if (now_pkt.hour == 13 and now_pkt.minute < 5):
+                                if candidates:
+                                    intraday_engine.check_scheduled_afternoon(candidates)
+
+                            _last_intraday_tick[0] = cur_time
+                        except Exception as ite:
+                            print(f"[Intraday] Engine tick error: {ite}")
+
                 time.sleep(poll_interval)
+
             except Exception as e:
                 print(f"[PSX Poller] Error: {e}")
                 time.sleep(15)
@@ -3559,7 +3619,16 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
+        # ─── Intraday Engine Status ───────────────────────────────────────────────
+        elif parsed_path.path == "/api/intraday/status":
+            try:
+                import psx_intraday_engine as _ie
+                self._send_json({"success": True, **_ie.get_daily_status()})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
         # ─── Telegram Alert Bot Endpoints ────────────────────────────────────────
+
         # GET  /api/telegram/config          — view current config (admin)
         # POST /api/telegram/config          — save bot_token + chat_id
         # POST /api/telegram/test            — send a test message
