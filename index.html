@@ -1380,28 +1380,48 @@
 
             </div>
 
-            <div class="upper-lock-body" id="upper-lock-body">
-                <div class="upper-lock-disclaimer">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                    <span>This analysis is a <strong>probability-based forecast</strong> based on technical indicators and price patterns. It is <strong>not financial advice</strong> and does not guarantee future performance.</span>
-                </div>
-
-                <!-- Loading state -->
-                <div class="upper-lock-loading" id="upper-lock-loading">
-                    <div class="loading-spinner">
-                        <svg viewBox="0 0 50 50">
-                            <circle cx="25" cy="25" r="20" fill="none" stroke="url(#spinGrad)" stroke-width="4" stroke-linecap="round" stroke-dasharray="80 200" stroke-dashoffset="0">
-                                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/>
-                            </circle>
-                        </svg>
-                    </div>
-                    <div class="loading-text">Analyzing 700+ stocks...</div>
-                    <div class="loading-subtext">Computing upper lock probabilities</div>
-                </div>
-
-                <!-- Results (populated by JS) -->
-                <div id="upper-lock-results" style="display:none;"></div>
+            <!-- Upper Lock Sub-Tabs -->
+            <div class="upper-lock-tabs" id="upper-lock-tabs">
+                <button class="upper-lock-tab-btn active" id="tab-ul-scanner" onclick="switchUpperLockTab('scanner')">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+                    <span>Live Locks & Candidates</span>
+                </button>
+                <button class="upper-lock-tab-btn" id="tab-ul-audit" onclick="switchUpperLockTab('audit')">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <span>Prediction Accuracy & Audit</span>
+                    <span class="tab-pill-badge" id="ul-audit-badge">Hit vs Miss</span>
+                </button>
             </div>
+
+            <div class="upper-lock-body" id="upper-lock-body">
+                <!-- VIEW 1: Live Scanner & Predictions -->
+                <div id="upper-lock-view-scanner">
+                    <div class="upper-lock-disclaimer">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <span>This analysis is a <strong>probability-based forecast</strong> based on technical indicators and price patterns. It is <strong>not financial advice</strong> and does not guarantee future performance.</span>
+                    </div>
+
+                    <!-- Loading state -->
+                    <div class="upper-lock-loading" id="upper-lock-loading">
+                        <div class="loading-spinner">
+                            <svg viewBox="0 0 50 50">
+                                <circle cx="25" cy="25" r="20" fill="none" stroke="url(#spinGrad)" stroke-width="4" stroke-linecap="round" stroke-dasharray="80 200" stroke-dashoffset="0">
+                                    <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/>
+                                </circle>
+                            </svg>
+                        </div>
+                        <div class="loading-text">Analyzing 700+ stocks...</div>
+                        <div class="loading-subtext">Computing upper lock probabilities</div>
+                    </div>
+
+                    <!-- Results (populated by JS) -->
+                    <div id="upper-lock-results" style="display:none;"></div>
+                </div>
+
+                <!-- VIEW 2: Prediction Accuracy & Audit -->
+                <div id="upper-lock-view-audit" style="display:none;"></div>
+            </div>
+
         </div>
     </div>
 

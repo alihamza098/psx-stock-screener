@@ -1,0 +1,958 @@
+{
+  "2026-09-03": [
+    {
+      "symbol": "CJPL",
+      "name": "Crescent Jute Products Limited",
+      "sector": "Jute",
+      "probability": 86,
+      "price_at_pred": 18.9,
+      "change_at_pred": 8.0,
+      "volume_at_pred": 1022022.83,
+      "reasons": [
+        "Near upper limit (+8.0%)",
+        "High volume (1.0M)",
+        "Sector positive (Jute avg +2.7%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "FANM",
+      "name": "First Al-Noor Modaraba",
+      "sector": "Modarabas",
+      "probability": 74,
+      "price_at_pred": 10.41,
+      "change_at_pred": 4.309,
+      "volume_at_pred": 703085.33,
+      "reasons": [
+        "Near upper limit (+4.3%)",
+        "Active trading (703K)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "MSOT",
+      "name": "Masood Textile Mills Limited",
+      "sector": "Apparel",
+      "probability": 74,
+      "price_at_pred": 178.07,
+      "change_at_pred": 5.567,
+      "volume_at_pred": 295112.4,
+      "reasons": [
+        "Near upper limit (+5.6%)",
+        "Strong yearly trend (+188%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "MDTL",
+      "name": "Media Times Limited",
+      "sector": "Technology & Communication",
+      "probability": 70,
+      "price_at_pred": 5.66,
+      "change_at_pred": 5.794,
+      "volume_at_pred": 3458139.5,
+      "reasons": [
+        "Near upper limit (+5.8%)",
+        "High volume (3.5M)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "THCCL",
+      "name": "Thatta Cement Company Limited",
+      "sector": "Cement",
+      "probability": 70,
+      "price_at_pred": 77.61,
+      "change_at_pred": 4.3709999999999996,
+      "volume_at_pred": 6001786.47,
+      "reasons": [
+        "Near upper limit (+4.4%)",
+        "Very high volume (6.0M)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "IMAGER1",
+      "name": "Image Pak Ltd(R)",
+      "sector": "Other",
+      "probability": 69,
+      "price_at_pred": 8.79,
+      "change_at_pred": 4.0236686390532554,
+      "volume_at_pred": 221498.83,
+      "reasons": [
+        "Near upper limit (+4.0%)",
+        "Very low free float"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "PMI",
+      "name": "First Prudential Modaraba",
+      "sector": "Modarabas",
+      "probability": 69,
+      "price_at_pred": 4.7,
+      "change_at_pred": 5.380999999999999,
+      "volume_at_pred": 12633261.07,
+      "reasons": [
+        "Near upper limit (+5.4%)",
+        "Very high volume (12.6M)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "STPL",
+      "name": "Siddiqsons Tin Plate Limited",
+      "sector": "Miscellaneous",
+      "probability": 69,
+      "price_at_pred": 8.58,
+      "change_at_pred": 3.6229999999999998,
+      "volume_at_pred": 8111898.97,
+      "reasons": [
+        "Strong momentum (+3.6%)",
+        "Very high volume (8.1M)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "ZUMA",
+      "name": "Zuma Resources Limited",
+      "sector": "Technology & Communication",
+      "probability": 68,
+      "price_at_pred": 22.86,
+      "change_at_pred": 4.146,
+      "volume_at_pred": 1295362.67,
+      "reasons": [
+        "Near upper limit (+4.1%)",
+        "High volume (1.3M)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "ITTEFAQ",
+      "name": "Ittefaq Iron Industries Limited",
+      "sector": "Engineering",
+      "probability": 66,
+      "price_at_pred": 8.52,
+      "change_at_pred": 3.023,
+      "volume_at_pred": 1148303.1,
+      "reasons": [
+        "Strong momentum (+3.0%)",
+        "High volume (1.1M)",
+        "Sector positive (Engineering avg +2.5%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "SMTM",
+      "name": "Samin Textiles Limited",
+      "sector": "Textile Weaving",
+      "probability": 66,
+      "price_at_pred": 11.9,
+      "change_at_pred": 5.496,
+      "volume_at_pred": 228241.37,
+      "reasons": [
+        "Near upper limit (+5.5%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "FFBL",
+      "name": "Fauji Fertilizer Bin Qasim Limited",
+      "sector": "Fertilizer",
+      "probability": 65,
+      "price_at_pred": 88.94,
+      "change_at_pred": 8.068,
+      "volume_at_pred": 3417949.73,
+      "reasons": [
+        "Near upper limit (+8.1%)",
+        "High volume (3.4M)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "PREMA",
+      "name": "At-Tahur Limited",
+      "sector": "Food & Personal Care Products",
+      "probability": 65,
+      "price_at_pred": 36.08,
+      "change_at_pred": 5.837,
+      "volume_at_pred": 4851911.3,
+      "reasons": [
+        "Near upper limit (+5.8%)",
+        "High volume (4.9M)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "CSIL",
+      "name": "Crescent Star Insurance Limited",
+      "sector": "Insurance",
+      "probability": 64,
+      "price_at_pred": 5.75,
+      "change_at_pred": 3.978,
+      "volume_at_pred": 4635574.37,
+      "reasons": [
+        "Strong momentum (+4.0%)",
+        "High volume (4.6M)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "LSEVL",
+      "name": "LSE Ventures Limited",
+      "sector": "Inv. Banks / Securities Cos.",
+      "probability": 64,
+      "price_at_pred": 12.63,
+      "change_at_pred": 4.294,
+      "volume_at_pred": 618020.27,
+      "reasons": [
+        "Near upper limit (+4.3%)",
+        "Active trading (618K)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "ASC",
+      "name": "Al Shaheer Corporation Limited",
+      "sector": "Food & Personal Care Products",
+      "probability": 63,
+      "price_at_pred": 10.19,
+      "change_at_pred": 9.100999999999999,
+      "volume_at_pred": 2092897.1,
+      "reasons": [
+        "Near upper limit (+9.1%)",
+        "High volume (2.1M)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "BILF",
+      "name": "Bilal Fibres Limited",
+      "sector": "Textile Spinning",
+      "probability": 63,
+      "price_at_pred": 38.39,
+      "change_at_pred": 3.06,
+      "volume_at_pred": 248506.23,
+      "reasons": [
+        "Strong momentum (+3.1%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "PASM",
+      "name": "Paramount Spinning Mills Limited",
+      "sector": "Textile Composite",
+      "probability": 63,
+      "price_at_pred": 9.76,
+      "change_at_pred": 9.295,
+      "volume_at_pred": 120114.6,
+      "reasons": [
+        "Near upper limit (+9.3%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "PECO",
+      "name": "Pakistan Engineering Company Limited",
+      "sector": "Engineering",
+      "probability": 63,
+      "price_at_pred": 690.18,
+      "change_at_pred": 6.1850000000000005,
+      "volume_at_pred": 5655.67,
+      "reasons": [
+        "Near upper limit (+6.2%)",
+        "Low free float",
+        "Sector positive (Engineering avg +2.5%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "PHDL",
+      "name": "Pakistan Hotels Developers Limited",
+      "sector": "Miscellaneous",
+      "probability": 63,
+      "price_at_pred": 50.4,
+      "change_at_pred": 2.965,
+      "volume_at_pred": 661395.83,
+      "reasons": [
+        "Good momentum (+3.0%)",
+        "Active trading (661K)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "BCL",
+      "name": "Bolan Castings Limited",
+      "sector": "Engineering",
+      "probability": 62,
+      "price_at_pred": 85.73,
+      "change_at_pred": 4.282,
+      "volume_at_pred": 61087.07,
+      "reasons": [
+        "Near upper limit (+4.3%)",
+        "Sector positive (Engineering avg +2.5%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "GEMSPNL",
+      "name": "Supernet Limited",
+      "sector": "Technology & Communication",
+      "probability": 62,
+      "price_at_pred": 85.95,
+      "change_at_pred": 7.800999999999999,
+      "volume_at_pred": 77775.43,
+      "reasons": [
+        "Near upper limit (+7.8%)",
+        "Strong yearly trend (+110%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "GSPM",
+      "name": "Gulshan Spinning Mills Limited",
+      "sector": "Textile Spinning",
+      "probability": 62,
+      "price_at_pred": 7.45,
+      "change_at_pred": 7.194000000000001,
+      "volume_at_pred": 124830.37,
+      "reasons": [
+        "Near upper limit (+7.2%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "IDEAL",
+      "name": "Ideal Dynamics Limited",
+      "sector": "Textile Spinning",
+      "probability": 62,
+      "price_at_pred": 53.46,
+      "change_at_pred": 9.08,
+      "volume_at_pred": 30724.5,
+      "reasons": [
+        "Near upper limit (+9.1%)",
+        "Low free float",
+        "Strong yearly trend (+131%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "TSPL",
+      "name": "Tri-Star Power Limited",
+      "sector": "Power Generation & Distribution",
+      "probability": 62,
+      "price_at_pred": 16.06,
+      "change_at_pred": 2.098,
+      "volume_at_pred": 269271.67,
+      "reasons": [
+        "Good momentum (+2.1%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "GEMPACRA",
+      "name": "The Pakistan Credit Rating Agency Ltd",
+      "sector": "Miscellaneous",
+      "probability": 60,
+      "price_at_pred": 36.75,
+      "change_at_pred": 4.671,
+      "volume_at_pred": 8002.97,
+      "reasons": [
+        "Near upper limit (+4.7%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "HSPI",
+      "name": "Huffaz Seamless Pipe Industries Limited",
+      "sector": "Engineering",
+      "probability": 60,
+      "price_at_pred": 8.81,
+      "change_at_pred": 9.235,
+      "volume_at_pred": 37501.13,
+      "reasons": [
+        "Near upper limit (+9.2%)",
+        "Sector positive (Engineering avg +2.5%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "PAKL",
+      "name": "Pak Leather Crafts Limited",
+      "sector": "Leather & Tanneries",
+      "probability": 60,
+      "price_at_pred": 55.6,
+      "change_at_pred": 2.716,
+      "volume_at_pred": 4870.8,
+      "reasons": [
+        "Good momentum (+2.7%)",
+        "Low free float",
+        "Sector rallying (Leather & Tanneries avg +3.7%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "PMPK",
+      "name": "Philip Morris (Pakistan) Limited",
+      "sector": "Tobacco",
+      "probability": 60,
+      "price_at_pred": 1431.85,
+      "change_at_pred": 9.158,
+      "volume_at_pred": 3475.3,
+      "reasons": [
+        "Near upper limit (+9.2%)",
+        "Low free float",
+        "Sector positive (Tobacco avg +2.8%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "PKGI",
+      "name": "The Pakistan General Insurance Co. Ltd.",
+      "sector": "Insurance",
+      "probability": 59,
+      "price_at_pred": 39.73,
+      "change_at_pred": 1.924,
+      "volume_at_pred": 145613.0,
+      "reasons": [
+        "Low free float",
+        "Strong yearly trend (+276%)"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "HMM",
+      "name": "Habib Metro Mod",
+      "sector": "Other",
+      "probability": 58,
+      "price_at_pred": 5.8,
+      "change_at_pred": 9.434,
+      "volume_at_pred": 3068.93,
+      "reasons": [
+        "Near upper limit (+9.4%)",
+        "Very low free float"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "MQTM",
+      "name": "Maqbool Textile Mills Limited",
+      "sector": "Textile Spinning",
+      "probability": 58,
+      "price_at_pred": 28.36,
+      "change_at_pred": 3.9210000000000003,
+      "volume_at_pred": 115790.2,
+      "reasons": [
+        "Strong momentum (+3.9%)",
+        "Low free float"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "OLSM",
+      "name": "Olympia Spinning and Weaving Mills Limited",
+      "sector": "Textile Spinning",
+      "probability": 58,
+      "price_at_pred": 11.97,
+      "change_at_pred": 6.875000000000013,
+      "volume_at_pred": 0.0,
+      "reasons": [
+        "Near upper limit (+6.9%)",
+        "Very low free float"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "SARC",
+      "name": "Sardar Chemical Industries Limited",
+      "sector": "Chemical",
+      "probability": 58,
+      "price_at_pred": 97.17,
+      "change_at_pred": 7.979,
+      "volume_at_pred": 23713.7,
+      "reasons": [
+        "Near upper limit (+8.0%)",
+        "Low free float"
+      ],
+      "predicted_at": "2026-09-03"
+    },
+    {
+      "symbol": "SGF",
+      "name": "Service GlobalFootwear Limited",
+      "sector": "Leather & Tanneries",
+      "probability": 58,
+      "price_at_pred": 116.56,
+      "change_at_pred": 2.1919999999999997,
+      "volume_at_pred": 247466.2,
+      "reasons": [
+        "Good momentum (+2.2%)",
+        "Sector rallying (Leather & Tanneries avg +3.7%)"
+      ],
+      "predicted_at": "2026-09-03"
+    }
+  ],
+  "2026-09-02": [
+    {
+      "symbol": "INL",
+      "name": "INL",
+      "sector": "Inv. Banks / Securities Cos.",
+      "probability": 95,
+      "price_at_pred": 3.0,
+      "change_at_pred": 39.53,
+      "volume_at_pred": 0,
+      "reasons": [
+        "Momentum +39.5%",
+        "Volume 1.0x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "WASLR",
+      "name": "WASLR",
+      "sector": "Modarabas",
+      "probability": 95,
+      "price_at_pred": 0.79,
+      "change_at_pred": 23.44,
+      "volume_at_pred": 3062491.9,
+      "reasons": [
+        "Momentum +23.4%",
+        "Volume 0.4x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "HSMCPS",
+      "name": "HSMCPS",
+      "sector": "Sugar & Allied Industries",
+      "probability": 95,
+      "price_at_pred": 6.19,
+      "change_at_pred": 19.04,
+      "volume_at_pred": 1068.93,
+      "reasons": [
+        "Momentum +19.0%",
+        "Volume 0.5x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "WAVESR1",
+      "name": "WAVESR1",
+      "sector": "Other",
+      "probability": 95,
+      "price_at_pred": 6.71,
+      "change_at_pred": 17.31,
+      "volume_at_pred": 298525.87,
+      "reasons": [
+        "Momentum +17.3%",
+        "Volume 298525.9x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "UNITYR1",
+      "name": "UNITYR1",
+      "sector": "Other",
+      "probability": 86,
+      "price_at_pred": 1.1,
+      "change_at_pred": 15.79,
+      "volume_at_pred": 0,
+      "reasons": [
+        "Momentum +15.8%",
+        "Volume 1.0x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "BROT",
+      "name": "BROT",
+      "sector": "Textile Spinning",
+      "probability": 72,
+      "price_at_pred": 4.2,
+      "change_at_pred": 12.9,
+      "volume_at_pred": 0,
+      "reasons": [
+        "Momentum +12.9%",
+        "Volume 1.0x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "GCWLR",
+      "name": "GCWLR",
+      "sector": "Chemical",
+      "probability": 64,
+      "price_at_pred": 9.01,
+      "change_at_pred": 12.48,
+      "volume_at_pred": 31529.2,
+      "reasons": [
+        "Momentum +12.5%",
+        "Volume 0.3x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "MFFLR1",
+      "name": "MFFLR1",
+      "sector": "Food & Personal Care Products",
+      "probability": 64,
+      "price_at_pred": 9.01,
+      "change_at_pred": 12.48,
+      "volume_at_pred": 19814.8,
+      "reasons": [
+        "Momentum +12.5%",
+        "Volume 0.3x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "ICLR1",
+      "name": "ICLR1",
+      "sector": "Chemical",
+      "probability": 65,
+      "price_at_pred": 9.77,
+      "change_at_pred": 11.4,
+      "volume_at_pred": 0,
+      "reasons": [
+        "Momentum +11.4%",
+        "Volume 1.0x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "AASM",
+      "name": "AASM",
+      "sector": "Synthetic & Rayon",
+      "probability": 61,
+      "price_at_pred": 3.49,
+      "change_at_pred": 10.79,
+      "volume_at_pred": 0,
+      "reasons": [
+        "Momentum +10.8%",
+        "Volume 1.0x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "ASCR1",
+      "name": "ASCR1",
+      "sector": "Other",
+      "probability": 82,
+      "price_at_pred": 6.28,
+      "change_at_pred": 10.56,
+      "volume_at_pred": 288849.07,
+      "reasons": [
+        "Momentum +10.6%",
+        "Volume 288849.1x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "GUSM",
+      "name": "GUSM",
+      "sector": "Textile Spinning",
+      "probability": 58,
+      "price_at_pred": 9.78,
+      "change_at_pred": 10.26,
+      "volume_at_pred": 34016.03,
+      "reasons": [
+        "Momentum +10.3%",
+        "Volume 0.9x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "GEMNETS",
+      "name": "GEMNETS",
+      "sector": "Technology & Communication",
+      "probability": 59,
+      "price_at_pred": 23.72,
+      "change_at_pred": 10.02,
+      "volume_at_pred": 567.93,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 1.2x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "ADMM",
+      "name": "ADMM",
+      "sector": "Textile Composite",
+      "probability": 57,
+      "price_at_pred": 59.36,
+      "change_at_pred": 10.01,
+      "volume_at_pred": 95207.07,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 0.9x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "BAPL",
+      "name": "BAPL",
+      "sector": "Chemical",
+      "probability": 60,
+      "price_at_pred": 37.47,
+      "change_at_pred": 10.01,
+      "volume_at_pred": 271126.57,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 1.3x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "FPJM",
+      "name": "FPJM",
+      "sector": "Modarabas",
+      "probability": 61,
+      "price_at_pred": 25.72,
+      "change_at_pred": 10.01,
+      "volume_at_pred": 1361769.13,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 1.4x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "PPVC",
+      "name": "PPVC",
+      "sector": "Chemical",
+      "probability": 62,
+      "price_at_pred": 31.44,
+      "change_at_pred": 10.01,
+      "volume_at_pred": 14518.0,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 1.5x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "PGLC",
+      "name": "PGLC",
+      "sector": "Leasing Companies",
+      "probability": 79,
+      "price_at_pred": 18.02,
+      "change_at_pred": 10.01,
+      "volume_at_pred": 106099.6,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 3.6x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "BUXL",
+      "name": "BUXL",
+      "sector": "Chemical",
+      "probability": 66,
+      "price_at_pred": 1019.45,
+      "change_at_pred": 10.0,
+      "volume_at_pred": 46478.93,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 2.0x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "DAAG",
+      "name": "DAAG",
+      "sector": "Chemical",
+      "probability": 63,
+      "price_at_pred": 110.31,
+      "change_at_pred": 10.0,
+      "volume_at_pred": 15511.0,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 1.7x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "HUSI",
+      "name": "HUSI",
+      "sector": "Property",
+      "probability": 56,
+      "price_at_pred": 55.0,
+      "change_at_pred": 10.0,
+      "volume_at_pred": 25021.4,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 0.8x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "IDSM",
+      "name": "IDSM",
+      "sector": "Textile Spinning",
+      "probability": 56,
+      "price_at_pred": 60.72,
+      "change_at_pred": 10.0,
+      "volume_at_pred": 30724.5,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 0.8x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "LMSM",
+      "name": "LMSM",
+      "sector": "Textile Spinning",
+      "probability": 56,
+      "price_at_pred": 63.91,
+      "change_at_pred": 10.0,
+      "volume_at_pred": 12502.6,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 0.8x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "MACFL",
+      "name": "MACFL",
+      "sector": "Paper, Board & Packaging",
+      "probability": 72,
+      "price_at_pred": 62.59,
+      "change_at_pred": 10.0,
+      "volume_at_pred": 1782821.7,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 2.8x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "PAKD",
+      "name": "PAKD",
+      "sector": "Technology & Communication",
+      "probability": 67,
+      "price_at_pred": 137.36,
+      "change_at_pred": 10.0,
+      "volume_at_pred": 21966.83,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 2.1x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "PPP",
+      "name": "PPP",
+      "sector": "Paper, Board & Packaging",
+      "probability": 80,
+      "price_at_pred": 156.61,
+      "change_at_pred": 10.0,
+      "volume_at_pred": 30314.13,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 4.0x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "STML",
+      "name": "STML",
+      "sector": "Textile Composite",
+      "probability": 55,
+      "price_at_pred": 54.5,
+      "change_at_pred": 9.99,
+      "volume_at_pred": 20109.57,
+      "reasons": [
+        "Momentum +10.0%",
+        "Volume 0.7x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "ANTM",
+      "name": "ANTM",
+      "sector": "Textile Composite",
+      "probability": 65,
+      "price_at_pred": 84.53,
+      "change_at_pred": 9.89,
+      "volume_at_pred": 17934.03,
+      "reasons": [
+        "Momentum +9.9%",
+        "Volume 2.0x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "NRSL",
+      "name": "NRSL",
+      "sector": "Chemical",
+      "probability": 77,
+      "price_at_pred": 46.13,
+      "change_at_pred": 9.55,
+      "volume_at_pred": 578194.5,
+      "reasons": [
+        "Momentum +9.6%",
+        "Volume 3.7x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "HMM",
+      "name": "HMM",
+      "sector": "Other",
+      "probability": 63,
+      "price_at_pred": 5.8,
+      "change_at_pred": 9.43,
+      "volume_at_pred": 3068.93,
+      "reasons": [
+        "Momentum +9.4%",
+        "Volume 2.1x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "GCWLPRS",
+      "name": "GCWLPRS",
+      "sector": "Chemical",
+      "probability": 48,
+      "price_at_pred": 118.0,
+      "change_at_pred": 9.41,
+      "volume_at_pred": 286.13,
+      "reasons": [
+        "Momentum +9.4%",
+        "Volume 0.2x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "HSPI",
+      "name": "HSPI",
+      "sector": "Engineering",
+      "probability": 55,
+      "price_at_pred": 8.81,
+      "change_at_pred": 9.23,
+      "volume_at_pred": 37501.13,
+      "reasons": [
+        "Momentum +9.2%",
+        "Volume 1.2x"
+      ],
+      "predicted_at": "2026-09-02"
+    },
+    {
+      "symbol": "PMPK",
+      "name": "PMPK",
+      "sector": "Tobacco",
+      "probability": 75,
+      "price_at_pred": 1431.85,
+      "change_at_pred": 9.16,
+      "volume_at_pred": 3475.3,
+      "reasons": [
+        "Momentum +9.2%",
+        "Volume 4.4x"
+      ],
+      "predicted_at": "2026-09-02"
+    }
+  ]
+}

@@ -1324,6 +1324,31 @@ function initEventListeners() {
 
 // ─── Upper Lock Analysis ───
 let upperLockData = null;
+let activeUpperLockTab = 'scanner';
+let activeAuditFilter = 'all';
+
+function switchUpperLockTab(tabName) {
+    activeUpperLockTab = tabName;
+    document.querySelectorAll(".upper-lock-tab-btn").forEach(btn => btn.classList.remove("active"));
+    const activeBtn = document.getElementById(tabName === "audit" ? "tab-ul-audit" : "tab-ul-scanner");
+    if (activeBtn) activeBtn.classList.add("active");
+
+    const scannerView = document.getElementById("upper-lock-view-scanner");
+    const auditView = document.getElementById("upper-lock-view-audit");
+
+    if (tabName === "audit") {
+        if (scannerView) scannerView.style.display = "none";
+        if (auditView) {
+            auditView.style.display = "block";
+            if (upperLockData && upperLockData.audit) {
+                renderUpperLockAudit(upperLockData.audit, activeAuditFilter);
+            }
+        }
+    } else {
+        if (auditView) auditView.style.display = "none";
+        if (scannerView) scannerView.style.display = "block";
+    }
+}
 
 function openUpperLockAnalysis(force = false) {
     const modal = document.getElementById("upper-lock-modal");
@@ -1356,7 +1381,18 @@ function openUpperLockAnalysis(force = false) {
             if (refreshIcon) refreshIcon.style.animation = "";
             if (data.success) {
                 upperLockData = data;
+                
+                // Update badge in tab
+                const auditBadge = document.getElementById("ul-audit-badge");
+                if (auditBadge && data.audit) {
+                    auditBadge.textContent = `${data.audit.hitRate}% Win Rate`;
+                }
+
+                // Render current view
                 renderUpperLockResults(data, "probability");
+                if (data.audit && activeUpperLockTab === 'audit') {
+                    renderUpperLockAudit(data.audit, activeAuditFilter);
+                }
             } else {
                 showUpperLockError(data.error || "Failed to analyze stocks");
             }
@@ -1367,12 +1403,139 @@ function openUpperLockAnalysis(force = false) {
         });
 }
 
+function renderUpperLockAudit(auditData, filter = 'all') {
+    activeAuditFilter = filter;
+    const container = document.getElementById("upper-lock-view-audit");
+    if (!container) return;
+
+    if (!auditData || !auditData.predictions || auditData.predictions.length === 0) {
+        container.innerHTML = `
+            <div class="upper-lock-empty" style="padding: 40px 20px; text-align: center;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+                </svg>
+                <p>No historical predictions recorded for audit yet.<br>Today's candidates have been logged and will be audited automatically.</p>
+            </div>`;
+        return;
+    }
+
+    const {
+        predictionDate,
+        evaluationDate,
+        totalAudited,
+        hitsCount,
+        nearHitsCount,
+        partialCount,
+        missesCount,
+        hitRate,
+        lockHitRate,
+        avgReturn,
+        predictions
+    } = auditData;
+
+    // Filter predictions
+    let filtered = predictions;
+    if (filter === "hit") filtered = predictions.filter(p => p.outcome === "HIT");
+    else if (filter === "near-hit") filtered = predictions.filter(p => p.outcome === "NEAR_HIT");
+    else if (filter === "missed") filtered = predictions.filter(p => p.outcome === "MISSED");
+
+    let html = `
+        <!-- Audit KPI Summary Grid -->
+        <div class="audit-kpi-grid">
+            <div class="audit-kpi-card highlight">
+                <span class="audit-kpi-label">🎯 Prediction Win Rate</span>
+                <span class="audit-kpi-value" style="color: #a5b4fc;">${hitRate}%</span>
+                <span class="audit-kpi-sub">${hitsCount + nearHitsCount} of ${totalAudited} locked or hit high gains</span>
+            </div>
+            <div class="audit-kpi-card success">
+                <span class="audit-kpi-label">🔒 Exact Locks Hit</span>
+                <span class="audit-kpi-value" style="color: #4ade80;">${hitsCount}</span>
+                <span class="audit-kpi-sub">${lockHitRate}% achieved full circuit limit</span>
+            </div>
+            <div class="audit-kpi-card">
+                <span class="audit-kpi-label">🟢 Near Miss / Strong Rally</span>
+                <span class="audit-kpi-value" style="color: #38bdf8;">${nearHitsCount}</span>
+                <span class="audit-kpi-sub">Gained +4.0% to +9.5%</span>
+            </div>
+            <div class="audit-kpi-card">
+                <span class="audit-kpi-label">📈 Average Candidate Move</span>
+                <span class="audit-kpi-value" style="color: ${avgReturn >= 0 ? '#4ade80' : '#f87171'};">${avgReturn >= 0 ? '+' : ''}${avgReturn}%</span>
+                <span class="audit-kpi-sub">Across all audited predictions</span>
+            </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="audit-filter-bar">
+            <div class="audit-chips">
+                <button class="audit-chip ${filter === 'all' ? 'active' : ''}" onclick="renderUpperLockAudit(upperLockData.audit, 'all')">
+                    All Predictions (${totalAudited})
+                </button>
+                <button class="audit-chip ${filter === 'hit' ? 'active' : ''}" onclick="renderUpperLockAudit(upperLockData.audit, 'hit')">
+                    🔒 Circuit Locks Hit (${hitsCount})
+                </button>
+                <button class="audit-chip ${filter === 'near-hit' ? 'active' : ''}" onclick="renderUpperLockAudit(upperLockData.audit, 'near-hit')">
+                    🟢 Strong Gains (+4%+) (${nearHitsCount})
+                </button>
+                <button class="audit-chip ${filter === 'missed' ? 'active' : ''}" onclick="renderUpperLockAudit(upperLockData.audit, 'missed')">
+                    🛑 Missed / Pullbacks (${missesCount})
+                </button>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">
+                📅 Predicted on: <strong>${predictionDate}</strong> • Audited on: <strong>${evaluationDate}</strong>
+            </div>
+        </div>
+
+        <!-- List of Audited Cards -->
+        <div class="audit-cards-list">`;
+
+    if (filtered.length === 0) {
+        html += `<div class="upper-lock-empty" style="padding: 24px;"><p>No candidates match this filter.</p></div>`;
+    } else {
+        filtered.forEach(p => {
+            const outcomeClass = p.outcome === 'HIT' ? 'hit' : p.outcome === 'NEAR_HIT' ? 'near-hit' : p.outcome === 'PARTIAL_GAIN' ? 'partial' : 'missed';
+            const outcomeIcon = p.outcome === 'HIT' ? '✅' : p.outcome === 'NEAR_HIT' ? '🟢' : p.outcome === 'PARTIAL_GAIN' ? '🟡' : '🛑';
+            const outcomeLabel = p.outcome === 'HIT' ? 'LOCKED' : p.outcome === 'NEAR_HIT' ? 'NEAR LOCK' : p.outcome === 'PARTIAL_GAIN' ? 'POSITIVE' : 'MISSED';
+
+            html += `
+                <div class="audit-card ${outcomeClass}" onclick="closeUpperLockModal(); showStockDetail('${p.symbol}')" title="Click to view full chart for ${p.symbol}">
+                    <div style="text-align: center;">
+                        <span class="audit-badge ${outcomeClass}">${outcomeIcon} ${outcomeLabel}</span>
+                    </div>
+                    <div>
+                        <div style="font-weight: 700; font-size: 1rem; color: var(--text-primary);">${p.symbol}</div>
+                        <div style="font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">${p.name}</div>
+                        <div style="font-size: 0.72rem; color: #818cf8; margin-top: 2px;">${p.sector}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">Confidence</div>
+                        <div style="font-weight: 700; font-size: 0.95rem; color: ${p.probability >= 75 ? '#4ade80' : '#fbbf24'};">${p.probability}% Prob</div>
+                        <div style="font-size: 0.72rem; color: var(--text-secondary); margin-top: 2px;">Base: ₨${p.predictedPrice.toFixed(2)}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">Actual Outcome</div>
+                        <div style="font-weight: 800; font-size: 1.05rem; color: ${p.actualChange >= 0 ? '#4ade80' : '#f87171'};">
+                            ${p.actualChange >= 0 ? '+' : ''}${p.actualChange.toFixed(2)}%
+                        </div>
+                        <div style="font-size: 0.72rem; color: var(--text-secondary); margin-top: 2px;">Price: ₨${p.actualPrice.toFixed(2)}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">Audit Verdict</div>
+                        <div style="font-size: 0.8rem; color: var(--text-primary); line-height: 1.35; margin-top: 2px;">${p.notes}</div>
+                    </div>
+                </div>`;
+        });
+    }
+
+    html += `</div>`;
+    container.innerHTML = html;
+}
 
 function closeUpperLockModal() {
     const modal = document.getElementById("upper-lock-modal");
     modal.classList.remove("active");
     document.body.style.overflow = "";
 }
+
 
 function showUpperLockError(message) {
     document.getElementById("upper-lock-loading").style.display = "none";

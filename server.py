@@ -928,6 +928,30 @@ def _save_upper_lock_history(history):
         print(f"[PSX] Could not save upper lock history: {e}")
 
 
+UPPER_LOCK_PREDICTIONS_FILE = Path(__file__).parent / "cache" / "upper_lock_predictions.json"
+
+
+def _load_upper_lock_predictions():
+    """Load upper lock predictions history from file."""
+    try:
+        if UPPER_LOCK_PREDICTIONS_FILE.exists():
+            with open(UPPER_LOCK_PREDICTIONS_FILE, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"[PSX] Could not load upper lock predictions: {e}")
+    return {}
+
+
+def _save_upper_lock_predictions(predictions):
+    """Save upper lock predictions history to file."""
+    try:
+        with open(UPPER_LOCK_PREDICTIONS_FILE, "w") as f:
+            json.dump(predictions, f, indent=2)
+    except Exception as e:
+        print(f"[PSX] Could not save upper lock predictions: {e}")
+
+
+
 def _detect_upper_lock(change):
     """Check if a stock's daily change% indicates it hit upper lock.
     PSX circuit breaker limits are typically 5%, 7.5%, or 10%.
@@ -1185,6 +1209,178 @@ def calculate_upper_lock_analysis(stocks):
     _save_upper_lock_history(history)
 
     return today_locked, predicted[:50], history
+
+
+def audit_upper_lock_predictions(stocks, current_predicted=None):
+    """
+    Evaluates whether previous session upper lock predictions actually hit today.
+    Returns audit statistics and detailed list of audited predictions.
+    Also saves today's new predictions for future audits.
+    """
+    now_pkt = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5)
+    today_str = now_pkt.strftime("%Y-%m-%d")
+    stock_map = {str(s.get("symbol", "")).upper(): s for s in stocks}
+
+    pred_store = _load_upper_lock_predictions()
+
+    # Save today's top predicted candidates for tomorrow's evaluation
+    if current_predicted:
+        today_preds = []
+        for p in current_predicted[:35]:
+            today_preds.append({
+                "symbol": p["symbol"],
+                "name": p["name"],
+                "sector": p["sector"],
+                "probability": p["probability"],
+                "price_at_pred": p["price"],
+                "change_at_pred": p["change"],
+                "volume_at_pred": p["volume"],
+                "reasons": p.get("reasons", []),
+                "predicted_at": today_str
+            })
+        pred_store[today_str] = today_preds
+
+    # Determine yesterday's date (latest date before today)
+    past_dates = sorted([d for d in pred_store.keys() if d < today_str], reverse=True)
+    yesterday_date = past_dates[0] if past_dates else None
+
+    # If no stored predictions for yesterday, backfill from intelligence.db
+    if not yesterday_date or not pred_store.get(yesterday_date):
+        try:
+            intel_db_path = Path("cache/intelligence.db")
+            if intel_db_path.exists():
+                import sqlite3
+                conn = sqlite3.connect(str(intel_db_path), timeout=5)
+                c = conn.cursor()
+                c.execute("""
+                    SELECT DISTINCT date(detected_at) as dt
+                    FROM stock_events
+                    WHERE date(detected_at) < ?
+                    ORDER BY dt DESC LIMIT 1
+                """, (today_str,))
+                row = c.fetchone()
+                if row:
+                    yesterday_date = row[0]
+                    c.execute("""
+                        SELECT symbol, sector, price, price_change_pct, volume, rvol
+                        FROM stock_events
+                        WHERE date(detected_at) = ? 
+                          AND (price_change_pct >= 6.5 OR (price_change_pct >= 3.5 AND rvol >= 1.5))
+                        ORDER BY price_change_pct DESC
+                        LIMIT 35
+                    """, (yesterday_date,))
+                    seen = set()
+                    backfilled = []
+                    for r in c.fetchall():
+                        sym, sec, p_p, ch_p, vol_p, rvol = r
+                        if sym in seen: continue
+                        seen.add(sym)
+                        prob = min(95, max(45, int(ch_p * 5 + min(30, (rvol or 1) * 8))))
+                        backfilled.append({
+                            "symbol": sym,
+                            "name": sym,
+                            "sector": sec or "Other",
+                            "probability": prob,
+                            "price_at_pred": p_p or 0.0,
+                            "change_at_pred": ch_p or 0.0,
+                            "volume_at_pred": vol_p or 0,
+                            "reasons": [f"Momentum +{ch_p:.1f}%", f"Volume {rvol or 1:.1f}x"],
+                            "predicted_at": yesterday_date
+                        })
+                    if backfilled:
+                        pred_store[yesterday_date] = backfilled
+                conn.close()
+        except Exception as be:
+            print(f"[UpperLockAudit] Backfill error: {be}")
+
+    # Keep only last 14 days
+    all_dates = sorted(pred_store.keys(), reverse=True)[:14]
+    pred_store = {d: pred_store[d] for d in all_dates}
+    _save_upper_lock_predictions(pred_store)
+
+    # Evaluate predictions for yesterday_date against current stocks
+    audited_list = []
+    yesterday_preds = pred_store.get(yesterday_date, []) if yesterday_date else []
+
+    for pred in yesterday_preds:
+        sym = str(pred.get("symbol", "")).upper()
+        s = stock_map.get(sym)
+        if not s:
+            continue
+
+        actual_p = float(s.get("price", 0) or 0)
+        actual_ch = float(s.get("change", 0) or 0)
+        actual_vol = float(s.get("volume", 0) or 0)
+        pred_p = float(pred.get("price_at_pred", actual_p) or actual_p)
+        name = s.get("name") or pred.get("name", sym)
+        sec = s.get("sector") or pred.get("sector", "Other")
+        prob = pred.get("probability", 50)
+
+        # Check circuit lock
+        is_locked, lock_level = _detect_upper_lock(actual_ch)
+
+        if is_locked:
+            outcome = "HIT"
+            status_text = f"LOCKED ({actual_ch:+.1f}%)"
+            notes = f"Circuit breaker reached at {actual_ch:+.2f}% with {actual_vol:,.0f} shares traded."
+        elif actual_ch >= 4.0:
+            outcome = "NEAR_HIT"
+            status_text = f"STRONG GAIN ({actual_ch:+.1f}%)"
+            notes = f"Near upper limit, rallied {actual_ch:+.2f}% but fell short of circuit lock."
+        elif actual_ch > 0:
+            outcome = "PARTIAL_GAIN"
+            status_text = f"POSITIVE ({actual_ch:+.1f}%)"
+            notes = f"Closed positive at {actual_ch:+.2f}%, held baseline support."
+        else:
+            outcome = "MISSED"
+            status_text = f"MISSED ({actual_ch:+.1f}%)"
+            notes = f"Failed to lock, closed at {actual_ch:+.2f}% under profit taking."
+
+        audited_list.append({
+            "symbol": sym,
+            "name": name,
+            "sector": sec,
+            "probability": prob,
+            "reasons": pred.get("reasons", []),
+            "predictedPrice": round(pred_p, 2),
+            "actualPrice": round(actual_p, 2),
+            "actualChange": round(actual_ch, 2),
+            "volume": actual_vol,
+            "outcome": outcome,
+            "statusText": status_text,
+            "isLocked": is_locked,
+            "notes": notes
+        })
+
+    # Sort audited by outcome (HIT first, then NEAR_HIT, then PARTIAL, then MISSED) and then by actualChange
+    outcome_rank = {"HIT": 0, "NEAR_HIT": 1, "PARTIAL_GAIN": 2, "MISSED": 3}
+    audited_list.sort(key=lambda x: (outcome_rank.get(x["outcome"], 4), -x["actualChange"]))
+
+    hits = [a for a in audited_list if a["outcome"] == "HIT"]
+    near_hits = [a for a in audited_list if a["outcome"] == "NEAR_HIT"]
+    partial = [a for a in audited_list if a["outcome"] == "PARTIAL_GAIN"]
+    misses = [a for a in audited_list if a["outcome"] == "MISSED"]
+
+    total = len(audited_list)
+    hit_rate = round((len(hits) + len(near_hits)) / total * 100, 1) if total else 0
+    lock_rate = round(len(hits) / total * 100, 1) if total else 0
+    avg_return = round(sum(a["actualChange"] for a in audited_list) / total, 2) if total else 0
+
+    return {
+        "predictionDate": yesterday_date or "N/A",
+        "evaluationDate": today_str,
+        "totalAudited": total,
+        "hitsCount": len(hits),
+        "nearHitsCount": len(near_hits),
+        "partialCount": len(partial),
+        "missesCount": len(misses),
+        "hitRate": hit_rate,
+        "lockHitRate": lock_rate,
+        "avgReturn": avg_return,
+        "predictions": audited_list,
+        "summaryMessage": f"{len(hits)} locked, {len(near_hits)} near-lock out of {total} candidates ({hit_rate}% win rate)"
+    }
+
 
 
 
@@ -4265,6 +4461,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 _do_fetch_stocks()
             stocks, is_stale = fetch_stock_data(force=force)
             today_locked, predicted, history = calculate_upper_lock_analysis(stocks)
+            audit = audit_upper_lock_predictions(stocks, current_predicted=predicted)
 
             # Get yesterday's locked stocks from history (PKT time)
             now_pkt = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5)
@@ -4279,10 +4476,12 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 "yesterdayLocked": yesterday_locked,
                 "yesterdayDate": yesterday_date,
                 "predicted": predicted,
+                "audit": audit,
                 "totalAnalyzed": len(stocks),
                 "lastUpdated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "disclaimer": "This analysis is based on price patterns and technical indicators. It is a probability-based forecast — not financial advice or a guarantee of future performance."
             })
+
 
         except Exception as e:
             print(f"[PSX] Error in upper lock analysis: {e}")
