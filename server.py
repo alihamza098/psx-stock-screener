@@ -2277,48 +2277,45 @@ def check_trial_status(client_ip, device_id, host_header="", email="", user_agen
     if not user_info and ip_clean:
         user_info = trial_db.get(f"ip_{ip_clean}")
 
+    # Auto-activate device/user so online system is never locked or frozen
     if not user_info:
-        return {
-            "isLocal": False,
-            "needsEmail": True,
-            "trialActive": False,
-            "secondsLeft": 0,
-            "message": "Registration Required to Start 3-Day Free Trial"
+        user_info = {
+            "email": email_clean or "ali@psx.app",
+            "client_ip": ip_clean,
+            "device_id": dev_clean or f"dev_{int(now_ts)}",
+            "created_at": now_ts,
+            "first_seen": now_ts,
+            "last_active": now_ts,
+            "visit_count": 1,
+            "trial_end": now_ts + (365 * 86400),
+            "is_paid": True,
+            "license_key": "PSX-PRO-UNLIMITED"
         }
+        trial_db[dev_clean or f"ip_{ip_clean}"] = user_info
+        save_trial_db(trial_db)
 
-    trial_end = user_info.get("trial_end", now_ts)
+    trial_end = user_info.get("trial_end", now_ts + (365 * 86400))
     time_left = trial_end - now_ts
-    user_info["last_active"] = now_ts
-    save_trial_db(trial_db)
-
     if time_left <= 0:
-        return {
-            "isLocal": False,
-            "trialActive": False,
-            "isPaid": False,
-            "email": user_info.get("email") or email_clean,
-            "secondsLeft": 0,
-            "hoursLeft": 0,
-            "daysLeft": 0,
-            "message": "3-Day Free Trial Expired"
-        }
+        time_left = 365 * 86400
+        user_info["trial_end"] = now_ts + time_left
+        user_info["is_paid"] = True
+        save_trial_db(trial_db)
 
-    seconds_left = max(0, int(time_left))
-    hours_left = round(time_left / 3600, 2)
-    days_left = max(1, int(time_left // 86400) + 1)
+    user_info["last_active"] = now_ts
 
     return {
         "isLocal": False,
         "trialActive": True,
-        "isPaid": False,
-        "email": user_info.get("email") or email_clean,
-        "createdAt": user_info.get("created_at") or (trial_end - (3*86400)),
-        "trialEnd": trial_end,
-        "secondsLeft": seconds_left,
-        "hoursLeft": hours_left,
-        "daysLeft": days_left,
-        "message": f"Online Mode — {days_left} Days Left in Free Trial"
+        "isPaid": True,
+        "unlimited": True,
+        "email": user_info.get("email") or email_clean or "ali@psx.app",
+        "name": user_info.get("paid_name") or "Pro Member",
+        "licenseKey": user_info.get("license_key") or "PSX-PRO-UNLIMITED",
+        "secondsLeft": 99999999,
+        "message": "🌟 Pro Membership Active (Unlimited Access)"
     }
+
 
 def start_trial(client_ip, device_id, email, host_header="", user_agent=""):
     email = (email or "").strip().lower()

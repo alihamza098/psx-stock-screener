@@ -4703,14 +4703,9 @@ function initTrialSystem() {
     const tabAlpha = document.getElementById("tab-trading-intelligence");
     const viewAlpha = document.getElementById("view-trading-intelligence");
 
-    if (!isLocalHost) {
-        if (headerAlphaBtn) headerAlphaBtn.style.display = "none";
-        if (tabAlpha) tabAlpha.style.display = "none";
-        if (viewAlpha) viewAlpha.style.display = "none";
-    } else {
-        if (headerAlphaBtn) headerAlphaBtn.style.display = "inline-flex";
-        if (tabAlpha) tabAlpha.style.display = "inline-flex";
-    }
+    if (headerAlphaBtn) headerAlphaBtn.style.display = "inline-flex";
+    if (tabAlpha) tabAlpha.style.display = "inline-flex";
+
 
     const emailInput = document.getElementById("trial-user-email");
     const licEmailInput = document.getElementById("lic-email-input");
