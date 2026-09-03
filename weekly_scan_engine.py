@@ -650,7 +650,7 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
 
 # ─── Scan Runner & Persister ───
 
-def execute_weekly_scan(stocks, index_data=None, run_type="SCHEDULED_WEEKLY", config=None):
+def execute_weekly_scan(stocks, index_data=None, run_type="SCHEDULED_WEEKLY", config=None, run_id=None):
     """
     Executes full scan over stock universe, computes metrics, and persists to SQLite.
     Returns (ScanRun, list of ScanCandidate).
@@ -660,9 +660,10 @@ def execute_weekly_scan(stocks, index_data=None, run_type="SCHEDULED_WEEKLY", co
 
     init_db()
 
-    run_id = str(uuid.uuid4())
+    run_id = run_id or str(uuid.uuid4())
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     today_date = datetime.date.today().isoformat()
+
 
     # Determine index trend direction from index_data
     index_trend = "LONG"
@@ -819,17 +820,8 @@ def execute_weekly_scan(stocks, index_data=None, run_type="SCHEDULED_WEEKLY", co
         conn.commit()
         conn.close()
 
-    # ── Telegram alerts for Grade A / A+ candidates ───────────────────────────
-    try:
-        import psx_telegram_bot as _tg
-        for cand in candidates:
-            if cand.get("grade") in ("A_PLUS", "A"):
-                _tg.alert_weekly_scan_candidate(cand)
-    except Exception:
-        pass  # Telegram failures never block scan results
-    # ── End Telegram ──────────────────────────────────────────────────────────
-
     return scan_run, candidates
+
 
 
 
@@ -1112,10 +1104,11 @@ def trigger_async_rescan(stocks, index_data=None):
     def _worker():
         try:
             config = get_current_config()
-            execute_weekly_scan(stocks, index_data=index_data, run_type="MANUAL_RESCAN", config=config)
+            execute_weekly_scan(stocks, index_data=index_data, run_type="MANUAL_RESCAN", config=config, run_id=new_run_id)
             print(f"[WeeklyScan] Async scan completed for run {new_run_id}")
         except Exception as e:
             print(f"[WeeklyScan] Async scan error: {e}")
+
 
     _active_scan_thread = threading.Thread(target=_worker, daemon=True)
     _active_scan_thread.start()

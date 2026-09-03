@@ -1112,7 +1112,11 @@ function initEventListeners() {
         if (ulModal && ulModal.classList.contains("active")) {
             openUpperLockAnalysis(true);
         }
+        if (currentView === "weekly-scan") {
+            triggerWeeklyManualRescan();
+        }
     });
+
 
 
     // Reset
@@ -7075,38 +7079,23 @@ async function triggerWeeklyManualRescan() {
     try {
         const res = await fetch("/api/weekly-scan/rescan", { method: "POST" });
         const json = await res.json();
-        if (json.success) {
-            let attempts = 0;
-            const interval = setInterval(async () => {
-                attempts++;
-                const checkRes = await fetch("/api/weekly-scan/latest");
-                const checkJson = await checkRes.json();
-                if (checkJson.success && checkJson.run && checkJson.run.id === json.runId) {
-                    clearInterval(interval);
-                    currentWeeklyRun = checkJson.run;
-                    currentWeeklyCandidates = checkJson.candidates || [];
-                    renderWeeklyScanView();
-                    loadWeeklyPerformanceData(false);
-                    if (btn) btn.disabled = false;
-                    if (icon) icon.classList.remove("spinning");
-                } else if (attempts > 12) {
-                    clearInterval(interval);
-                    loadWeeklyScanData(true);
-                    if (btn) btn.disabled = false;
-                    if (icon) icon.classList.remove("spinning");
-                }
-            }, 1000);
+        if (json.success && json.run) {
+            currentWeeklyRun = json.run;
+            currentWeeklyCandidates = json.candidates || [];
+            renderWeeklyScanView();
+            loadWeeklyPerformanceData(false);
         } else {
-            alert(json.error || "Failed to trigger rescan.");
-            if (btn) btn.disabled = false;
-            if (icon) icon.classList.remove("spinning");
+            await loadWeeklyScanData(true);
         }
     } catch (e) {
         console.error("Rescan trigger error:", e);
+        await loadWeeklyScanData(true);
+    } finally {
         if (btn) btn.disabled = false;
         if (icon) icon.classList.remove("spinning");
     }
 }
+
 
 async function showWeeklyHistoryModal() {
     const modal = document.getElementById("weekly-scan-history-modal");

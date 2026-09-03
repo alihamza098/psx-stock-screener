@@ -431,10 +431,11 @@
                         <p class="weekly-subtitle">Algorithmic Multi-Trigger Scanner across PSX universe evaluating 4H & Daily Breakouts, Pullback Rejections, MACD Crossovers & RSI Divergences.</p>
                     </div>
                     <div class="weekly-header-actions">
-                        <button class="btn btn-primary" id="btn-weekly-rescan" onclick="triggerWeeklyManualRescan()">
+                        <button class="btn btn-primary" id="btn-weekly-rescan" onclick="triggerWeeklyManualRescan()" title="Refresh Weekly Scan with latest live PSX data">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="icon-weekly-rescan"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                            <span>Run Manual Scan</span>
+                            <span>Refresh / Run Scan</span>
                         </button>
+
                         <button class="btn btn-ghost" id="btn-weekly-history" onclick="showWeeklyHistoryModal()">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                             <span>Scan Archive</span>

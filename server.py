@@ -4286,16 +4286,22 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         # ─── PSX Weekly Trade Options API Contract (Section 5) ───
         elif self.path in ["/api/weekly-scan/rescan", "/api/weekly-scan/scan"]:
             try:
-                stocks, _ = fetch_stock_data()
-                idx_data, _ = fetch_index_data()
-                run_id = weekly_engine.trigger_async_rescan(stocks, index_data=idx_data)
+                stocks, _ = fetch_stock_data(force=True)
+                idx_data, _ = fetch_index_data(force=True)
+                run, candidates = weekly_engine.execute_weekly_scan(
+                    stocks, index_data=idx_data, run_type="MANUAL_RESCAN"
+                )
                 self._send_json({
                     "success": True,
-                    "runId": run_id,
-                    "message": "Manual weekly rescan triggered successfully. Poll GET /api/weekly-scan/runs/{runId} for completion."
+                    "runId": run["id"],
+                    "run": run,
+                    "candidates": candidates,
+                    "message": "Manual weekly rescan completed successfully."
                 })
             except Exception as e:
+                print(f"[WeeklyScan] Error during rescan: {e}")
                 self._send_json({"success": False, "error": str(e)}, 500)
+
         elif self.path.startswith("/api/weekly-scan/candidates/") and self.path.endswith("/status"):
             try:
                 parts = self.path.strip("/").split("/")
