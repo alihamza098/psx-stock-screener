@@ -123,11 +123,15 @@ function formatRevenue(val) {
 }
 
 function formatVolume(vol) {
-    if (!vol || vol <= 0) return "0";
-    if (vol >= 1e6) return (vol / 1e6).toFixed(1) + "M";
-    if (vol >= 1e3) return (vol / 1e3).toFixed(0) + "K";
-    return vol.toFixed(0);
+    if (vol === undefined || vol === null || vol === "") return "0";
+    let num = typeof vol === "string" ? parseFloat(vol.replace(/,/g, "")) : Number(vol);
+    if (isNaN(num) || num <= 0) return "0";
+    if (num >= 1e9) return (num / 1e9).toFixed(2) + "B";
+    if (num >= 1e6) return (num / 1e6).toFixed(1) + "M";
+    if (num >= 1e3) return (num / 1e3).toFixed(0) + "K";
+    return num.toFixed(0);
 }
+
 
 function formatPrice(price) {
     if (!price) return "₨0.00";
@@ -159,7 +163,7 @@ async function fetchLiveData(isAutoRefresh = false, isForce = false) {
         }
 
         const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-        const timeoutId = controller ? setTimeout(() => controller.abort(), 8000) : null;
+        const timeoutId = controller ? setTimeout(() => controller.abort(), 25000) : null;
 
         const fetchOpts = controller ? { signal: controller.signal } : {};
         const [stockRes, indexRes] = await Promise.all([
@@ -183,10 +187,11 @@ async function fetchLiveData(isAutoRefresh = false, isForce = false) {
 
         if (stockData.success && stockData.data) {
             STOCKS = stockData.data;
-            updateSectorFilter();
-            updateMarketOverview(indexData, stockData);
-            updateLastUpdated(stockData.fetchedAt);
+            try { updateSectorFilter(); } catch (e) { console.error('Sector filter error:', e); }
+            try { updateMarketOverview(indexData, stockData); } catch (e) { console.error('Market overview error:', e); }
+            try { updateLastUpdated(stockData.fetchedAt); } catch (e) { console.error('Last updated error:', e); }
             renderAll();
+
 
             // Show stale data banner if serving outdated cache
             if (stockData.stale) {
@@ -327,11 +332,16 @@ function updateMarketOverview(indexData, stockData) {
         // Market volume from index data
         if (indexData.market) {
             const vol = indexData.market.volume;
-            document.getElementById('market-volume').textContent = formatVolume(vol);
-            const val = indexData.market.value;
-            document.getElementById('market-volume-detail').textContent = 
-                `Value: ₨${val >= 1e9 ? (val / 1e9).toFixed(1) + 'B' : (val / 1e6).toFixed(0) + 'M'}`;
-            document.getElementById('market-volume-detail').className = 'overview-change';
+            const volEl = document.getElementById('market-volume');
+            if (volEl) volEl.textContent = formatVolume(vol);
+            const valRaw = indexData.market.value;
+            const val = typeof valRaw === 'string' ? (parseFloat(valRaw.replace(/,/g, '')) || 0) : Number(valRaw || 0);
+            const valEl = document.getElementById('market-volume-detail');
+            if (valEl) {
+                valEl.textContent = `Value: ₨${val >= 1e9 ? (val / 1e9).toFixed(1) + 'B' : (val / 1e6).toFixed(0) + 'M'}`;
+                valEl.className = 'overview-change';
+            }
+
 
             // Market status
             const statusEl = document.getElementById('market-status');
@@ -465,8 +475,9 @@ function renderTable(stocks) {
             <td onclick="showDetail('${stock.symbol}')">${stock.symbol} ${stock.isNC ? '<span class="nc-tag">NC</span>' : ''}</td>
             <td><span class="sector-pill">${stock.sector}</span></td>
             <td>${formatRevenue(stock.revenue)}</td>
-            <td style="font-weight:600;">Rs ${stock.price.toFixed(2)}</td>
+            <td style="font-weight:600;">Rs ${(typeof stock.price === 'number' ? stock.price : (parseFloat(stock.price) || 0)).toFixed(2)}</td>
             <td class="cell-change ${changeClass}">${formatChange(stock.change)}</td>
+
             <td class="cell-change ${yearChangeClass}">${formatChange(stock.yearChange)}</td>
             <td class="cell-mcap">${formatMcap(stock.mcap)}</td>
             <td class="cell-metric">${stock.pe > 0 ? stock.pe.toFixed(1) : '—'}</td>
@@ -548,15 +559,27 @@ function renderCards(stocks) {
 }
 
 function renderAll() {
-    const filtered = getFilteredStocks();
-    const sorted = sortStocks(filtered);
+    try {
+        const filtered = getFilteredStocks();
+        const sorted = sortStocks(filtered);
 
-    document.getElementById("results-count").textContent = `${filtered.length} stock${filtered.length !== 1 ? "s" : ""}`;
+        const countEl = document.getElementById("results-count");
+        if (countEl) countEl.textContent = `${filtered.length} stock${filtered.length !== 1 ? "s" : ""}`;
 
-    renderTable(sorted);
-    renderCards(sorted);
-    runTradingIntelligenceEngine();
+        renderTable(sorted);
+        renderCards(sorted);
+        try { runTradingIntelligenceEngine(); } catch(e) { console.error("Intel engine error:", e); }
+    } catch (e) {
+        console.error("renderAll error:", e);
+        try {
+            if (STOCKS && STOCKS.length > 0) {
+                renderTable(STOCKS);
+                renderCards(STOCKS);
+            }
+        } catch (err) {}
+    }
 }
+
 
 
 // ─── Watchlist ───
@@ -1742,14 +1765,8 @@ function getReasonIcon(reason) {
     return "⚡";
 }
 
-function formatVolume(vol) {
-    if (vol >= 1e9) return (vol / 1e9).toFixed(1) + "B";
-    if (vol >= 1e6) return (vol / 1e6).toFixed(1) + "M";
-    if (vol >= 1e3) return (vol / 1e3).toFixed(1) + "K";
-    return vol.toFixed(0);
-}
-
 // ─── Stock History / Trend Analysis ───
+
 let historyModalOpen = false;
 
 function openStockHistory() {
