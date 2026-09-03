@@ -218,7 +218,8 @@ def _liquidity_ok(stock: Dict) -> bool:
 def scan_for_opportunities(
         stocks: List[Dict],
         index_data: Optional[Dict] = None,
-        memory_db_fn=None
+        memory_db_fn=None,
+        force: bool = False
 ) -> List[Dict]:
     """
     Score all live stocks for intraday potential.
@@ -226,7 +227,7 @@ def scan_for_opportunities(
     """
     _reset_if_new_day()
 
-    if not stocks or not _is_market_window():
+    if not stocks or (not force and not _is_market_window()):
         return []
 
     # KSE-100 change

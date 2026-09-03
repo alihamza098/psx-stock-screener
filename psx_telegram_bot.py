@@ -135,10 +135,10 @@ def _is_cooldown(key: str) -> bool:
 
 # ── FORMATTER 1: Weekly Scan Grade A/A+ candidate ────────────────────────────
 
-def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT") -> bool:
+def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT", force: bool = False) -> bool:
     """
     Send intraday trade alert via Telegram.
-    mode: "INSTANT" | "MORNING_PICK" | "AFTERNOON_PICK"
+    mode: "INSTANT" | "MORNING_PICK" | "AFTERNOON_PICK" | "TODAY_SETUP"
     Returns True if alert dispatched.
     """
     if not is_enabled():
@@ -146,7 +146,7 @@ def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT") -> bo
 
     sym    = candidate.get("symbol", "?")
     key    = f"intraday_{sym}"
-    if _is_cooldown(key):
+    if not force and _is_cooldown(key):
         return False
 
     name   = candidate.get("name", sym)
@@ -167,9 +167,10 @@ def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT") -> bo
     rr         = lvl.get("rr", 0)
 
     mode_badge = {
-        "INSTANT":       "⚡ INSTANT — High Conviction Setup",
-        "MORNING_PICK":  "🌅 MORNING PICK — Best Setup (10:30 AM)",
-        "AFTERNOON_PICK":"🌆 AFTERNOON PICK — Best Setup (1:00 PM)",
+        "INSTANT":        "⚡ INSTANT — High Conviction Setup",
+        "MORNING_PICK":   "🌅 MORNING PICK — Best Setup (10:30 AM)",
+        "AFTERNOON_PICK": "🌆 AFTERNOON PICK — Best Setup (1:00 PM)",
+        "TODAY_SETUP":    "⭐ TODAY'S TOP SETUP — Live Review",
     }.get(mode, "⚡ INTRADAY ALERT")
 
     # Catalyst text

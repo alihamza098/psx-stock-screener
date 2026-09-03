@@ -3908,7 +3908,57 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                     self._send_json({"success": False, "error": err_detail or "Failed to send. Check bot_token and chat_id."}, 500)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/intraday/trigger":
+            try:
+                body = json.loads(post_data.decode('utf-8'))
+                secret = body.get('secret', '')
+                if not verify_admin_secret(secret):
+                    self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
+                    return
+
+                import psx_intraday_engine as _ie
+                import psx_intraday_learner as _learner
+                import psx_telegram_bot as _tg
+
+                stocks_snap = stock_cache.get("data") or _do_fetch_stocks() or []
+                idx_snap    = index_cache.get("data") or _do_fetch_indices() or {}
+                action      = body.get("action", "all_today")
+
+                results = {}
+                mem_fn = None
+                if intelligence:
+                    try:
+                        mem_fn = intelligence.db.get_stock_memory
+                    except Exception:
+                        pass
+
+                candidates = _ie.scan_for_opportunities(stocks_snap, idx_snap, mem_fn, force=True)
+                results["candidates_found"] = len(candidates)
+                top3 = candidates[:3]
+                results["top_candidates"] = [c.get("symbol") for c in top3]
+
+                if action in ["all_today", "setups"]:
+                    sent_setups = 0
+                    for c in top3:
+                        _learner.record_alert(c, mode="TODAY_SETUP")
+                        if _tg.alert_intraday_setup(c, mode="TODAY_SETUP", force=True):
+                            sent_setups += 1
+                        time.sleep(0.5)
+                    results["setups_sent"] = sent_setups
+
+                if action in ["all_today", "eod", "market_wrap"]:
+                    evaluated = _learner.evaluate_eod(stocks_snap)
+                    results["evaluated_count"] = len(evaluated)
+                    _learner.send_eod_summary(evaluated)
+                    time.sleep(0.5)
+                    wrap_ok = _learner.send_market_wrap(stocks_snap, idx_snap)
+                    results["market_wrap_sent"] = wrap_ok
+
+                self._send_json({"success": True, "results": results})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
         elif self.path == "/api/admin/tabs/status":
+
 
             try:
                 body = json.loads(post_data.decode('utf-8'))
