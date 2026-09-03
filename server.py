@@ -3926,11 +3926,13 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
 
                 results = {}
                 mem_fn = None
-                if intelligence:
-                    try:
-                        mem_fn = intelligence.db.get_stock_memory
-                    except Exception:
-                        pass
+                try:
+                    import psx_intelligence_engine as _pie
+                    intel_engine = _pie.get_engine()
+                    if intel_engine:
+                        mem_fn = intel_engine.db.get_stock_memory
+                except Exception:
+                    pass
 
                 candidates = _ie.scan_for_opportunities(stocks_snap, idx_snap, mem_fn, force=True)
                 results["candidates_found"] = len(candidates)
