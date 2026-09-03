@@ -34,8 +34,9 @@ import psx_longterm_engine as lt_module
 
 PORT = int(os.environ.get('PORT', 3000))
 CACHE_DURATION = 120  # seconds (2 min to reduce PSX load)
-FETCH_TIMEOUT = 8     # seconds (balanced for Render)
-FETCH_RETRIES = 2     # retry attempts (faster fallback to cache)
+FETCH_TIMEOUT = 25     # seconds (increased from 8 to allow full 700KB screener download on cloud)
+FETCH_RETRIES = 3      # retry attempts
+
 
 # ─── Persistent file cache paths ───
 DATA_DIR = Path(__file__).parent / "cache"
@@ -469,8 +470,14 @@ def _do_fetch_stocks():
             now = time.time()
             stock_cache = {"data": parser.stocks, "timestamp": now}
             save_file_cache(STOCK_CACHE_FILE, parser.stocks, now)
+            try:
+                with open(SNAPSHOT_FILE, "w") as f:
+                    json.dump({"data": parser.stocks, "timestamp": now, "count": len(parser.stocks)}, f)
+            except Exception:
+                pass
             print(f"[PSX Live] Updated {len(parser.stocks)} stocks at {time.strftime('%H:%M:%S')}.")
             return parser.stocks
+
         else:
             print("[PSX Live] Parsed 0 stocks, keeping cached data.")
     except Exception as e:
@@ -3273,6 +3280,21 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed_path.path == "/api/refresh":
             res = force_refresh_all()
             self._send_json(res)
+        elif parsed_path.path == "/api/debug/psx-fetch":
+            res = {}
+            t0 = time.time()
+            try:
+                html = fetch_url("https://dps.psx.com.pk/screener", timeout=30, retries=2)
+                res["screener_len"] = len(html)
+                res["screener_time"] = round(time.time() - t0, 2)
+                parser = PSXScreenerParser()
+                parser.feed(html)
+                res["parsed_stocks"] = len(parser.stocks)
+            except Exception as e:
+                res["screener_error"] = str(e)
+                res["screener_time"] = round(time.time() - t0, 2)
+            self._send_json(res)
+
         elif parsed_path.path == "/api/company":
             query = parse_qs(parsed_path.query)
             if not self._check_auth(query): return
