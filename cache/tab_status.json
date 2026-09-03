@@ -63,16 +63,16 @@
     "message": "Balance Sheet, Income Statement, Cash Flows & 10 Key Ratios",
     "eta": "Live Now"
   },
-  "trading-intelligence": {
-    "id": "trading-intelligence",
-    "name": "AI Trading Agent",
+  "undervalued": {
+    "id": "undervalued",
+    "name": "UnderValue Stocks",
     "category": "Main Navigation",
-    "icon": "\ud83e\udd16",
+    "icon": "💎",
     "status": "ONLINE",
-    "message": "Autonomous AI Screener & Multi-Factor Position Monitor",
-    "eta": "Live Now",
-    "updated_at": "2026-08-22 18:59:17 PKT"
+    "message": "AI & Fundamental Valuation Engine (DDM, DCF, Graham Number & Margin of Safety)",
+    "eta": "Live Now"
   },
+
   "upper-lock": {
     "id": "upper-lock",
     "name": "Upper Lock Analysis",

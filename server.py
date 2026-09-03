@@ -3355,15 +3355,16 @@ DEFAULT_TAB_STATUSES = {
         "message": "Balance Sheet, Income Statement, Cash Flows & 10 Key Ratios",
         "eta": "Live Now"
     },
-    "trading-intelligence": {
-        "id": "trading-intelligence",
-        "name": "AI Trading Agent",
+    "undervalued": {
+        "id": "undervalued",
+        "name": "UnderValue Stocks",
         "category": "Main Navigation",
-        "icon": "🤖",
+        "icon": "💎",
         "status": "ONLINE",
-        "message": "Autonomous AI Screener & Multi-Factor Position Monitor",
+        "message": "AI & Fundamental Valuation Engine (DDM, DCF, Graham Number & Margin of Safety)",
         "eta": "Live Now"
     },
+
     "upper-lock": {
         "id": "upper-lock",
         "name": "Upper Lock Analysis",
@@ -3959,7 +3960,48 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
 
 
 
+        elif parsed_path.path == "/api/undervalued/stocks":
+            import psx_undervalued_engine as uve
+            query = parse_qs(parsed_path.query)
+            verdict = query.get("verdict", ["ALL"])[0]
+            sector = query.get("sector", ["ALL"])[0]
+            limit = int(query.get("limit", ["150"])[0])
+            force = query.get("force", ["0"])[0] in ["1", "true"]
+
+            # Ensure data is populated
+            existing = uve.get_undervalued_stocks(limit=1)
+            if force or not existing:
+                stocks, _ = fetch_stock_data(force=force)
+                uve.run_full_undervalued_scan(stocks)
+
+            items = uve.get_undervalued_stocks(verdict_filter=verdict, sector_filter=sector, limit=limit)
+            macro = uve.get_macro_inputs()
+            self._send_json({
+                "success": True,
+                "stocks": items,
+                "count": len(items),
+                "macro": macro
+            })
+
+        elif parsed_path.path == "/api/undervalued/stock":
+            import psx_undervalued_engine as uve
+            query = parse_qs(parsed_path.query)
+            symbol = query.get("symbol", [""])[0]
+            if not symbol:
+                self._send_json({"success": False, "error": "Symbol parameter required."}, 400)
+                return
+            stock_val = uve.get_single_stock_valuation(symbol)
+            if not stock_val:
+                stocks, _ = fetch_stock_data()
+                uve.run_full_undervalued_scan(stocks)
+                stock_val = uve.get_single_stock_valuation(symbol)
+            if stock_val:
+                self._send_json({"success": True, "data": stock_val})
+            else:
+                self._send_json({"success": False, "error": "Stock not found in valuation engine."}, 404)
+
         elif parsed_path.path == "/api/tabs/status":
+
 
             tabs = get_tab_status_db()
             self._send_json({"success": True, "tabs": tabs})
@@ -4300,9 +4342,22 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 })
             except Exception as e:
                 print(f"[WeeklyScan] Error during rescan: {e}")
+        elif self.path in ["/api/undervalued/rescan", "/api/undervalued/scan"]:
+            try:
+                import psx_undervalued_engine as uve
+                stocks, _ = fetch_stock_data(force=True)
+                results, summary = uve.run_full_undervalued_scan(stocks)
+                self._send_json({
+                    "success": True,
+                    "count": len(results),
+                    "summary": summary,
+                    "message": "PSX Undervalued Stock valuation rescan completed successfully."
+                })
+            except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
         elif self.path.startswith("/api/weekly-scan/candidates/") and self.path.endswith("/status"):
+
             try:
                 parts = self.path.strip("/").split("/")
                 candidate_id = parts[3]

@@ -70,10 +70,11 @@
                 </div>
 
                 <!-- Navigation & Feature Buttons -->
-                <button class="btn btn-alpha-opportunities" id="btn-alpha-opportunities-header" onclick="switchView('trading-intelligence')" title="⚡ Short-Term Alpha Opportunities">
-                    <span class="pulse-alpha-dot"></span>
-                    <span>⚡ Opportunities</span>
+                <button class="btn btn-alpha-opportunities" id="btn-alpha-opportunities-header" onclick="switchView('undervalued')" title="💎 UnderValue Stocks Engine">
+                    <span class="pulse-alpha-dot" style="background:#10b981;"></span>
+                    <span>💎 UnderValue</span>
                 </button>
+
                 <button class="btn btn-live-trading" id="btn-live-trading-header" title="Open Live Trading Analysis">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                     <span>⚡ Live Depth</span>
@@ -368,11 +369,12 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
                 📊 Financial Statements
             </button>
-            <button class="view-tab view-tab-ai-pro" data-view="trading-intelligence" id="tab-trading-intelligence">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                ⚡ AI Trading Agent
-                <span class="badge-tab-new">LIVE</span>
+            <button class="view-tab view-tab-undervalued" data-view="undervalued" id="tab-undervalued">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                💎 UnderValue Stocks
+                <span class="badge-tab-new" style="background:linear-gradient(135deg,#10b981,#059669);">AI VALUE</span>
             </button>
+
             <button class="view-tab view-tab-intelligence" data-view="intelligence" id="tab-intelligence">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/><path d="M3.05 11a9 9 0 0 1 .54-2.9"/><path d="M20.41 13a9 9 0 0 1-16.8 3"/></svg>
                 🧠 Intelligence
@@ -998,334 +1000,250 @@
             </div>
         </section>
 
-        <!-- 5. PSX Short-Term Opportunities (Alpha Engine) View Section -->
-        <section class="intel-view" id="view-trading-intelligence" style="display:none;">
-            <!-- Live Local Workspace (Visible ONLY on Local Server) -->
-            <div id="intel-local-workspace">
-                <!-- Top Intelligence & Market Regime Banner -->
-                <div class="intel-banner">
-                    <div class="intel-banner-left">
-                        <h2>
-                            <span>⚡ Short-Term Alpha Opportunities</span>
-                            <span class="badge badge-strong-buy" style="font-size:0.75rem;">LIVE SCANNER</span>
-                        </h2>
-                        <p>
-                            High-probability short-term trade scanner with real-time entry fill probability, exit liquidity scoring, multi-factor risk/reward modeling & upper-lock defense analysis.
-                        </p>
-                    </div>
-                    <div class="intel-banner-stats">
-                        <div class="intel-regime-chip">
-                            <span class="intel-regime-label">Market Regime</span>
-                            <span class="intel-regime-val" id="intel-market-regime" style="color: #38bdf8;">Evaluating...</span>
+        <!-- 5. PSX Undervalued Stock Analyzer & Valuation Engine Section -->
+        <section class="undervalued-view" id="view-undervalued" style="display:none;">
+            <!-- Hero Header & Macro Context -->
+            <div class="uv-banner">
+                <div class="uv-banner-left">
+                    <h2>
+                        <span>💎 UnderValue Stocks</span>
+                        <span class="badge badge-strong-buy" style="font-size:0.75rem; background:linear-gradient(135deg,#10b981,#059669);">AI VALUATION ENGINE</span>
+                    </h2>
+                    <p>
+                        Dual-engine screening combining <strong>Relative Undervaluation</strong> against sector peers (P/E, P/B, EV/EBITDA, Div Yield) and <strong>Absolute Intrinsic Valuation</strong> via Dividend Discount Model (DDM), DCF & Graham Number with rigorous Margin of Safety and Quality/Liquidity risk gates.
+                    </p>
+                </div>
+                <div class="uv-macro-card">
+                    <div class="uv-macro-title">Macro Valuation Anchors</div>
+                    <div class="uv-macro-grid">
+                        <div class="uv-macro-item">
+                            <span class="uv-macro-lbl">Risk-Free Rate (SBP)</span>
+                            <span class="uv-macro-val" id="uv-macro-rfr">11.5%</span>
                         </div>
-                        <div class="intel-regime-chip">
-                            <span class="intel-regime-label">KSE-100 Breadth</span>
-                            <span class="intel-regime-val" id="intel-market-breadth" style="color: #10b981;">—</span>
+                        <div class="uv-macro-item">
+                            <span class="uv-macro-lbl">Equity Risk Premium</span>
+                            <span class="uv-macro-val">5.0%</span>
                         </div>
-                        <div class="intel-regime-chip">
-                            <span class="intel-regime-label">High-Prob Setups</span>
-                            <span class="intel-regime-val" id="intel-high-prob-count" style="color: #facc15;">0</span>
+                        <div class="uv-macro-item">
+                            <span class="uv-macro-lbl">Required Return (Hurdle)</span>
+                            <span class="uv-macro-val" style="color:#38bdf8;">16.5%</span>
                         </div>
-                        <div class="intel-regime-chip" style="background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4);">
-                            <button id="btn-kill-switch" onclick="handleKillSwitchClick()" style="background:none; border:none; color:#f87171; font-weight:800; cursor:pointer; font-size:0.75rem; display:flex; align-items:center; gap:4px;">
-                                🛑 KILL SWITCH
-                            </button>
+                        <div class="uv-macro-item">
+                            <span class="uv-macro-lbl">KSE-100 Forward P/E</span>
+                            <span class="uv-macro-val">8.1x</span>
                         </div>
                     </div>
                 </div>
-
-            <!-- Sub-Navigation for Intelligence Tabs -->
-            <div class="intel-subtabs">
-                <button class="intel-subtab-btn active" onclick="switchIntelSubTab('top-picks', this)">
-                    🏆 Best Setups Right Now (<span id="intel-top-count">0</span>)
-                </button>
-                <button class="intel-subtab-btn" onclick="switchIntelSubTab('active-positions', this); loadActiveTradingPortfolio();">
-                    🤖 Active AI Positions (<span id="intel-active-pos-count">0</span>)
-                </button>
-                <button class="intel-subtab-btn" onclick="switchIntelSubTab('upper-locks', this)">
-                    🔒 Upper-Lock Defense (<span id="intel-lock-count">0</span>)
-                </button>
-                <button class="intel-subtab-btn" onclick="switchIntelSubTab('scanner', this)">
-                    📊 Full PSX Opportunity Scanner
-                </button>
-                <button class="intel-subtab-btn" onclick="switchIntelSubTab('portfolio-reassess', this)">
-                    💼 My Positions AI Reassessment
-                </button>
-                <button class="intel-subtab-btn" onclick="switchIntelSubTab('calculator', this)">
-                    💰 Position Size & Fee Calculator
-                </button>
             </div>
 
-            <!-- SUB-TAB 1: Best Setups Right Now (Curated Top 5-10) -->
-            <div id="intel-subtab-top-picks" class="intel-subtab-content">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
-                    <div>
-                        <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff;">🏆 Top Ranked Short-Term Opportunities</h3>
-                        <p style="font-size: 0.8rem; color: #94a3b8;">Filtered strictly by: Favorable Risk/Reward + Realistic Entry Fill Availability + Strong Liquidity</p>
-                    </div>
-                    <button class="btn btn-ghost btn-sm" onclick="runTradingIntelligenceEngine()" style="font-weight: 700;">
-                        🔄 Re-Scan Market Now
+            <!-- Top Actions & Secondary Bar -->
+            <div class="uv-action-bar">
+                <div class="uv-action-left">
+                    <span class="uv-status-pill"><span class="uv-pulse-dot"></span> Live Valuation Engine Active</span>
+                    <span class="uv-meta-text" id="uv-last-scanned-text">Updated automatically</span>
+                </div>
+                <div class="uv-action-right">
+                    <button class="btn btn-secondary" onclick="openUndervaluedMethodologyModal()" style="font-size:0.8rem; padding:6px 12px; gap:6px;">
+                        <span>📘 Valuation Methodology</span>
+                    </button>
+                    <button class="btn btn-primary" id="btn-uv-rescan" onclick="rescanUndervaluedUniverse()" style="font-size:0.8rem; padding:6px 14px; gap:6px; background:linear-gradient(135deg,#10b981,#059669);">
+                        <svg class="refresh-spinner-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                        <span>Re-Analyze Universe</span>
                     </button>
                 </div>
-                <div id="intel-cards-container" class="intel-cards-grid">
-                    <!-- Populated dynamically -->
+            </div>
+
+            <!-- KPI Metric Summary Cards -->
+            <div class="uv-kpi-grid">
+                <div class="uv-kpi-card uv-kpi-undervalued" onclick="filterUndervaluedVerdict('undervalued')">
+                    <div class="uv-kpi-label">💎 Undervalued (High Conviction)</div>
+                    <div class="uv-kpi-val" id="uv-kpi-undervalued-cnt">0</div>
+                    <div class="uv-kpi-sub">Score ≥ 66.7 & Margin of Safety ≥ 15%</div>
+                </div>
+                <div class="uv-kpi-card uv-kpi-caution" onclick="filterUndervaluedVerdict('undervalued_caution')">
+                    <div class="uv-kpi-label">⚠️ Undervalued (Caution)</div>
+                    <div class="uv-kpi-val" id="uv-kpi-caution-cnt">0</div>
+                    <div class="uv-kpi-sub">Cheap but Quality/Liquidity gate downgraded</div>
+                </div>
+                <div class="uv-kpi-card uv-kpi-possible" onclick="filterUndervaluedVerdict('possibly_undervalued')">
+                    <div class="uv-kpi-label">🤔 Possibly Undervalued</div>
+                    <div class="uv-kpi-val" id="uv-kpi-possible-cnt">0</div>
+                    <div class="uv-kpi-sub">Meets either Relative Score or MoS condition</div>
+                </div>
+                <div class="uv-kpi-card uv-kpi-fair" onclick="filterUndervaluedVerdict('fairly_valued')">
+                    <div class="uv-kpi-label">⚖️ Fairly Valued</div>
+                    <div class="uv-kpi-val" id="uv-kpi-fair-cnt">0</div>
+                    <div class="uv-kpi-sub">Trading within -10% to +15% of Intrinsic Value</div>
+                </div>
+                <div class="uv-kpi-card uv-kpi-mos">
+                    <div class="uv-kpi-label">🚀 Peak Margin of Safety</div>
+                    <div class="uv-kpi-val" id="uv-kpi-peak-mos">—</div>
+                    <div class="uv-kpi-sub">Deepest discount to Intrinsic Value</div>
                 </div>
             </div>
 
-            <!-- SUB-TAB: Active AI Positions & Execution Monitor -->
-            <div id="intel-subtab-active-positions" class="intel-subtab-content" style="display:none;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
-                    <div>
-                        <h3 style="font-size: 1.2rem; font-weight: 800; color: #fff;">🤖 Active Positions & Automated Exit Monitor</h3>
-                        <p style="font-size: 0.82rem; color: #94a3b8;">Monitors active positions against live PSX ticks with automated Stop Loss, TP1 50% trim + Breakeven, and Trailing Stops.</p>
+            <!-- Control & Filter Toolbar -->
+            <div class="uv-toolbar">
+                <div class="uv-chips-bar">
+                    <button class="uv-chip active" data-verdict="ALL" onclick="filterUndervaluedVerdict('ALL', this)">All Valuations</button>
+                    <button class="uv-chip" data-verdict="undervalued" onclick="filterUndervaluedVerdict('undervalued', this)">💎 Undervalued</button>
+                    <button class="uv-chip" data-verdict="undervalued_caution" onclick="filterUndervaluedVerdict('undervalued_caution', this)">⚠️ Undervalued (Caution)</button>
+                    <button class="uv-chip" data-verdict="possibly_undervalued" onclick="filterUndervaluedVerdict('possibly_undervalued', this)">🤔 Possibly Undervalued</button>
+                    <button class="uv-chip" data-verdict="fairly_valued" onclick="filterUndervaluedVerdict('fairly_valued', this)">⚖️ Fairly Valued</button>
+                    <button class="uv-chip" data-verdict="overvalued" onclick="filterUndervaluedVerdict('overvalued', this)">🔴 Overvalued</button>
+                </div>
+                <div class="uv-filters-row">
+                    <div class="uv-filter-group">
+                        <label>Sector:</label>
+                        <select id="uv-sector-filter" onchange="applyUndervaluedFilters()">
+                            <option value="ALL">All Sectors</option>
+                        </select>
                     </div>
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <button class="btn btn-ghost btn-sm" onclick="loadActiveTradingPortfolio()" style="font-weight: 700;">
-                            🔄 Refresh Portfolio
+                    <div class="uv-filter-group">
+                        <label>Model:</label>
+                        <select id="uv-method-filter" onchange="applyUndervaluedFilters()">
+                            <option value="ALL">All Valuation Models</option>
+                            <option value="DDM">DDM (Gordon Growth)</option>
+                            <option value="DCF">DCF (Cash Flow)</option>
+                            <option value="Graham_Number">Graham Number</option>
+                        </select>
+                    </div>
+                    <div class="uv-filter-group">
+                        <label>Sort By:</label>
+                        <select id="uv-sort-select" onchange="applyUndervaluedFilters()">
+                            <option value="mos_desc">Margin of Safety (High → Low)</option>
+                            <option value="score_desc">Relative Score (High → Low)</option>
+                            <option value="pe_asc">P/E Ratio (Low → High)</option>
+                            <option value="yield_desc">Dividend Yield (High → Low)</option>
+                            <option value="price_asc">Price (Low → High)</option>
+                        </select>
+                    </div>
+                    <div class="uv-filter-group uv-search-group">
+                        <input type="text" id="uv-search-input" placeholder="Search ticker or name..." oninput="applyUndervaluedFilters()">
+                    </div>
+                    <div class="uv-display-toggles">
+                        <button class="uv-toggle-btn active" id="uv-btn-cards" onclick="setUndervaluedDisplayMode('cards')" title="Card View">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                         </button>
-                        <button class="btn btn-danger btn-sm" onclick="handleKillSwitchClick()" style="font-weight: 800; background: #dc2626;">
-                            🛑 Kill Switch
-                        </button>
-                        <button class="btn btn-ghost btn-sm" onclick="handleResetPaperAccount()" style="color: #94a3b8; font-size: 0.75rem;">
-                            Reset Account
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Live Portfolio KPI Row -->
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px;">
-                    <div class="calc-result-box" style="background: #0f172a; border: 1px solid #1e293b; padding: 14px; border-radius: 10px;">
-                        <span class="calc-res-label" style="font-size: 0.75rem; color: #94a3b8;">Account Equity</span>
-                        <span class="calc-res-val" id="trading-equity-val" style="color: #38bdf8; font-size: 1.25rem; font-weight: 800;">₨0.00</span>
-                    </div>
-                    <div class="calc-result-box" style="background: #0f172a; border: 1px solid #1e293b; padding: 14px; border-radius: 10px;">
-                        <span class="calc-res-label" style="font-size: 0.75rem; color: #94a3b8;">Available Cash</span>
-                        <span class="calc-res-val" id="trading-cash-val" style="color: #f8fafc; font-size: 1.25rem; font-weight: 800;">₨0.00</span>
-                    </div>
-                    <div class="calc-result-box" style="background: #0f172a; border: 1px solid #1e293b; padding: 14px; border-radius: 10px;">
-                        <span class="calc-res-label" style="font-size: 0.75rem; color: #94a3b8;">Unrealized P&L</span>
-                        <span class="calc-res-val" id="trading-unrealized-val" style="color: #10b981; font-size: 1.25rem; font-weight: 800;">+₨0.00</span>
-                    </div>
-                    <div class="calc-result-box" style="background: #0f172a; border: 1px solid #1e293b; padding: 14px; border-radius: 10px;">
-                        <span class="calc-res-label" style="font-size: 0.75rem; color: #94a3b8;">Total Realized P&L</span>
-                        <span class="calc-res-val" id="trading-realized-val" style="color: #a855f7; font-size: 1.25rem; font-weight: 800;">₨0.00</span>
-                    </div>
-                </div>
-
-                <!-- Active Positions Table -->
-                <div class="card" style="background: #111827; border: 1px solid #1e293b; border-radius: 14px; padding: 20px;">
-                    <div class="table-responsive">
-                        <table class="admin-table">
-                            <thead>
-                                <tr>
-                                    <th>Symbol</th>
-                                    <th>Shares</th>
-                                    <th>Entry Price</th>
-                                    <th>Current Price</th>
-                                    <th>Stop Loss 🛡️</th>
-                                    <th>TP1 / TP2 🎯</th>
-                                    <th>Trailing Stop</th>
-                                    <th>Unrealized P&L</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="trading-active-positions-tbody">
-                                <!-- Populated dynamically -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- SUB-TAB 2: Upper-Lock Defense & Continuation Analysis -->
-            <div id="intel-subtab-upper-locks" class="intel-subtab-content" style="display:none;">
-                <div style="margin-bottom: 16px;">
-                    <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff;">🔒 Upper-Lock Strength & Continuation Radar</h3>
-                    <p style="font-size: 0.8rem; color: #94a3b8;">Explicitly distinguishes <strong>BUYABLE</strong> momentum setups from <strong>LOCKED — NO PRACTICAL ENTRY (DO NOT CHASE)</strong>.</p>
-                </div>
-                <div id="intel-upper-locks-container" class="intel-cards-grid">
-                    <!-- Populated dynamically -->
-                </div>
-            </div>
-
-            <!-- SUB-TAB 3: Full Scanner Table -->
-            <div id="intel-subtab-scanner" class="intel-subtab-content" style="display:none;">
-                <div class="card" style="background: #111827; border: 1px solid #1e293b; border-radius: 14px; padding: 20px; margin-bottom: 24px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
-                        <div style="font-weight: 800; font-size: 1.1rem; color: #fff;">📊 Comprehensive Multi-Factor PSX Screener</div>
-                        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                            <input type="text" id="intel-scan-search" class="search-input" placeholder="🔍 Search symbol, sector..." oninput="renderIntelScannerTable()" style="background:#0a0e17; border:1px solid #334155; color:#fff; padding:8px 12px; border-radius:8px; font-size:0.85rem;">
-                            <select id="intel-scan-action-filter" class="form-control" onchange="renderIntelScannerTable()" style="background:#0a0e17; border:1px solid #334155; color:#fff; padding:8px 12px; border-radius:8px; font-size:0.85rem;">
-                                <option value="ALL">All Actions</option>
-                                <option value="STRONG_BUY">🔥 Strong Buy Setups Only</option>
-                                <option value="BUY">🟢 Buy Signals</option>
-                                <option value="PULLBACK">🟡 Buy on Pullback</option>
-                                <option value="AVOID">⛔ Avoid / Do Not Chase</option>
-                            </select>
-                            <select id="intel-scan-entry-filter" class="form-control" onchange="renderIntelScannerTable()" style="background:#0a0e17; border:1px solid #334155; color:#fff; padding:8px 12px; border-radius:8px; font-size:0.85rem;">
-                                <option value="ALL">All Entry Types</option>
-                                <option value="HIGH">✅ High Entry Availability Only</option>
-                                <option value="LOCKED">🔒 Upper-Locked Only</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="admin-table">
-                            <thead>
-                                <tr>
-                                    <th>Rank & Stock</th>
-                                    <th>Price & Change</th>
-                                    <th>Action Signal</th>
-                                    <th>Trade Score</th>
-                                    <th>Profit Prob.</th>
-                                    <th>Risk Level</th>
-                                    <th>Entry Availability</th>
-                                    <th>Exit Liquidity</th>
-                                    <th>Targets & R/R</th>
-                                </tr>
-                            </thead>
-                            <tbody id="intel-scanner-tbody">
-                                <!-- Populated dynamically -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- SUB-TAB 4: Paper Simulator Portfolio Reassessment -->
-            <div id="intel-subtab-portfolio-reassess" class="intel-subtab-content" style="display:none;">
-                <div style="margin-bottom: 20px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                        <div>
-                            <h3 style="font-size: 1.2rem; font-weight: 800; color: #fff;">💼 Paper Portfolio AI Reassessment</h3>
-                            <p style="font-size: 0.85rem; color: #94a3b8;">
-                                Objective Analysis: <em>"If I did not already own this stock, would I buy it RIGHT NOW at current price?"</em>
-                            </p>
-                        </div>
-                        <button class="btn btn-primary btn-sm" onclick="renderPortfolioReassessment()" style="font-weight:700;">
-                            🔄 Reanalyze All Positions
-                        </button>
-                    </div>
-                </div>
-                <div id="intel-reassess-container">
-                    <!-- Populated dynamically -->
-                </div>
-            </div>
-
-            <!-- SUB-TAB 5: Position Sizer & Fee Calculator -->
-            <div id="intel-subtab-calculator" class="intel-subtab-content" style="display:none;">
-                <div class="intel-calc-card">
-                    <h3 style="font-size: 1.2rem; font-weight: 800; color: #fff; margin-bottom: 6px;">💰 Position Sizing & Real Transaction Cost Calculator</h3>
-                    <p style="font-size: 0.82rem; color: #94a3b8; margin-bottom: 20px;">
-                        Calculates suggested share quantity, SECP/PSX trading taxes, commissions, and net profit after fees based on your capital.
-                    </p>
-
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px;">
-                        <div class="form-group">
-                            <label style="font-size:0.75rem; color:#94a3b8; font-weight:700;">Select Candidate Stock:</label>
-                            <select id="calc-stock-select" class="form-control" onchange="updateCalcMetrics()" style="background:#1e293b; color:#fff; border:1px solid #334155; padding:10px; border-radius:8px;">
-                                <!-- Populated dynamically -->
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label style="font-size:0.75rem; color:#94a3b8; font-weight:700;">Intended Capital to Deploy (PKR):</label>
-                            <input type="number" id="calc-capital-input" class="form-control" value="100000" step="10000" oninput="updateCalcMetrics()" style="background:#1e293b; color:#fff; border:1px solid #334155; padding:10px; border-radius:8px;">
-                        </div>
-                        <div class="form-group">
-                            <label style="font-size:0.75rem; color:#94a3b8; font-weight:700;">Broker Commission (PKR per share or %):</label>
-                            <input type="number" id="calc-comm-input" class="form-control" value="0.15" step="0.01" oninput="updateCalcMetrics()" style="background:#1e293b; color:#fff; border:1px solid #334155; padding:10px; border-radius:8px;">
-                        </div>
-                    </div>
-
-                    <div class="calc-grid">
-                        <div class="calc-result-box">
-                            <span class="calc-res-label">Suggested Shares to Buy</span>
-                            <span class="calc-res-val" id="calc-res-shares" style="color: #38bdf8;">0</span>
-                        </div>
-                        <div class="calc-result-box">
-                            <span class="calc-res-label">Estimated Capital Required</span>
-                            <span class="calc-res-val" id="calc-res-cost">₨0.00</span>
-                        </div>
-                        <div class="calc-result-box">
-                            <span class="calc-res-label">Estimated Roundtrip Fees (Taxes + Broker)</span>
-                            <span class="calc-res-val" id="calc-res-fees" style="color: #f87171;">₨0.00</span>
-                        </div>
-                        <div class="calc-result-box">
-                            <span class="calc-res-label">Target 1 Net Profit (After Fees)</span>
-                            <span class="calc-res-val" id="calc-res-target1-net" style="color: #10b981;">+₨0.00</span>
-                        </div>
-                        <div class="calc-result-box">
-                            <span class="calc-res-label">Max Risk at Stop-Loss (After Fees)</span>
-                            <span class="calc-res-val" id="calc-res-loss-net" style="color: #ef4444;">-₨0.00</span>
-                        </div>
-                        <div class="calc-result-box">
-                            <span class="calc-res-label">Net Risk/Reward Ratio</span>
-                            <span class="calc-res-val" id="calc-res-rr" style="color: #a855f7;">1:0.0</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <!-- /intel-local-workspace -->
-
-            <!-- Coming Soon Workspace (Visible on Live Production Web App) -->
-            <div id="intel-coming-soon-workspace" style="display:none;">
-                <div class="intel-coming-soon-card">
-                    <div style="display:inline-flex; align-items:center; gap:8px; background:rgba(99,102,241,0.15); border:1px solid rgba(168,85,247,0.4); padding:6px 16px; border-radius:20px; color:#c084fc; font-size:0.8rem; font-weight:800; margin-bottom:18px;">
-                        <span>⚡ UNDER ACTIVE BETA & QUANT TESTING</span>
-                    </div>
-                    <h2 style="font-size:2.1rem; font-weight:800; color:#f8fafc; margin-bottom:12px; line-height:1.2;">
-                        ⚡ Short-Term Alpha Opportunities <span style="background: linear-gradient(135deg, #22d3ee, #a855f7); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">(V2.0)</span>
-                    </h2>
-                    <p style="font-size:0.95rem; color:#94a3b8; max-width:680px; margin:0 auto 20px auto; line-height:1.6;">
-                        An institutional-grade real-time PSX trading intelligence engine. Designed to identify high-probability intraday and swing trade opportunities while defending against circuit-lock slippage.
-                    </p>
-
-                    <div class="intel-preview-features-grid">
-                        <div class="intel-preview-feat">
-                            <div style="font-size:1.6rem; margin-bottom:8px;">🎯</div>
-                            <h4 style="font-size:1rem; font-weight:800; color:#fff; margin-bottom:4px;">Multi-Factor Alpha Scoring</h4>
-                            <p style="font-size:0.78rem; color:#94a3b8; line-height:1.4;">Combines price momentum, volume velocity, market breadth alignment & valuation cushion on a 100-point scale.</p>
-                        </div>
-                        <div class="intel-preview-feat">
-                            <div style="font-size:1.6rem; margin-bottom:8px;">🔒</div>
-                            <h4 style="font-size:1rem; font-weight:800; color:#fff; margin-bottom:4px;">Upper-Lock Defense Radar</h4>
-                            <p style="font-size:0.78rem; color:#94a3b8; line-height:1.4;">Distinguishes actionable buy momentum from zero-liquidity locked circuits to prevent trapped orders.</p>
-                        </div>
-                        <div class="intel-preview-feat">
-                            <div style="font-size:1.6rem; margin-bottom:8px;">💼</div>
-                            <h4 style="font-size:1rem; font-weight:800; color:#fff; margin-bottom:4px;">AI Position Reassessment</h4>
-                            <p style="font-size:0.78rem; color:#94a3b8; line-height:1.4;">Daily query: <em>"If I did not own this today, would I buy it right now?"</em> with 52W ATH/ATL distance tracking.</p>
-                        </div>
-                        <div class="intel-preview-feat">
-                            <div style="font-size:1.6rem; margin-bottom:8px;">💰</div>
-                            <h4 style="font-size:1rem; font-weight:800; color:#fff; margin-bottom:4px;">SECP/CDC Net Cost Calculator</h4>
-                            <p style="font-size:0.78rem; color:#94a3b8; line-height:1.4;">Accurately models capital allocation, broker commissions & roundtrip taxes for realistic profit/loss modeling.</p>
-                        </div>
-                    </div>
-
-                    <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:20px; max-width:650px; margin:0 auto 24px auto;">
-                        <div style="font-size:0.85rem; font-weight:700; color:#f8fafc; margin-bottom:6px;">
-                            🚀 Scheduled for Public Release in Next Update
-                        </div>
-                        <div style="font-size:0.8rem; color:#94a3b8;">
-                            This proprietary engine is running in private testing on local institutional terminals and will automatically unlock for all <strong>PSX Screener Pro</strong> subscribers upon launch.
-                        </div>
-                    </div>
-
-                    <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
-                        <a href="https://wa.me/923066400721?text=Hi%2C%20I%20would%20like%20VIP%20Early%20Access%20to%20the%20PSX%20Short-Term%20Opportunities%20Engine" target="_blank" class="btn btn-primary" style="font-weight:800; padding:10px 24px; font-size:0.9rem; background:linear-gradient(135deg, #25D366, #128C7E); border:none; text-decoration:none; display:inline-flex; align-items:center; gap:8px;">
-                            <span>💬 Request VIP Early Access on WhatsApp</span>
-                        </a>
-                        <button class="btn btn-ghost" onclick="switchView('table')" style="font-weight:700; padding:10px 20px;">
-                            ← Back to Stock Screener
+                        <button class="uv-toggle-btn" id="uv-btn-table" onclick="setUndervaluedDisplayMode('table')" title="Table View">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                         </button>
                     </div>
                 </div>
             </div>
-            <!-- /intel-coming-soon-workspace -->
+
+            <!-- Results Counter & Status -->
+            <div class="uv-results-status">
+                <span id="uv-results-count">Showing 0 valuation candidates</span>
+            </div>
+
+            <!-- Cards Container -->
+            <div class="uv-cards-grid" id="uv-cards-container">
+                <div class="uv-loading-state">Loading undervalued valuation models...</div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="uv-table-wrapper" id="uv-table-container" style="display:none;">
+                <table class="uv-table">
+                    <thead>
+                        <tr>
+                            <th>Ticker</th>
+                            <th>Sector</th>
+                            <th>Market Price</th>
+                            <th>Intrinsic Fair Value</th>
+                            <th>Margin of Safety</th>
+                            <th>Relative Score</th>
+                            <th>Valuation Model</th>
+                            <th>P/E vs Sector</th>
+                            <th>Div Yield</th>
+                            <th>Verdict</th>
+                            <th>Analysis</th>
+                        </tr>
+                    </thead>
+                    <tbody id="uv-table-body">
+                        <tr><td colspan="11" style="text-align:center; padding:32px;">Loading data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </section>
 
+        <!-- Undervalued Stock Detail Breakdown Modal -->
+        <div class="modal-overlay" id="undervalued-detail-modal" style="display:none;">
+            <div class="modal-content uv-modal-content">
+                <div class="modal-header">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:1.4rem;">💎</span>
+                        <div>
+                            <h3 id="uv-modal-title" style="margin:0; font-size:1.15rem; font-weight:800;">Stock Valuation Breakdown</h3>
+                            <div id="uv-modal-subtitle" style="font-size:0.8rem; color:var(--text-tertiary);">Autonomous Fundamental & Relative Valuation</div>
+                        </div>
+                    </div>
+                    <button class="modal-close-btn" onclick="closeUndervaluedDetailModal()">×</button>
+                </div>
+                <div class="modal-body" id="uv-modal-body">
+                    <!-- Populated dynamically by app.js -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Undervalued Methodology Modal -->
+        <div class="modal-overlay" id="undervalued-methodology-modal" style="display:none;">
+            <div class="modal-content uv-modal-content" style="max-width:840px;">
+                <div class="modal-header">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:1.4rem;">📘</span>
+                        <div>
+                            <h3 style="margin:0; font-size:1.15rem; font-weight:800;">PSX Undervalued Stock Analyzer — Methodology</h3>
+                            <div style="font-size:0.8rem; color:var(--text-tertiary);">Dual-Engine Relative & Intrinsic Valuation Protocol</div>
+                        </div>
+                    </div>
+                    <button class="modal-close-btn" onclick="closeUndervaluedMethodologyModal()">×</button>
+                </div>
+                <div class="modal-body" style="font-size:0.88rem; line-height:1.6; color:var(--text-secondary);">
+                    <div style="background:rgba(16,185,129,0.1); border-left:3px solid #10b981; padding:12px 16px; border-radius:4px; margin-bottom:16px;">
+                        <strong style="color:#10b981;">Core Valuation Principle:</strong>
+                        A stock is UNDERVALUED when its market price sits below a defensible estimate of intrinsic value, with a margin of safety wide enough to absorb estimation error. Never evaluated from relative multiples alone.
+                    </div>
+                    <h4 style="color:var(--text-primary); margin:14px 0 6px;">Step 1 — Relative Multiples</h4>
+                    <p>Computes trailing P/E (ratio of Price to EPS), P/B (Price to Book Value), Dividend Yield, EV/EBITDA, and the classical Graham Number \(\sqrt{22.5 \times \text{EPS} \times \text{BVPS}}\).</p>
+
+                    <h4 style="color:var(--text-primary); margin:14px 0 6px;">Step 2 — Relative Multi-Factor Score (0-100)</h4>
+                    <ul style="padding-left:20px; margin-bottom:10px;">
+                        <li><strong>P/E Component (30%)</strong>: Rewards P/E below sector average. P/E &lt; 3 is treated as an earnings distress risk, not a bargain.</li>
+                        <li><strong>P/B Component (20%)</strong>: Rewards P/B below sector average. P/B &le; 0.3 is flagged as solvency risk.</li>
+                        <li><strong>Dividend Yield Component (20%)</strong>: Rewards yield above sector average, capped if payout ratio &gt; 80%.</li>
+                        <li><strong>EV/EBITDA Component (20%)</strong>: Rewards capital-structure neutral operating multiple below sector.</li>
+                        <li><strong>Leverage Penalty (10%)</strong>: Points subtracted if Debt-to-Equity exceeds sector peers by &gt; 25%.</li>
+                    </ul>
+
+                    <h4 style="color:var(--text-primary); margin:14px 0 6px;">Step 3 — Absolute Intrinsic Valuation Hierarchy</h4>
+                    <ol style="padding-left:20px; margin-bottom:10px;">
+                        <li><strong>DDM (Gordon Growth Model)</strong>: Primary for consistent dividend payers with stable/growing 5-year payouts. Dividend growth \(g\) is capped at Hurdle Rate \(- 1.5\%\).</li>
+                        <li><strong>DCF (Discounted Cash Flow)</strong>: 3-Year Free Cash Flow forecast discounted at Required Return (\(\text{Risk Free} + \text{ERP}\)) with terminal value.</li>
+                        <li><strong>Graham Number</strong>: Used as conservative asset-and-earnings sanity floor when historical cash flow projections are unavailable.</li>
+                    </ol>
+
+                    <h4 style="color:var(--text-primary); margin:14px 0 6px;">Step 4 — Margin of Safety & Core Verdict</h4>
+                    <p>\(\text{Margin of Safety} = \frac{\text{Fair Value} - \text{Price}}{\text{Fair Value}} \times 100\%\)</p>
+                    <ul style="padding-left:20px; margin-bottom:10px;">
+                        <li><strong>💎 Undervalued</strong>: Relative score in top tertile (&ge; 66.7) AND Margin of Safety &ge; 15%.</li>
+                        <li><strong>🤔 Possibly Undervalued</strong>: Meets either relative score or intrinsic margin gate.</li>
+                        <li><strong>⚖️ Fairly Valued</strong>: Margin of Safety between -10% and +15%.</li>
+                        <li><strong>🔴 Overvalued</strong>: Relative score in bottom tertile (&le; 33.3) AND Margin of Safety &le; -10%.</li>
+                    </ul>
+                    <h4 style="color:var(--text-primary); margin:14px 0 6px;">Step 5 — Quality / Liquidity Risk Gates</h4>
+                    <p>Automatically downgrades any <em>Undervalued</em> stock to <strong>Undervalued (Caution)</strong> if Free Float &lt; 10%, one-off non-recurring earnings are present, EPS is negative, or Debt/Equity is more than double sector average.</p>
+
+                    <div style="margin-top:16px; font-size:0.75rem; color:var(--text-tertiary); border-top:1px solid var(--border-subtle); padding-top:10px;">
+                        <em>Notice: This analysis is for educational and data-driven screening purposes only and does not constitute financial advice.</em>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Watchlist Modal -->
+
+
         <div class="modal-overlay" id="watchlist-modal" style="display:none;">
             <div class="modal-content">
                 <div class="modal-header">
@@ -2277,6 +2195,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.5"></script>
+    <script src="app.js?v=2.6"></script>
 </body>
 </html>

@@ -9043,4 +9043,731 @@ body {
     }
 }
 
+/* ========================================================================
+   💎 PSX Undervalued Stock Analyzer — Design System
+   ======================================================================== */
+.undervalued-view {
+    padding: 0 0 48px 0;
+    width: 100%;
+}
+
+.uv-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: stretch;
+    gap: 20px;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 78, 59, 0.3) 50%, rgba(15, 23, 42, 0.8));
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: var(--radius-xl);
+    padding: 24px;
+    margin-bottom: 16px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.uv-banner-left {
+    flex: 1;
+    max-width: 620px;
+}
+
+.uv-banner-left h2 {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #f8fafc;
+    margin-bottom: 8px;
+}
+
+.uv-banner-left p {
+    font-size: 0.88rem;
+    color: #94a3b8;
+    line-height: 1.55;
+}
+
+.uv-macro-card {
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    min-width: 320px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.uv-macro-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #10b981;
+    font-weight: 800;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.uv-macro-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 16px;
+}
+
+.uv-macro-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.uv-macro-lbl {
+    font-size: 0.7rem;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.uv-macro-val {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #f1f5f9;
+}
+
+/* Action Bar */
+.uv-action-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(17, 24, 39, 0.6);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 10px 18px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.uv-action-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.uv-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #34d399;
+    background: rgba(16, 185, 129, 0.12);
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.uv-pulse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: uvPulse 1.8s infinite;
+}
+
+@keyframes uvPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.6; }
+}
+
+.uv-meta-text {
+    font-size: 0.78rem;
+    color: var(--text-tertiary);
+}
+
+.uv-action-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* KPI Summary Cards */
+.uv-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.uv-kpi-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+.uv-kpi-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.25);
+    background: var(--bg-card-hover);
+}
+
+.uv-kpi-undervalued {
+    border-color: rgba(16, 185, 129, 0.35);
+}
+.uv-kpi-undervalued:hover {
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.2);
+}
+
+.uv-kpi-caution {
+    border-color: rgba(245, 158, 11, 0.35);
+}
+.uv-kpi-possible {
+    border-color: rgba(56, 189, 248, 0.35);
+}
+.uv-kpi-fair {
+    border-color: rgba(148, 163, 184, 0.25);
+}
+.uv-kpi-mos {
+    border-color: rgba(167, 139, 250, 0.35);
+}
+
+.uv-kpi-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.uv-kpi-val {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1;
+    margin-bottom: 6px;
+}
+
+.uv-kpi-sub {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    line-height: 1.3;
+}
+
+/* Toolbar & Filter Chips */
+.uv-toolbar {
+    background: var(--bg-card);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.uv-chips-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.uv-chip {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.uv-chip:hover {
+    background: rgba(30, 41, 59, 0.8);
+    color: var(--text-primary);
+}
+
+.uv-chip.active {
+    background: #10b981;
+    border-color: #10b981;
+    color: #ffffff;
+    box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35);
+}
+
+.uv-filters-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.uv-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.uv-filter-group label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+}
+
+.uv-filter-group select {
+    background: var(--bg-input);
+    border: 1px solid var(--border-medium);
+    color: var(--text-primary);
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    outline: none;
+}
+
+.uv-search-group {
+    flex: 1;
+    min-width: 180px;
+}
+
+.uv-search-group input {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border-medium);
+    color: var(--text-primary);
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    outline: none;
+}
+
+.uv-search-group input:focus {
+    border-color: #10b981;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.uv-display-toggles {
+    display: flex;
+    gap: 4px;
+}
+
+.uv-toggle-btn {
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-tertiary);
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.uv-toggle-btn.active {
+    background: #10b981;
+    border-color: #10b981;
+    color: #ffffff;
+}
+
+/* Results Count */
+.uv-results-status {
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+    margin-bottom: 12px;
+    font-weight: 600;
+}
+
+/* Cards Grid & Cards */
+.uv-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+}
+
+.uv-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+.uv-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255, 255, 255, 0.25);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    background: var(--bg-card-hover);
+}
+
+.uv-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 14px;
+}
+
+.uv-card-ticker {
+    font-size: 1.25rem;
+    font-weight: 900;
+    color: #ffffff;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+}
+
+.uv-card-ticker:hover {
+    color: #34d399;
+}
+
+.uv-card-name {
+    font-size: 0.78rem;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 170px;
+}
+
+.uv-card-sector-pill {
+    display: inline-block;
+    font-size: 0.68rem;
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin-top: 4px;
+}
+
+/* Verdict Badges */
+.uv-verdict-badge {
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.uv-verdict-undervalued {
+    background: rgba(16, 185, 129, 0.18);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.uv-verdict-caution {
+    background: rgba(245, 158, 11, 0.18);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.uv-verdict-possible {
+    background: rgba(56, 189, 248, 0.18);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+.uv-verdict-fair {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.uv-verdict-overvalued {
+    background: rgba(239, 68, 68, 0.18);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+/* Valuation Primary Display Box */
+.uv-val-box {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.uv-val-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.uv-val-lbl {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    font-weight: 600;
+}
+
+.uv-val-num {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #f1f5f9;
+}
+
+.uv-val-fair {
+    color: #10b981;
+}
+
+.uv-mos-pill {
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    margin-top: 2px;
+}
+
+.uv-mos-positive {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+}
+
+.uv-mos-negative {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+}
+
+/* Metrics Mini Grid */
+.uv-metrics-mini {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.uv-metric-col {
+    background: rgba(15, 23, 42, 0.4);
+    padding: 8px;
+    border-radius: var(--radius-sm);
+    text-align: center;
+}
+
+.uv-m-lbl {
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    display: block;
+}
+
+.uv-m-val {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* Relative Score Bar */
+.uv-score-section {
+    margin-bottom: 12px;
+}
+
+.uv-score-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.uv-score-track {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.uv-score-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #10b981, #059669);
+}
+
+/* Flags Chips */
+.uv-flags-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 14px;
+    min-height: 22px;
+}
+
+.uv-flag-chip {
+    font-size: 0.65rem;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+/* Card Footer */
+.uv-card-footer {
+    margin-top: auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 12px;
+}
+
+.uv-model-tag {
+    font-size: 0.68rem;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 600;
+}
+
+.uv-btn-detail {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #34d399;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.uv-btn-detail:hover {
+    background: #10b981;
+    color: #ffffff;
+}
+
+/* Detailed Table View */
+.uv-table-wrapper {
+    background: var(--bg-card);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-lg);
+    overflow-x: auto;
+}
+
+.uv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+
+.uv-table th {
+    background: rgba(15, 23, 42, 0.8);
+    color: var(--text-tertiary);
+    font-weight: 700;
+    text-align: left;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-medium);
+    white-space: nowrap;
+}
+
+.uv-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+}
+
+.uv-table tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+/* Valuation Breakdown Modal */
+.uv-modal-content {
+    max-width: 780px;
+}
+
+.uv-modal-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.uv-modal-section-title {
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #10b981;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.uv-modal-table {
+    width: 100%;
+    font-size: 0.8rem;
+    border-collapse: collapse;
+}
+
+.uv-modal-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.uv-modal-table td:first-child {
+    color: var(--text-tertiary);
+}
+
+.uv-modal-table td:last-child {
+    text-align: right;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.uv-json-box {
+    background: #0a0e17;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 12px;
+    font-family: monospace;
+    font-size: 0.72rem;
+    color: #38bdf8;
+    max-height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+@media (max-width: 1024px) {
+    .uv-banner {
+        flex-direction: column;
+    }
+    .uv-macro-card {
+        min-width: auto;
+    }
+    .uv-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .uv-modal-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .uv-kpi-grid {
+        grid-template-columns: 1fr;
+    }
+    .uv-filters-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+
+
 

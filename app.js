@@ -1028,7 +1028,7 @@ function switchView(view) {
     const activeMobileTab = document.querySelector(`.mobile-nav-item[data-view="${view}"]`);
     if (activeMobileTab) activeMobileTab.classList.add("active");
 
-    const views = ["table", "cards", "weekly-scan", "live-trading", "simulator", "corporate", "financials", "trading-intelligence", "intelligence", "longterm"];
+    const views = ["table", "cards", "weekly-scan", "live-trading", "simulator", "corporate", "financials", "undervalued", "intelligence", "longterm"];
     views.forEach(v => {
         const el = document.getElementById(`view-${v}`);
         if (el) el.style.display = (view === v) ? (v === "cards" ? "grid" : "block") : "none";
@@ -1072,17 +1072,10 @@ function switchView(view) {
         const symInput = document.getElementById("fin-symbol-input");
         const symbol = symInput ? (symInput.value.trim() || "UNITY") : "UNITY";
         fetchFinancialStatements(symbol);
-    } else if (view === "trading-intelligence") {
-        const isLocalHost = window.location.hostname === "localhost" || 
-                            window.location.hostname === "127.0.0.1" || 
-                            window.location.hostname === "0.0.0.0" || 
-                            window.location.hostname.startsWith("192.168.");
-        if (!isLocalHost) {
-            switchView("table");
-            return;
-        }
-        runTradingIntelligenceEngine();
+    } else if (view === "undervalued") {
+        loadUndervaluedStocks();
     } else if (view === "intelligence") {
+
         if (typeof intelligenceTab !== "undefined" && intelligenceTab.load) {
             intelligenceTab.load();
         }
@@ -1137,8 +1130,11 @@ function initEventListeners() {
         }
         if (currentView === "weekly-scan") {
             triggerWeeklyManualRescan();
+        } else if (currentView === "undervalued") {
+            rescanUndervaluedUniverse();
         }
     });
+
 
 
 
@@ -8653,5 +8649,505 @@ const longtermTab = (() => {
     return window.longtermTab;
 
 })();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 💎 UNDERVALUE STOCKS — CLIENT ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+let uvStocksData = [];
+let uvCurrentVerdict = "ALL";
+let uvCurrentSector = "ALL";
+let uvCurrentMethod = "ALL";
+let uvCurrentSort = "mos_desc";
+let uvDisplayMode = "cards";
+let uvIsLoading = false;
+
+async function loadUndervaluedStocks(force = false) {
+    const container = document.getElementById("uv-cards-container");
+    const tbody = document.getElementById("uv-table-body");
+    
+    if (uvStocksData.length === 0 || force) {
+        if (container) container.innerHTML = `<div class="uv-loading-state" style="grid-column:1/-1; text-align:center; padding:48px; color:var(--text-tertiary);">Analyzing PSX valuation universe using DDM, DCF & Graham models...</div>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:40px; color:var(--text-tertiary);">Calculating intrinsic valuations and sector multiples...</td></tr>`;
+    }
+
+    try {
+        uvIsLoading = true;
+        const res = await fetch(`/api/undervalued/stocks?limit=250${force ? '&force=1' : ''}`);
+        const data = await res.json();
+        uvIsLoading = false;
+
+        if (data.success && data.stocks) {
+            uvStocksData = data.stocks;
+            if (data.macro && data.macro.risk_free_rate_pct) {
+                const rfrEl = document.getElementById("uv-macro-rfr");
+                if (rfrEl) rfrEl.textContent = `${data.macro.risk_free_rate_pct}%`;
+            }
+            updateUndervaluedKPIs(uvStocksData);
+            populateUndervaluedSectors(uvStocksData);
+            applyUndervaluedFilters();
+
+            const lastScanned = document.getElementById("uv-last-scanned-text");
+            if (lastScanned) lastScanned.textContent = `Scanned ${uvStocksData.length} stocks at ${new Date().toLocaleTimeString()}`;
+        } else {
+            if (container) container.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:40px; color:#f87171;">Failed to load valuation models. Please click Re-Analyze Universe.</div>`;
+        }
+    } catch (e) {
+        uvIsLoading = false;
+        console.error("Error loading undervalued stocks:", e);
+        if (container) container.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:40px; color:#f87171;">Connection error fetching valuation models.</div>`;
+    }
+}
+
+function updateUndervaluedKPIs(stocks) {
+    let uvCnt = 0;
+    let cautionCnt = 0;
+    let possibleCnt = 0;
+    let fairCnt = 0;
+    let peakMos = -999;
+
+    stocks.forEach(s => {
+        if (s.verdict === "undervalued") uvCnt++;
+        else if (s.verdict === "undervalued_caution") cautionCnt++;
+        else if (s.verdict === "possibly_undervalued") possibleCnt++;
+        else if (s.verdict === "fairly_valued") fairCnt++;
+
+        const mos = s.intrinsic_valuation ? s.intrinsic_valuation.margin_of_safety_pct : null;
+        if (mos !== null && mos !== undefined && mos > peakMos) {
+            peakMos = mos;
+        }
+    });
+
+    const elUv = document.getElementById("uv-kpi-undervalued-cnt");
+    if (elUv) elUv.textContent = uvCnt;
+    const elCaution = document.getElementById("uv-kpi-caution-cnt");
+    if (elCaution) elCaution.textContent = cautionCnt;
+    const elPoss = document.getElementById("uv-kpi-possible-cnt");
+    if (elPoss) elPoss.textContent = possibleCnt;
+    const elFair = document.getElementById("uv-kpi-fair-cnt");
+    if (elFair) elFair.textContent = fairCnt;
+    const elMos = document.getElementById("uv-kpi-peak-mos");
+    if (elMos) elMos.textContent = peakMos > -999 ? `+${peakMos.toFixed(1)}%` : "—";
+}
+
+function populateUndervaluedSectors(stocks) {
+    const secSelect = document.getElementById("uv-sector-filter");
+    if (!secSelect) return;
+
+    const currentVal = secSelect.value;
+    const sectors = Array.from(new Set(stocks.map(s => s.sector).filter(Boolean))).sort();
+
+    secSelect.innerHTML = `<option value="ALL">All Sectors (${sectors.length})</option>` +
+        sectors.map(s => `<option value="${s}">${s}</option>`).join("");
+
+    if (sectors.includes(currentVal)) {
+        secSelect.value = currentVal;
+    }
+}
+
+function filterUndervaluedVerdict(verdict, btnEl) {
+    uvCurrentVerdict = verdict;
+    document.querySelectorAll(".uv-chip").forEach(c => {
+        if (c.getAttribute("data-verdict") === verdict) {
+            c.classList.add("active");
+        } else {
+            c.classList.remove("active");
+        }
+    });
+    applyUndervaluedFilters();
+}
+
+function applyUndervaluedFilters() {
+    const secSelect = document.getElementById("uv-sector-filter");
+    const methodSelect = document.getElementById("uv-method-filter");
+    const sortSelect = document.getElementById("uv-sort-select");
+    const searchInput = document.getElementById("uv-search-input");
+
+    uvCurrentSector = secSelect ? secSelect.value : "ALL";
+    uvCurrentMethod = methodSelect ? methodSelect.value : "ALL";
+    uvCurrentSort = sortSelect ? sortSelect.value : "mos_desc";
+    const query = searchInput ? searchInput.value.trim().toUpperCase() : "";
+
+    let filtered = uvStocksData.filter(item => {
+        // Verdict filter
+        if (uvCurrentVerdict !== "ALL" && item.verdict !== uvCurrentVerdict) return false;
+        // Sector filter
+        if (uvCurrentSector !== "ALL" && item.sector !== uvCurrentSector) return false;
+        // Model filter
+        if (uvCurrentMethod !== "ALL") {
+            const m = item.intrinsic_valuation ? item.intrinsic_valuation.method_used : "";
+            if (m !== uvCurrentMethod) return false;
+        }
+        // Search query
+        if (query) {
+            const sym = item.ticker.toUpperCase();
+            const name = (item.name || "").toUpperCase();
+            const sec = (item.sector || "").toUpperCase();
+            if (!sym.includes(query) && !name.includes(query) && !sec.includes(query)) return false;
+        }
+        return true;
+    });
+
+    // Sorting
+    filtered.sort((a, b) => {
+        const aMos = (a.intrinsic_valuation && a.intrinsic_valuation.margin_of_safety_pct !== null) ? a.intrinsic_valuation.margin_of_safety_pct : -9999;
+        const bMos = (b.intrinsic_valuation && b.intrinsic_valuation.margin_of_safety_pct !== null) ? b.intrinsic_valuation.margin_of_safety_pct : -9999;
+        const aScore = a.relative_score || 0;
+        const bScore = b.relative_score || 0;
+        const aPe = (a.relative_metrics && a.relative_metrics.pe) ? a.relative_metrics.pe : 9999;
+        const bPe = (b.relative_metrics && b.relative_metrics.pe) ? b.relative_metrics.pe : 9999;
+        const aYield = (a.relative_metrics && a.relative_metrics.div_yield_pct) ? a.relative_metrics.div_yield_pct : 0;
+        const bYield = (b.relative_metrics && b.relative_metrics.div_yield_pct) ? b.relative_metrics.div_yield_pct : 0;
+
+        if (uvCurrentSort === "mos_desc") return bMos - aMos;
+        if (uvCurrentSort === "score_desc") return bScore - aScore;
+        if (uvCurrentSort === "pe_asc") return aPe - bPe;
+        if (uvCurrentSort === "yield_desc") return bYield - aYield;
+        if (uvCurrentSort === "price_asc") return (a.price || 0) - (b.price || 0);
+        return bMos - aMos;
+    });
+
+    const countEl = document.getElementById("uv-results-count");
+    if (countEl) countEl.textContent = `Showing ${filtered.length} of ${uvStocksData.length} valuation candidates`;
+
+    renderUndervaluedCards(filtered);
+    renderUndervaluedTable(filtered);
+}
+
+function setUndervaluedDisplayMode(mode) {
+    uvDisplayMode = mode;
+    const cardsCont = document.getElementById("uv-cards-container");
+    const tableCont = document.getElementById("uv-table-container");
+    const btnCards = document.getElementById("uv-btn-cards");
+    const btnTable = document.getElementById("uv-btn-table");
+
+    if (mode === "cards") {
+        if (cardsCont) cardsCont.style.display = "grid";
+        if (tableCont) tableCont.style.display = "none";
+        if (btnCards) btnCards.classList.add("active");
+        if (btnTable) btnTable.classList.remove("active");
+    } else {
+        if (cardsCont) cardsCont.style.display = "none";
+        if (tableCont) tableCont.style.display = "block";
+        if (btnCards) btnCards.classList.remove("active");
+        if (btnTable) btnTable.classList.add("active");
+    }
+}
+
+function getVerdictBadgeHTML(verdict) {
+    if (verdict === "undervalued") {
+        return `<span class="uv-verdict-badge uv-verdict-undervalued">💎 Undervalued</span>`;
+    } else if (verdict === "undervalued_caution") {
+        return `<span class="uv-verdict-badge uv-verdict-caution">⚠️ Undervalued (Caution)</span>`;
+    } else if (verdict === "possibly_undervalued") {
+        return `<span class="uv-verdict-badge uv-verdict-possible">🤔 Possibly Undervalued</span>`;
+    } else if (verdict === "fairly_valued") {
+        return `<span class="uv-verdict-badge uv-verdict-fair">⚖️ Fairly Valued</span>`;
+    } else if (verdict === "overvalued") {
+        return `<span class="uv-verdict-badge uv-verdict-overvalued">🔴 Overvalued</span>`;
+    }
+    return `<span class="uv-verdict-badge uv-verdict-fair">⚪ Insufficient Data</span>`;
+}
+
+function getModelPrettyName(method) {
+    if (method === "DDM") return "DDM (Gordon Growth)";
+    if (method === "DCF") return "DCF (3-Yr Cash Flow)";
+    if (method === "Graham_Number") return "Graham Number Floor";
+    return "Multiple Parity Only";
+}
+
+function renderUndervaluedCards(items) {
+    const container = document.getElementById("uv-cards-container");
+    if (!container) return;
+
+    if (items.length === 0) {
+        container.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:48px; color:var(--text-tertiary);">No stocks match the selected valuation filters. Try selecting "All Valuations".</div>`;
+        return;
+    }
+
+    container.innerHTML = items.map(stock => {
+        const iv = stock.intrinsic_valuation || {};
+        const rm = stock.relative_metrics || {};
+        const vs = rm.vs_sector || {};
+
+        const priceFmt = stock.price ? `₨${stock.price.toFixed(2)}` : "—";
+        const fvFmt = (iv.fair_value_per_share && iv.fair_value_per_share > 0) ? `₨${iv.fair_value_per_share.toFixed(2)}` : "—";
+        const mosVal = iv.margin_of_safety_pct;
+        const mosText = mosVal !== null && mosVal !== undefined ? `${mosVal >= 0 ? '+' : ''}${mosVal.toFixed(1)}% MoS` : "—";
+        const mosClass = mosVal >= 0 ? "uv-mos-positive" : "uv-mos-negative";
+
+        const peFmt = rm.pe ? `${rm.pe.toFixed(1)}x` : "—";
+        const peVsSec = vs.pe_pct_below_sector !== null && vs.pe_pct_below_sector !== undefined
+            ? (vs.pe_pct_below_sector >= 0 ? `(${vs.pe_pct_below_sector.toFixed(0)}% below)` : `(${Math.abs(vs.pe_pct_below_sector).toFixed(0)}% above)`)
+            : "";
+        const pbFmt = rm.pb ? `${rm.pb.toFixed(1)}x` : "—";
+        const dyFmt = rm.div_yield_pct ? `${rm.div_yield_pct.toFixed(1)}%` : "0.0%";
+
+        const score = stock.relative_score || 0;
+        const flags = (stock.flags || []).slice(0, 3);
+
+        return `
+        <div class="uv-card" data-ticker="${stock.ticker}">
+            <div class="uv-card-header">
+                <div>
+                    <div class="uv-card-ticker" onclick="openUndervaluedDetailModal('${stock.ticker}')">${stock.ticker}</div>
+                    <div class="uv-card-name" title="${stock.name}">${stock.name || stock.ticker}</div>
+                    <div class="uv-card-sector-pill">${stock.sector}</div>
+                </div>
+                ${getVerdictBadgeHTML(stock.verdict)}
+            </div>
+
+            <div class="uv-val-box">
+                <div class="uv-val-col">
+                    <span class="uv-val-lbl">Market Price</span>
+                    <span class="uv-val-num">${priceFmt}</span>
+                </div>
+                <div class="uv-val-col" style="text-align:right;">
+                    <span class="uv-val-lbl">Intrinsic Fair Value</span>
+                    <span class="uv-val-num uv-val-fair">${fvFmt}</span>
+                    <span class="uv-mos-pill ${mosClass}">${mosText}</span>
+                </div>
+            </div>
+
+            <div class="uv-metrics-mini">
+                <div class="uv-metric-col">
+                    <span class="uv-m-lbl">P/E vs Sector</span>
+                    <span class="uv-m-val">${peFmt} <small style="font-size:0.65rem; color:${vs.pe_pct_below_sector >= 0 ? '#34d399' : '#f87171'}">${peVsSec}</small></span>
+                </div>
+                <div class="uv-metric-col">
+                    <span class="uv-m-lbl">P/B Ratio</span>
+                    <span class="uv-m-val">${pbFmt}</span>
+                </div>
+                <div class="uv-metric-col">
+                    <span class="uv-m-lbl">Dividend Yield</span>
+                    <span class="uv-m-val" style="color:#10b981;">${dyFmt}</span>
+                </div>
+            </div>
+
+            <div class="uv-score-section">
+                <div class="uv-score-header">
+                    <span>Relative Value Score</span>
+                    <strong style="color:#34d399;">${score} / 100</strong>
+                </div>
+                <div class="uv-score-track">
+                    <div class="uv-score-fill" style="width:${Math.min(100, Math.max(5, score))}%;"></div>
+                </div>
+            </div>
+
+            <div class="uv-flags-row">
+                ${flags.map(f => `<span class="uv-flag-chip" title="${f}">⚠️ ${f.length > 28 ? f.substring(0, 26) + '...' : f}</span>`).join("")}
+            </div>
+
+            <div class="uv-card-footer">
+                <span class="uv-model-tag">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                    ${getModelPrettyName(iv.method_used)}
+                </span>
+                <button class="uv-btn-detail" onclick="openUndervaluedDetailModal('${stock.ticker}')">
+                    Full Valuation Breakdown →
+                </button>
+            </div>
+        </div>`;
+    }).join("");
+}
+
+function renderUndervaluedTable(items) {
+    const tbody = document.getElementById("uv-table-body");
+    if (!tbody) return;
+
+    if (items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:32px;">No stocks match your filter criteria.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = items.map(stock => {
+        const iv = stock.intrinsic_valuation || {};
+        const rm = stock.relative_metrics || {};
+        const vs = rm.vs_sector || {};
+
+        const priceFmt = stock.price ? `₨${stock.price.toFixed(2)}` : "—";
+        const fvFmt = (iv.fair_value_per_share && iv.fair_value_per_share > 0) ? `₨${iv.fair_value_per_share.toFixed(2)}` : "—";
+        const mosVal = iv.margin_of_safety_pct;
+        const mosFmt = mosVal !== null && mosVal !== undefined ? `<span style="font-weight:800; color:${mosVal >= 0 ? '#34d399' : '#f87171'}">${mosVal >= 0 ? '+' : ''}${mosVal.toFixed(1)}%</span>` : "—";
+        const score = stock.relative_score || 0;
+
+        return `
+        <tr>
+            <td style="font-weight:800; color:#fff; cursor:pointer;" onclick="openUndervaluedDetailModal('${stock.ticker}')">${stock.ticker}</td>
+            <td><span class="sector-pill">${stock.sector}</span></td>
+            <td style="font-weight:700;">${priceFmt}</td>
+            <td style="font-weight:800; color:#10b981;">${fvFmt}</td>
+            <td>${mosFmt}</td>
+            <td><span class="score-badge score-${getScoreClass(score)}">${score}</span></td>
+            <td><span style="font-size:0.75rem; color:var(--text-tertiary);">${getModelPrettyName(iv.method_used)}</span></td>
+            <td>${rm.pe ? `${rm.pe.toFixed(1)}x` : '—'}</td>
+            <td style="color:#10b981; font-weight:700;">${rm.div_yield_pct ? `${rm.div_yield_pct.toFixed(1)}%` : '0.0%'}</td>
+            <td>${getVerdictBadgeHTML(stock.verdict)}</td>
+            <td>
+                <button class="btn btn-ghost btn-sm" onclick="openUndervaluedDetailModal('${stock.ticker}')" style="font-size:0.75rem; padding:4px 8px;">
+                    Inspect
+                </button>
+            </td>
+        </tr>`;
+    }).join("");
+}
+
+async function rescanUndervaluedUniverse() {
+    const btn = document.getElementById("btn-uv-rescan");
+    if (btn) {
+        btn.classList.add("loading");
+        btn.disabled = true;
+    }
+
+    try {
+        const res = await fetch("/api/undervalued/rescan", { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+            await loadUndervaluedStocks(true);
+            if (typeof showToast === "function") showToast("Universe Valuation re-analyzed successfully!");
+        } else {
+            alert("Rescan failed: " + (data.error || "Unknown error"));
+        }
+    } catch (e) {
+        console.error("Rescan error:", e);
+    } finally {
+        if (btn) {
+            btn.classList.remove("loading");
+            btn.disabled = false;
+        }
+    }
+}
+
+async function openUndervaluedDetailModal(symbol) {
+    const modal = document.getElementById("undervalued-detail-modal");
+    const body = document.getElementById("uv-modal-body");
+    const title = document.getElementById("uv-modal-title");
+    const subtitle = document.getElementById("uv-modal-subtitle");
+
+    if (title) title.textContent = `${symbol} — Fundamental Valuation Analysis`;
+    if (subtitle) subtitle.textContent = "Loading deep intrinsic metrics and quality gate audits...";
+    if (body) body.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-tertiary);">Calculating relative and intrinsic valuation models...</div>`;
+    if (modal) modal.style.display = "flex";
+
+    try {
+        const res = await fetch(`/api/undervalued/stock?symbol=${encodeURIComponent(symbol)}`);
+        const data = await res.json();
+
+        if (data.success && data.data) {
+            const s = data.data;
+            const iv = s.intrinsic_valuation || {};
+            const rm = s.relative_metrics || {};
+            const vs = rm.vs_sector || {};
+
+            if (title) title.textContent = `${s.ticker} (${s.name || s.ticker}) — Valuation Audit`;
+            if (subtitle) subtitle.textContent = `${s.sector} | Market Price: ₨${(s.price || 0).toFixed(2)}`;
+
+            const mosVal = iv.margin_of_safety_pct;
+            const mosText = mosVal !== null && mosVal !== undefined ? `${mosVal >= 0 ? '+' : ''}${mosVal.toFixed(1)}%` : "—";
+            const mosColor = mosVal >= 0 ? "#34d399" : "#f87171";
+
+            body.innerHTML = `
+            <div style="margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; background:rgba(15,23,42,0.6); padding:12px 16px; border-radius:8px; border:1px solid var(--border-subtle);">
+                <div>
+                    <span style="font-size:0.75rem; color:var(--text-tertiary); display:block;">Valuation Verdict</span>
+                    <div style="margin-top:2px;">${getVerdictBadgeHTML(s.verdict)}</div>
+                </div>
+                <div>
+                    <span style="font-size:0.75rem; color:var(--text-tertiary); display:block;">Intrinsic Fair Value</span>
+                    <span style="font-size:1.2rem; font-weight:900; color:#10b981;">₨${iv.fair_value_per_share ? iv.fair_value_per_share.toFixed(2) : '—'}</span>
+                </div>
+                <div>
+                    <span style="font-size:0.75rem; color:var(--text-tertiary); display:block;">Margin of Safety</span>
+                    <span style="font-size:1.2rem; font-weight:900; color:${mosColor};">${mosText}</span>
+                </div>
+                <div>
+                    <span style="font-size:0.75rem; color:var(--text-tertiary); display:block;">Confidence</span>
+                    <span style="font-size:0.95rem; font-weight:800; text-transform:uppercase; color:#38bdf8;">${s.confidence || 'Medium'}</span>
+                </div>
+            </div>
+
+            <div class="uv-modal-grid">
+                <!-- Step 1 & 2: Relative Multiples & Score -->
+                <div style="background:rgba(17,24,39,0.7); border:1px solid var(--border-subtle); border-radius:8px; padding:14px;">
+                    <div class="uv-modal-section-title">📊 Step 1 & 2: Relative Multiples vs Peers</div>
+                    <table class="uv-modal-table">
+                        <tr><td>P/E Ratio</td><td>${rm.pe ? `${rm.pe.toFixed(2)}x` : 'Negative / Null'}</td></tr>
+                        <tr><td>P/E vs Sector</td><td style="color:${vs.pe_pct_below_sector >= 0 ? '#34d399' : '#f87171'}">${vs.pe_pct_below_sector !== null ? `${vs.pe_pct_below_sector.toFixed(1)}% below sector` : '—'}</td></tr>
+                        <tr><td>P/B Ratio</td><td>${rm.pb ? `${rm.pb.toFixed(2)}x` : '—'}</td></tr>
+                        <tr><td>Dividend Yield</td><td style="color:#10b981;">${rm.div_yield_pct ? `${rm.div_yield_pct.toFixed(2)}%` : '0.0%'}</td></tr>
+                        <tr><td>EV / EBITDA</td><td>${rm.ev_ebitda ? `${rm.ev_ebitda.toFixed(2)}x` : '—'}</td></tr>
+                        <tr><td>Relative Value Score</td><td style="color:#34d399; font-weight:900;">${s.relative_score || 0} / 100</td></tr>
+                    </table>
+                </div>
+
+                <!-- Step 3: Intrinsic Valuation Model -->
+                <div style="background:rgba(17,24,39,0.7); border:1px solid var(--border-subtle); border-radius:8px; padding:14px;">
+                    <div class="uv-modal-section-title">🎯 Step 3: Absolute Intrinsic Valuation</div>
+                    <table class="uv-modal-table">
+                        <tr><td>Valuation Method</td><td style="color:#38bdf8;">${getModelPrettyName(iv.method_used)}</td></tr>
+                        <tr><td>Hurdle Rate Used</td><td>${iv.required_return_pct_used ? `${iv.required_return_pct_used}%` : '16.5%'}</td></tr>
+                        <tr><td>Growth Rate Applied</td><td>${iv.growth_rate_pct_used ? `${iv.growth_rate_pct_used}%` : '—'}</td></tr>
+                        <tr><td>Intrinsic Fair Value</td><td style="color:#10b981; font-weight:900;">₨${iv.fair_value_per_share ? iv.fair_value_per_share.toFixed(2) : '—'}</td></tr>
+                        <tr><td>Current Market Price</td><td>₨${(s.price || 0).toFixed(2)}</td></tr>
+                        <tr><td>Margin of Safety</td><td style="color:${mosColor}; font-weight:900;">${mosText}</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Step 5: Quality & Liquidity Risk Flags -->
+            <div style="background:rgba(17,24,39,0.7); border:1px solid var(--border-subtle); border-radius:8px; padding:14px; margin-bottom:16px;">
+                <div class="uv-modal-section-title">🛡️ Step 5: Quality & Liquidity Risk Gates</div>
+                ${(s.flags && s.flags.length > 0) ? `
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                        ${s.flags.map(f => `<div style="font-size:0.8rem; color:#fbbf24; background:rgba(245,158,11,0.1); border-left:3px solid #f59e0b; padding:6px 10px; border-radius:2px;">⚠️ ${f}</div>`).join("")}
+                    </div>
+                ` : `
+                    <div style="font-size:0.82rem; color:#34d399;">✅ All quality & liquidity gates passed. No red flags detected for this security.</div>
+                `}
+            </div>
+
+            <!-- Raw JSON Output View -->
+            <div style="margin-bottom:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <span style="font-size:0.75rem; color:var(--text-tertiary); font-weight:700;">Structured Valuation Output (JSON Schema)</span>
+                    <button class="btn btn-ghost btn-sm" onclick="copyUndervaluedJSON()" style="font-size:0.7rem; padding:3px 8px;">📋 Copy JSON</button>
+                </div>
+                <div class="uv-json-box" id="uv-raw-json">${JSON.stringify(s, null, 2)}</div>
+            </div>
+
+            <div style="font-size:0.72rem; color:var(--text-tertiary); line-height:1.4; border-top:1px solid var(--border-subtle); padding-top:10px;">
+                <em>${s.disclaimer || 'This is a data-driven valuation screen, not investment advice.'}</em>
+            </div>`;
+        } else {
+            body.innerHTML = `<div style="text-align:center; padding:32px; color:#f87171;">Failed to load stock valuation detail: ${data.error || 'Stock not found.'}</div>`;
+        }
+    } catch (e) {
+        console.error("Error opening valuation modal:", e);
+        body.innerHTML = `<div style="text-align:center; padding:32px; color:#f87171;">Network error loading stock detail.</div>`;
+    }
+}
+
+function closeUndervaluedDetailModal() {
+    const modal = document.getElementById("undervalued-detail-modal");
+    if (modal) modal.style.display = "none";
+}
+
+function openUndervaluedMethodologyModal() {
+    const modal = document.getElementById("undervalued-methodology-modal");
+    if (modal) modal.style.display = "flex";
+}
+
+function closeUndervaluedMethodologyModal() {
+    const modal = document.getElementById("undervalued-methodology-modal");
+    if (modal) modal.style.display = "none";
+}
+
+function copyUndervaluedJSON() {
+    const el = document.getElementById("uv-raw-json");
+    if (el && navigator.clipboard) {
+        navigator.clipboard.writeText(el.textContent);
+        if (typeof showToast === "function") showToast("Valuation JSON copied to clipboard!");
+    }
+}
+
 
 
