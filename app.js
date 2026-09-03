@@ -1108,7 +1108,12 @@ function initEventListeners() {
     document.getElementById("btn-refresh").addEventListener("click", async () => {
         try { await fetch('/api/refresh', { method: 'POST' }); } catch(e) {}
         fetchLiveData(false, true);
+        const ulModal = document.getElementById("upper-lock-modal");
+        if (ulModal && ulModal.classList.contains("active")) {
+            openUpperLockAnalysis(true);
+        }
     });
+
 
     // Reset
     document.getElementById("btn-reset-filters").addEventListener("click", resetFilters);
@@ -1208,7 +1213,8 @@ function initEventListeners() {
     document.getElementById("btn-export").addEventListener("click", exportCSV);
 
     // Upper Lock Analysis
-    document.getElementById("btn-upper-lock").addEventListener("click", openUpperLockAnalysis);
+    document.getElementById("btn-upper-lock").addEventListener("click", () => openUpperLockAnalysis(false));
+    document.getElementById("upper-lock-refresh")?.addEventListener("click", () => openUpperLockAnalysis(true));
     document.getElementById("upper-lock-close").addEventListener("click", closeUpperLockModal);
     document.getElementById("upper-lock-modal").addEventListener("click", (e) => {
         if (e.target.id === "upper-lock-modal") closeUpperLockModal();
@@ -1216,6 +1222,7 @@ function initEventListeners() {
     document.getElementById("upper-lock-sort").addEventListener("change", (e) => {
         if (upperLockData) renderUpperLockResults(upperLockData, e.target.value);
     });
+
 
     // Live Trading Header Button
     const liveHeaderBtn = document.getElementById("btn-live-trading-header");
@@ -1318,19 +1325,26 @@ function initEventListeners() {
 // ─── Upper Lock Analysis ───
 let upperLockData = null;
 
-function openUpperLockAnalysis() {
+function openUpperLockAnalysis(force = false) {
     const modal = document.getElementById("upper-lock-modal");
     modal.classList.add("active");
     document.body.style.overflow = "hidden";
+
+    const refreshBtn = document.getElementById("upper-lock-refresh");
+    const refreshIcon = refreshBtn?.querySelector(".refresh-icon-spin");
+    if (refreshIcon && force) {
+        refreshIcon.style.animation = "spin 1s linear infinite";
+    }
 
     // Show loading, hide results
     document.getElementById("upper-lock-loading").style.display = "flex";
     document.getElementById("upper-lock-results").style.display = "none";
     document.getElementById("upper-lock-sort").value = "probability";
 
-    // Fetch analysis
+    // Fetch analysis with optional force refresh
     const deviceId = getDeviceId();
-    fetch(`/api/upper-lock-analysis?deviceId=${deviceId}`)
+    const url = `/api/upper-lock-analysis?deviceId=${deviceId}` + (force ? '&force=1' : '');
+    fetch(url)
         .then(r => {
             if (r.status === 402) {
                 initTrialSystem();
@@ -1339,6 +1353,7 @@ function openUpperLockAnalysis() {
             return r.json();
         })
         .then(data => {
+            if (refreshIcon) refreshIcon.style.animation = "";
             if (data.success) {
                 upperLockData = data;
                 renderUpperLockResults(data, "probability");
@@ -1347,9 +1362,11 @@ function openUpperLockAnalysis() {
             }
         })
         .catch(err => {
+            if (refreshIcon) refreshIcon.style.animation = "";
             showUpperLockError(err.message);
         });
 }
+
 
 function closeUpperLockModal() {
     const modal = document.getElementById("upper-lock-modal");
@@ -1500,7 +1517,9 @@ function renderUpperLockResults(data, sortBy) {
         <span>🟢 <strong>${todayLocked.length}</strong> locked today</span>
         <span>•</span>
         <span>🔮 <strong>${predicted.length}</strong> predicted</span>
+        ${data.lastUpdated ? `<span>•</span><span>🕒 Live as of: <strong>${new Date(data.lastUpdated).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}</strong></span>` : ""}
     </div>`;
+
 
     results.innerHTML = html;
 }

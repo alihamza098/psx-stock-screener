@@ -784,9 +784,12 @@ def _start_continuous_poller():
                                 intraday_learner.send_eod_summary(evaluated)
                                 # 3. Send full market wrap
                                 intraday_learner.send_market_wrap(stocks_snap, idx_snap)
+                                # 4. Persist daily Upper Lock history
+                                calculate_upper_lock_analysis(stocks_snap)
                                 _last_eod_learner[0] = eod_key
                             except Exception as eode:
                                 print(f"[IntradayLearner] EOD error: {eode}")
+
 
                 time.sleep(poll_interval)
 
@@ -946,7 +949,8 @@ def calculate_upper_lock_analysis(stocks):
     """
     today_locked = []
     predicted = []
-    today_str = time.strftime("%Y-%m-%d")
+    now_pkt = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5)
+    today_str = now_pkt.strftime("%Y-%m-%d")
 
     # Pre-calculate sector averages for sector momentum scoring
     sector_sums = {}
@@ -1127,21 +1131,61 @@ def calculate_upper_lock_analysis(stocks):
 
     # Save today's locked stocks to history
     history = _load_upper_lock_history()
-    history[today_str] = [{
-        "symbol": s["symbol"],
-        "name": s["name"],
-        "sector": s["sector"],
-        "price": s["price"],
-        "change": s["change"],
-        "volume": s["volume"],
-        "lockLevel": s["lockLevel"],
-    } for s in today_locked]
-    # Keep only last 7 days of history
-    sorted_dates = sorted(history.keys(), reverse=True)[:7]
+
+    # Automatically backfill missing historical days from intelligence.db if available
+    try:
+        intel_db_path = Path("cache/intelligence.db")
+        if intel_db_path.exists():
+            import sqlite3
+            iconn = sqlite3.connect(str(intel_db_path), timeout=5)
+            cur = iconn.cursor()
+            cur.execute("""
+                SELECT DISTINCT date(detected_at) as dt
+                FROM stock_events
+                WHERE event_type = 'UPPER_LOCK'
+                ORDER BY dt DESC LIMIT 14
+            """)
+            db_dates = [r[0] for r in cur.fetchall()]
+            for d in db_dates:
+                if d != today_str and (d not in history or not history[d]):
+                    cur.execute("""
+                        SELECT symbol, sector, price, price_change_pct, volume
+                        FROM stock_events
+                        WHERE event_type = 'UPPER_LOCK' AND date(detected_at) = ?
+                    """, (d,))
+                    rows = cur.fetchall()
+                    if rows:
+                        history[d] = [{
+                            "symbol": r[0],
+                            "name": r[0],
+                            "sector": r[1] or "Other",
+                            "price": r[2] or 0.0,
+                            "change": r[3] or 0.0,
+                            "volume": r[4] or 0,
+                            "lockLevel": 10.0 if (r[3] or 0) >= 9.5 else (7.5 if (r[3] or 0) >= 7.2 else 5.0)
+                        } for r in rows]
+            iconn.close()
+    except Exception as e:
+        print(f"[UpperLock] History backfill error: {e}")
+
+    if today_locked:
+        history[today_str] = [{
+            "symbol": s["symbol"],
+            "name": s["name"],
+            "sector": s["sector"],
+            "price": s["price"],
+            "change": s["change"],
+            "volume": s["volume"],
+            "lockLevel": s["lockLevel"],
+        } for s in today_locked]
+
+    # Keep only last 14 days of history
+    sorted_dates = sorted(history.keys(), reverse=True)[:14]
     history = {d: history[d] for d in sorted_dates}
     _save_upper_lock_history(history)
 
     return today_locked, predicted[:50], history
+
 
 
 def fetch_stock_history(symbol):
@@ -3300,7 +3344,9 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed_path.path == "/api/upper-lock-analysis":
             query = parse_qs(parsed_path.query)
             if not self._check_auth(query): return
-            self._handle_upper_lock_analysis()
+            force = query.get("force", ["0"])[0] in ["1", "true"]
+            self._handle_upper_lock_analysis(force=force)
+
         elif parsed_path.path == "/api/trading/calendar":
             self._handle_trading_calendar()
         elif parsed_path.path == "/api/trading/market-regime":
@@ -4213,13 +4259,16 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             print(f"[PSX] Error fetching company profile for {symbol}: {e}")
             self._send_json({"success": False, "error": str(e)}, 500)
 
-    def _handle_upper_lock_analysis(self):
+    def _handle_upper_lock_analysis(self, force=False):
         try:
-            stocks, is_stale = fetch_stock_data()
+            if force:
+                _do_fetch_stocks()
+            stocks, is_stale = fetch_stock_data(force=force)
             today_locked, predicted, history = calculate_upper_lock_analysis(stocks)
 
-            # Get yesterday's locked stocks from history
-            today_str = time.strftime("%Y-%m-%d")
+            # Get yesterday's locked stocks from history (PKT time)
+            now_pkt = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5)
+            today_str = now_pkt.strftime("%Y-%m-%d")
             dates = sorted([d for d in history.keys() if d != today_str], reverse=True)
             yesterday_locked = history.get(dates[0], []) if dates else []
             yesterday_date = dates[0] if dates else None
@@ -4231,8 +4280,10 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 "yesterdayDate": yesterday_date,
                 "predicted": predicted,
                 "totalAnalyzed": len(stocks),
+                "lastUpdated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "disclaimer": "This analysis is based on price patterns and technical indicators. It is a probability-based forecast — not financial advice or a guarantee of future performance."
             })
+
         except Exception as e:
             print(f"[PSX] Error in upper lock analysis: {e}")
             self._send_json({"success": False, "error": str(e)}, 500)
