@@ -1371,7 +1371,19 @@
                         </button>
                     </div>
                     <p class="history-search-hint">Enter any PSX stock symbol to view its trading history for the last 30 days</p>
+                    <div class="live-quick-chips" style="margin-top:10px; margin-bottom:8px; justify-content:center; flex-wrap:wrap; display:flex; gap:6px;">
+                        <span class="chips-label" style="font-size:0.75rem; color:var(--text-tertiary); align-self:center;">Popular:</span>
+                        <button class="quick-chip" onclick="searchStockHistory('UNITY')">UNITY</button>
+                        <button class="quick-chip" onclick="searchStockHistory('OGDC')">OGDC</button>
+                        <button class="quick-chip" onclick="searchStockHistory('TRG')">TRG</button>
+                        <button class="quick-chip" onclick="searchStockHistory('LUCK')">LUCK</button>
+                        <button class="quick-chip" onclick="searchStockHistory('HBL')">HBL</button>
+                        <button class="quick-chip" onclick="searchStockHistory('ENGRO')">ENGRO</button>
+                        <button class="quick-chip" onclick="searchStockHistory('SYS')">SYS</button>
+                        <button class="quick-chip" onclick="searchStockHistory('PPL')">PPL</button>
+                    </div>
                 </div>
+
 
                 <!-- Loading state -->
                 <div class="upper-lock-loading" id="history-loading" style="display: none;">
@@ -2195,6 +2207,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.6"></script>
+    <script src="app.js?v=2.7"></script>
 </body>
 </html>

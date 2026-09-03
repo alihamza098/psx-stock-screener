@@ -1765,26 +1765,39 @@ function getReasonIcon(reason) {
 
 let historyModalOpen = false;
 
-function openStockHistory() {
+function openStockHistory(targetSymbol) {
     const modal = document.getElementById('stock-history-modal');
+    if (!modal) return;
     modal.classList.add('active');
     document.body.style.overflow = 'hidden';
     historyModalOpen = true;
-    // Focus search input
-    setTimeout(() => document.getElementById('history-search-input').focus(), 300);
+
+    const input = document.getElementById('history-search-input');
+    const symbolToSearch = (typeof targetSymbol === 'string' && targetSymbol.trim()) 
+        ? targetSymbol.trim().toUpperCase() 
+        : (input && input.value.trim() ? input.value.trim().toUpperCase() : (currentLiveSymbol || 'UNITY'));
+
+    if (input) {
+        input.value = symbolToSearch;
+        setTimeout(() => input.focus(), 300);
+    }
+    searchStockHistory(symbolToSearch);
 }
 
 function closeStockHistory() {
     const modal = document.getElementById('stock-history-modal');
-    modal.classList.remove('active');
+    if (modal) modal.classList.remove('active');
     document.body.style.overflow = '';
     historyModalOpen = false;
 }
 
-function searchStockHistory() {
+function searchStockHistory(customSymbol) {
     const input = document.getElementById('history-search-input');
-    const symbol = input ? input.value.trim().toUpperCase() : "";
+    const symbol = (typeof customSymbol === 'string' && customSymbol.trim())
+        ? customSymbol.trim().toUpperCase()
+        : (input ? input.value.trim().toUpperCase() : "");
     if (!symbol) return;
+    if (input) input.value = symbol;
     
     const resultsDiv = document.getElementById('history-results');
     const loadingDiv = document.getElementById('history-loading');
@@ -1804,7 +1817,7 @@ function searchStockHistory() {
         .then(data => {
             if (loadingDiv) loadingDiv.style.display = 'none';
             if (resultsDiv) resultsDiv.style.display = 'block';
-            if (data.success) {
+            if (data.success && data.days && data.days.length > 0) {
                 renderStockHistory(data);
             } else {
                 if (resultsDiv) {
@@ -1812,8 +1825,8 @@ function searchStockHistory() {
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                         </svg>
-                        <p>${data.error || 'Stock not found'}</p>
-                        <p style="font-size: 0.8rem; color: var(--text-tertiary)">Try symbols like OGDC, HBL, ENGRO, UNITY, LUCK</p>
+                        <p>${data.error || 'No historical trading days found for ' + symbol}</p>
+                        <button class="btn btn-primary btn-sm" onclick="searchStockHistory('${symbol}')" style="margin-top:10px;">🔄 Retry Fetch</button>
                     </div>`;
                 }
             }
@@ -1822,10 +1835,14 @@ function searchStockHistory() {
             if (loadingDiv) loadingDiv.style.display = 'none';
             if (err.message !== "Trial expired" && resultsDiv) {
                 resultsDiv.style.display = 'block';
-                resultsDiv.innerHTML = `<div class="upper-lock-empty"><p>Network error: ${err.message}</p></div>`;
+                resultsDiv.innerHTML = `<div class="upper-lock-empty">
+                    <p>Network error: ${err.message}</p>
+                    <button class="btn btn-primary btn-sm" onclick="searchStockHistory('${symbol}')" style="margin-top:10px;">🔄 Retry</button>
+                </div>`;
             }
         });
 }
+
 
 function renderStockHistory(data) {
     const resultsDiv = document.getElementById('history-results');
@@ -2257,6 +2274,7 @@ function fetchLiveTradingAnalysis(symbol) {
                         </svg>
                         <p>${res.error || 'Symbol not found'}</p>
                         <p style="font-size:0.85rem; color:var(--text-tertiary);">Check PSX symbol spelling (e.g. UNITY, TRG, OGDC, LUCK, HBL)</p>
+                        <button class="btn btn-primary btn-sm" onclick="fetchLiveTradingAnalysis('${currentLiveSymbol}')" style="margin-top:12px;">🔄 Retry Analysis</button>
                     </div>`;
                 }
             }
@@ -2264,10 +2282,14 @@ function fetchLiveTradingAnalysis(symbol) {
         .catch(err => {
             if (loading) loading.style.display = "none";
             if (err.message !== "3-Day Free Trial Expired. Upgrade to Pro." && container) {
-                container.innerHTML = `<div class="upper-lock-empty"><p>${err.message}</p></div>`;
+                container.innerHTML = `<div class="upper-lock-empty">
+                    <p>${err.message}</p>
+                    <button class="btn btn-primary btn-sm" onclick="fetchLiveTradingAnalysis('${currentLiveSymbol}')" style="margin-top:12px;">🔄 Retry</button>
+                </div>`;
             }
         });
 }
+
 
 function setupLiveAutoRefresh(isOpen) {
     if (liveTradingTimer) clearInterval(liveTradingTimer);
