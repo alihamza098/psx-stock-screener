@@ -329,6 +329,12 @@ def check_instant_alerts(candidates: List[Dict]) -> int:
                 instant_symbols.append(sym)
                 sent += 1
                 print(f"[Intraday] INSTANT → {sym} score={cand['score']}")
+                try:
+                    import psx_intraday_learner as _learner
+                    _learner.record_alert(cand, mode="INSTANT")
+                except Exception:
+                    pass
+
     except Exception as e:
         print(f"[Intraday] Instant alert error: {e}")
     return sent
@@ -371,7 +377,13 @@ def check_scheduled_morning(candidates: List[Dict]) -> bool:
                         "close_alerted": False,
                     }
                 print(f"[Intraday] MORNING → {sym} score={cand['score']}")
+                try:
+                    import psx_intraday_learner as _learner
+                    _learner.record_alert(cand, mode="MORNING_PICK")
+                except Exception:
+                    pass
                 return True
+
     except Exception as e:
         print(f"[Intraday] Morning alert error: {e}")
 
@@ -417,7 +429,13 @@ def check_scheduled_afternoon(candidates: List[Dict]) -> bool:
                         "close_alerted": False,
                     }
                 print(f"[Intraday] AFTERNOON → {sym} score={cand['score']}")
+                try:
+                    import psx_intraday_learner as _learner
+                    _learner.record_alert(cand, mode="AFTERNOON_PICK")
+                except Exception:
+                    pass
                 return True
+
     except Exception as e:
         print(f"[Intraday] Afternoon alert error: {e}")
 

@@ -584,7 +584,18 @@ def _start_continuous_poller():
         _last_calibration   = [0]   # Sunday 11 PM
         _last_lt_scrape     = [0]   # Daily 7 AM — DPS fundamentals scrape
         _last_lt_scan       = [0]   # Daily 9 AM — 7-stage pipeline scan
-        _last_intraday_tick = [0]   # Every 5 min — intraday scanner
+        _last_intraday_tick  = [0]   # Every 5 min — intraday scanner
+        _last_eod_learner    = [""]  # Daily 3:30 PM — EOD eval + market wrap
+        _last_morning_brief  = [""]  # Daily 9:15 AM — morning brief
+
+        # Import learner once at startup
+        try:
+            import psx_intraday_learner as intraday_learner
+            print("[IntradayLearner] Learning engine loaded.")
+        except Exception as _le:
+            intraday_learner = None
+            print(f"[IntradayLearner] Load failed (non-fatal): {_le}")
+
 
         # Import intraday engine once at startup
         try:
@@ -738,7 +749,40 @@ def _start_continuous_poller():
                         except Exception as ite:
                             print(f"[Intraday] Engine tick error: {ite}")
 
+                # ── Intraday Morning Brief — 9:15 AM PKT ─────────────────────
+                # Shows yesterday's results + learned sector edge + market outlook
+                if intraday_learner and (0 <= weekday <= 4):
+                    if now_pkt.hour == 9 and now_pkt.minute >= 15 and now_pkt.minute < 20:
+                        brief_key = now_pkt.strftime("%Y-%m-%d")
+                        if _last_morning_brief[0] != brief_key:
+                            try:
+                                stocks_snap = stock_cache.get("data") or []
+                                intraday_learner.send_morning_brief(stocks_snap)
+                                _last_morning_brief[0] = brief_key
+                            except Exception as mbe:
+                                print(f"[IntradayLearner] Morning brief error: {mbe}")
+
+                # ── Intraday EOD: Evaluate picks + Market Wrap — 3:30 PM PKT ─
+                # Evaluate all today's picks, update sector weights, send wrap
+                if intraday_learner and (0 <= weekday <= 4):
+                    if now_pkt.hour == 15 and now_pkt.minute >= 30 and now_pkt.minute < 35:
+                        eod_key = now_pkt.strftime("%Y-%m-%d")
+                        if _last_eod_learner[0] != eod_key:
+                            try:
+                                stocks_snap = stock_cache.get("data") or []
+                                idx_snap    = index_cache.get("data") or {}
+                                # 1. Evaluate today's intraday picks
+                                evaluated = intraday_learner.evaluate_eod(stocks_snap)
+                                # 2. Send EOD results summary
+                                intraday_learner.send_eod_summary(evaluated)
+                                # 3. Send full market wrap
+                                intraday_learner.send_market_wrap(stocks_snap, idx_snap)
+                                _last_eod_learner[0] = eod_key
+                            except Exception as eode:
+                                print(f"[IntradayLearner] EOD error: {eode}")
+
                 time.sleep(poll_interval)
+
 
             except Exception as e:
                 print(f"[PSX Poller] Error: {e}")
