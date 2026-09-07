@@ -3991,16 +3991,19 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 engine = calib_module.get_calibration_engine()
                 result = engine.run_weekly_calibration()
 
-                # Sync Intelligence Engine if available
+                # Background sync for Intelligence Engine if available
                 stocks_snap = stock_cache.get("data") or []
                 idx_snap    = index_cache.get("data") or {}
-                try:
-                    intel_engine = intel_module.get_engine()
-                    if intel_engine and stocks_snap:
-                        intel_engine.tick(stocks=stocks_snap, index_data=idx_snap, history_fn=fetch_stock_history)
-                        intel_engine.end_of_day(stocks_snap)
-                except Exception as ie_err:
-                    print(f"[Calibration] Intelligence sync warning: {ie_err}")
+                def _bg_intel_sync():
+                    try:
+                        intel_engine = intel_module.get_engine()
+                        if intel_engine and stocks_snap:
+                            intel_engine.tick(stocks=stocks_snap, index_data=idx_snap, history_fn=fetch_stock_history)
+                            intel_engine.end_of_day(stocks_snap)
+                    except Exception as ie_err:
+                        print(f"[Calibration] Intelligence sync warning: {ie_err}")
+                threading.Thread(target=_bg_intel_sync, daemon=True).start()
+
 
 
                 # Send Telegram notification of calibration update
