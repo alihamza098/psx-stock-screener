@@ -3994,12 +3994,14 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 # Sync Intelligence Engine if available
                 stocks_snap = stock_cache.get("data") or []
                 idx_snap    = index_cache.get("data") or {}
-                if intelligence and stocks_snap:
-                    try:
-                        intelligence.tick(stocks=stocks_snap, index_data=idx_snap, history_fn=fetch_stock_history)
-                        intelligence.end_of_day(stocks_snap)
-                    except Exception as ie_err:
-                        print(f"[Calibration] Intelligence sync warning: {ie_err}")
+                try:
+                    intel_engine = intel_module.get_engine()
+                    if intel_engine and stocks_snap:
+                        intel_engine.tick(stocks=stocks_snap, index_data=idx_snap, history_fn=fetch_stock_history)
+                        intel_engine.end_of_day(stocks_snap)
+                except Exception as ie_err:
+                    print(f"[Calibration] Intelligence sync warning: {ie_err}")
+
 
                 # Send Telegram notification of calibration update
                 try:
