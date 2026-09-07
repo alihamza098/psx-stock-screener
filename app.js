@@ -7858,8 +7858,40 @@ const calibrationReport = (() => {
         }
     }
 
+    async function runCalibration() {
+        const btn = document.getElementById('calib-run-btn');
+        const origText = btn ? btn.innerHTML : '⚡ Apply AI Learning Updates';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Calibrating Engine...';
+            btn.style.opacity = '0.7';
+        }
+        try {
+            const deviceId = typeof getDeviceId === 'function' ? getDeviceId() : '';
+            const res = await fetch(`/api/calibration/run?deviceId=${deviceId}`);
+            const data = await res.json();
+            if (data.success) {
+                if (typeof showToast === 'function') {
+                    showToast('✅ AI Engine updated & calibrated with latest market outcomes!');
+                }
+                await load();
+            } else {
+                alert('Calibration failed: ' + (data.error || 'Unknown error'));
+            }
+        } catch (e) {
+            alert('Error running calibration: ' + e.message);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+                btn.style.opacity = '1';
+            }
+        }
+    }
+
     // ── Public API ────────────────────────────────────────────────────────
-    return { load };
+    return { load, runCalibration };
+
 
 })();
 

@@ -25,15 +25,25 @@ Zero pip-dependencies — uses stdlib urllib only.
 import json
 import time
 import threading
+import ssl
 import urllib.request
 import urllib.error
 import urllib.parse
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
+try:
+    import certifi
+    SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+except Exception:
+    SSL_CONTEXT = ssl.create_default_context()
+SSL_CONTEXT.check_hostname = False
+SSL_CONTEXT.verify_mode = ssl.CERT_NONE
+
 # ── Config ────────────────────────────────────────────────────────────────────
 
-CONFIG_PATH = Path("cache/telegram_config.json")
+CONFIG_PATH = Path(__file__).parent / "cache" / "telegram_config.json"
+
 
 # Per-alert cooldown: don't re-alert same symbol+type within this many seconds
 ALERT_COOLDOWN_SECONDS = 3600   # 1 hour
@@ -97,28 +107,43 @@ def _send_message(text: str, parse_mode: str = "HTML") -> bool:
         "disable_web_page_preview": True
     }).encode()
 
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
     req = urllib.request.Request(url, data=body,
-                                  headers={"Content-Type": "application/json"},
+                                  headers=headers,
                                   method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return True, None
-    except urllib.error.HTTPError as e:
-        body_txt = e.read().decode(errors="ignore")[:300]
-        print(f"[Telegram] HTTP {e.code}: {body_txt}")
-        return False, f"HTTP {e.code}: {body_txt}"
-    except Exception as ex:
-        print(f"[Telegram] Send error: {ex}")
-        return False, str(ex)
-    return False, "Unknown error"
+    retries = 3
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=12, context=SSL_CONTEXT) as resp:
+                return True, None
+        except urllib.error.HTTPError as e:
+            body_txt = e.read().decode(errors="ignore")[:300]
+            print(f"[Telegram] HTTP {e.code} (attempt {attempt}/{retries}): {body_txt}")
+            last_err = f"HTTP {e.code}: {body_txt}"
+            if e.code in (400, 401, 403, 404):
+                break
+        except Exception as ex:
+            print(f"[Telegram] Send error (attempt {attempt}/{retries}): {ex}")
+            last_err = str(ex)
+            if attempt < retries:
+                time.sleep(1.5 * attempt)
+    return False, last_err or "Unknown error"
+
 
 
 def _send_async(text: str) -> None:
     """Fire-and-forget in background thread so it never blocks the engine."""
     def _worker():
-        _send_message(text)  # tuple return is intentionally discarded
+        ok, err = _send_message(text)
+        if not ok:
+            print(f"[Telegram] _send_async delivery failure: {err}")
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
+
 
 
 # ── Dedup / cooldown ──────────────────────────────────────────────────────────

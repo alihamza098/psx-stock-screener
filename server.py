@@ -653,8 +653,8 @@ def _start_continuous_poller():
                         except Exception as ie:
                             print(f"[Intelligence] Tick error: {ie}")
 
-                    # 4 PM PKT: end-of-day outcome evaluation
-                    if now_pkt.hour == 16 and now_pkt.minute < 5:
+                    # 4 PM PKT: end-of-day outcome evaluation (resilient window 16:00 - 18:59)
+                    if 16 <= now_pkt.hour < 19:
                         eod_key = now_pkt.strftime("%Y-%m-%d")
                         if _last_eod_tick[0] != eod_key:
                             try:
@@ -664,8 +664,8 @@ def _start_continuous_poller():
                             except Exception as ie:
                                 print(f"[Intelligence] EOD error: {ie}")
 
-                    # 2 AM PKT: overnight pattern rebuild
-                    if now_pkt.hour == 2 and now_pkt.minute < 5:
+                    # 2 AM PKT: overnight pattern rebuild (resilient window 02:00 - 04:59)
+                    if 2 <= now_pkt.hour < 5:
                         overnight_key = now_pkt.strftime("%Y-%m-%d")
                         if _last_overnight[0] != overnight_key:
                             try:
@@ -688,8 +688,8 @@ def _start_continuous_poller():
                     except Exception as ae:
                         print(f"[Audit] Weekly prediction audit error: {ae}")
 
-                 # ── Weekly Calibration — Sunday 11 PM PKT ────────────────────
-                if calibration and weekday == 6 and now_pkt.hour == 23 and now_pkt.minute < 5:
+                 # ── Weekly Calibration — Sunday 11 PM PKT (resilient window 23:00 - 23:59) ────
+                if calibration and weekday == 6 and now_pkt.hour >= 23:
                     calib_key = now_pkt.strftime("%Y-%m-%d")
                     if _last_calibration[0] != calib_key:
                         try:
@@ -699,8 +699,8 @@ def _start_continuous_poller():
                         except Exception as ce:
                             print(f"[Calibration] Weekly calibration error: {ce}")
 
-                # ── Long-Term Fundamentals Scrape — Daily 7 AM PKT ──────────
-                if longterm and (0 <= weekday <= 4) and now_pkt.hour == 7 and now_pkt.minute < 5:
+                # ── Long-Term Fundamentals Scrape — Daily 7 AM PKT (resilient window 07:00 - 08:59) ──────────
+                if longterm and (0 <= weekday <= 4) and 7 <= now_pkt.hour < 9:
                     lt_scrape_key = now_pkt.strftime("%Y-%m-%d-scrape")
                     if _last_lt_scrape[0] != lt_scrape_key:
                         try:
@@ -711,8 +711,8 @@ def _start_continuous_poller():
                         except Exception as lte:
                             print(f"[LongTerm] Fundamentals scrape error: {lte}")
 
-                # ── Long-Term 7-Stage Scan — Daily 9 AM PKT ─────────────────
-                if longterm and (0 <= weekday <= 4) and now_pkt.hour == 9 and now_pkt.minute < 5:
+                # ── Long-Term 7-Stage Scan — Daily 9 AM PKT (resilient window 09:00 - 10:59) ─────────────────
+                if longterm and (0 <= weekday <= 4) and 9 <= now_pkt.hour < 11:
                     lt_scan_key = now_pkt.strftime("%Y-%m-%d-scan")
                     if _last_lt_scan[0] != lt_scan_key:
                         try:
@@ -724,7 +724,7 @@ def _start_continuous_poller():
                             print(f"[LongTerm] Daily scan error: {lte}")
 
                 # ── Intraday Engine — Every 5 min during market hours ────────
-                # Scan + instant alerts (score >= 75) + close/target monitoring
+                # Scan + instant alerts + close/target monitoring + scheduled morning/afternoon picks
                 if intraday_engine and (0 <= weekday <= 4):
                     cur_time = time.time()
                     if cur_time - _last_intraday_tick[0] >= 300:
@@ -745,7 +745,7 @@ def _start_continuous_poller():
                                 stocks_snap, idx_snap, mem_fn
                             )
 
-                            # 2. Instant alerts (Option A — fires any time if score >= 75)
+                            # 2. Instant alerts (fires any time if score >= 70)
                             if candidates:
                                 intraday_engine.check_instant_alerts(candidates)
 
@@ -753,25 +753,24 @@ def _start_continuous_poller():
                             if stocks_snap:
                                 intraday_engine.check_target_hits(stocks_snap)
 
-                            # 4. Scheduled morning pick — 10:30 AM PKT
-                            if (now_pkt.hour == 10 and
-                                    now_pkt.minute >= 30 and now_pkt.minute < 35):
-                                if candidates:
+                            # 4. Scheduled morning pick — 10:30 AM to 1:00 PM PKT (resilient window)
+                            if (now_pkt.hour == 10 and now_pkt.minute >= 30) or (11 <= now_pkt.hour < 13):
+                                if candidates and not intraday_engine._daily.get("morning_sent"):
                                     intraday_engine.check_scheduled_morning(candidates)
 
-                            # 5. Scheduled afternoon pick — 1:00 PM PKT
-                            if (now_pkt.hour == 13 and now_pkt.minute < 5):
-                                if candidates:
+                            # 5. Scheduled afternoon pick — 1:00 PM to 3:00 PM PKT (resilient window)
+                            if (13 <= now_pkt.hour < 15):
+                                if candidates and not intraday_engine._daily.get("afternoon_sent"):
                                     intraday_engine.check_scheduled_afternoon(candidates)
 
                             _last_intraday_tick[0] = cur_time
                         except Exception as ite:
                             print(f"[Intraday] Engine tick error: {ite}")
 
-                # ── Intraday Morning Brief — 9:15 AM PKT ─────────────────────
+                # ── Intraday Morning Brief — 9:15 AM PKT (resilient window 09:15 - 10:30) ─────────────────────
                 # Shows yesterday's results + learned sector edge + market outlook
                 if intraday_learner and (0 <= weekday <= 4):
-                    if now_pkt.hour == 9 and now_pkt.minute >= 15 and now_pkt.minute < 20:
+                    if (now_pkt.hour == 9 and now_pkt.minute >= 15) or (now_pkt.hour == 10 and now_pkt.minute < 30):
                         brief_key = now_pkt.strftime("%Y-%m-%d")
                         if _last_morning_brief[0] != brief_key:
                             try:
@@ -781,10 +780,10 @@ def _start_continuous_poller():
                             except Exception as mbe:
                                 print(f"[IntradayLearner] Morning brief error: {mbe}")
 
-                # ── Intraday EOD: Evaluate picks + Market Wrap — 3:30 PM PKT ─
+                # ── Intraday EOD: Evaluate picks + Market Wrap — 3:30 PM PKT (resilient window 15:30 - 18:59) ─
                 # Evaluate all today's picks, update sector weights, send wrap
                 if intraday_learner and (0 <= weekday <= 4):
-                    if now_pkt.hour == 15 and now_pkt.minute >= 30 and now_pkt.minute < 35:
+                    if (now_pkt.hour == 15 and now_pkt.minute >= 30) or (16 <= now_pkt.hour < 19):
                         eod_key = now_pkt.strftime("%Y-%m-%d")
                         if _last_eod_learner[0] != eod_key:
                             try:
@@ -801,6 +800,7 @@ def _start_continuous_poller():
                                 _last_eod_learner[0] = eod_key
                             except Exception as eode:
                                 print(f"[IntradayLearner] EOD error: {eode}")
+
 
 
                 time.sleep(poll_interval)
@@ -3986,13 +3986,53 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json({"success": False, "error": str(e)}, 500)
 
         elif parsed_path.path == "/api/calibration/run":
-            # On-demand calibration trigger (for admin / manual use)
+            # On-demand calibration trigger (updates AI weights, thresholds, and patterns)
             try:
                 engine = calib_module.get_calibration_engine()
                 result = engine.run_weekly_calibration()
+
+                # Sync Intelligence Engine if available
+                stocks_snap = stock_cache.get("data") or []
+                idx_snap    = index_cache.get("data") or {}
+                if intelligence and stocks_snap:
+                    try:
+                        intelligence.tick(stocks=stocks_snap, index_data=idx_snap, history_fn=fetch_stock_history)
+                        intelligence.end_of_day(stocks_snap)
+                    except Exception as ie_err:
+                        print(f"[Calibration] Intelligence sync warning: {ie_err}")
+
+                # Send Telegram notification of calibration update
+                try:
+                    import psx_telegram_bot as _tg
+                    if _tg.is_enabled():
+                        rep = engine.generate_report()
+                        perf = rep.get("performance", {})
+                        meta = rep.get("meta", {})
+                        calib_msg = (
+                            "📊 <b>PSX MARKET INTELLIGENCE & SELF-LEARNING REPORT</b>\n"
+                            "<i>Autonomous AI Calibration & Learning Cycle Applied</i>\n"
+                            "━━━━━━━━━━━━━━━━━━━━\n"
+                            "🎯 <b>PERFORMANCE AUDIT & LEARNING</b>\n"
+                            f"  • <b>Closed Trade Outcomes:</b> {perf.get('closed_outcomes', 0)}\n"
+                            f"  • <b>Win Rate:</b> {perf.get('overall_win_rate_pct', 0)}% (Smoothed Bayesian Prior)\n"
+                            f"  • <b>Profit Factor:</b> {perf.get('profit_factor', 0)}\n"
+                            f"  • <b>Factor Profiles Built:</b> {meta.get('factor_profiles', 0)}\n"
+                            f"  • <b>Total Calibration Cycles:</b> {meta.get('calibration_runs_total', 0)}\n\n"
+                            "🧠 <b>SELF-LEARNING WEIGHTS ADJUSTED</b>\n"
+                            "  • Sector win rate edges updated across PSX sectors\n"
+                            "  • Signal conviction & causal factor weights recalibrated\n"
+                            "  • Pattern confidence scores synced with live price memory\n\n"
+                            "✅ <i>AI Engine is fully updated & tracking all predictions.</i>\n"
+                            "<i>psx.up.railway.app</i>"
+                        )
+                        _tg._send_async(calib_msg)
+                except Exception as tge:
+                    print(f"[Calibration] Telegram dispatch warning: {tge}")
+
                 self._send_json({"success": True, **result})
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
+
 
         # ─── Long-Term Investing API ──────────────────────────────────────────
 

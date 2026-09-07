@@ -1839,7 +1839,11 @@
                     <div class="calib-meta-pill" id="calib-changes-pill">— config changes</div>
                     <div class="calib-meta-pill" id="calib-last-pill">Last: —</div>
                     <button class="calib-refresh-btn" onclick="calibrationReport.load()">↺ Refresh</button>
+                    <button class="calib-apply-btn" id="calib-run-btn" onclick="calibrationReport.runCalibration()" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none; padding: 6px 14px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 0.82rem; box-shadow: 0 2px 8px rgba(16,185,129,0.3); transition: all 0.2s ease;">
+                        ⚡ Apply AI Learning Updates
+                    </button>
                 </div>
+
             </div>
 
             <!-- Performance Overview Row -->
@@ -2207,6 +2211,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.7"></script>
+    <script src="app.js?v=2.8"></script>
 </body>
 </html>

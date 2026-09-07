@@ -26,9 +26,10 @@ from typing import Dict, Any, List, Optional
 
 MAX_INSTANT_PER_DAY   = 2        # Separate quota — instant high-conviction
 MAX_SCHEDULED_PER_DAY = 2        # Separate quota — 10:30 AM + 1:00 PM
-INSTANT_SCORE_THRESHOLD  = 75    # Score to fire instantly
-SCHEDULED_SCORE_MIN      = 55    # Min score for scheduled picks
-MIN_LIQUIDITY_PKR        = 5_000_000   # PKR 5M traded value today
+INSTANT_SCORE_THRESHOLD  = 70    # Score to fire instantly (calibrated from 75 for regime resilience)
+SCHEDULED_SCORE_MIN      = 50    # Min score for scheduled picks (calibrated from 55)
+MIN_LIQUIDITY_PKR        = 3_000_000   # PKR 3M traded value today
+
 
 # Alert window (PKT)
 ALERT_START_HOUR   = 9
@@ -388,8 +389,7 @@ def check_scheduled_morning(candidates: List[Dict]) -> bool:
     except Exception as e:
         print(f"[Intraday] Morning alert error: {e}")
 
-    with _state_lock:
-        _daily["morning_sent"] = True
+    # Keep morning_sent as False if no candidate was dispatched so next tick retries
     return False
 
 
@@ -440,9 +440,9 @@ def check_scheduled_afternoon(candidates: List[Dict]) -> bool:
     except Exception as e:
         print(f"[Intraday] Afternoon alert error: {e}")
 
-    with _state_lock:
-        _daily["afternoon_sent"] = True
+    # Keep afternoon_sent as False if no candidate was dispatched so next tick retries
     return False
+
 
 
 # ── Target / Stop Monitor — runs every 5 min tick ────────────────────────────
