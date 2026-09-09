@@ -272,16 +272,41 @@ def _update_sector_weights() -> None:
 
 
 def get_sector_weights() -> Dict[str, float]:
-    """Returns {sector: weight_multiplier} for use in intraday scoring."""
+    """
+    Returns {sector: weight_multiplier} for use in intraday scoring.
+    Combines:
+      1. Calibrated baseline weights from cache/calibration.db (factor_type='SECTOR_INTEL')
+      2. Live intraday learned weights from cache/intraday_learning.db (sector_weights)
+    """
+    weights: Dict[str, float] = {}
+    # 1. Baseline from calibration.db
+    try:
+        cal_path = Path("cache/calibration.db")
+        if cal_path.exists():
+            with sqlite3.connect(str(cal_path), timeout=5) as c_conn:
+                c_rows = c_conn.execute(
+                    "SELECT factor_value, weight FROM factor_weights WHERE factor_type='SECTOR_INTEL'"
+                ).fetchall()
+                for r in c_rows:
+                    if r[0]:
+                        weights[r[0]] = float(r[1] or 1.0)
+    except Exception:
+        pass
+
+    # 2. Live overrides from intraday_learning.db
     with _db_lock:
         conn = _get_conn()
         try:
             rows = conn.execute(
                 "SELECT sector, weight FROM sector_weights"
             ).fetchall()
-            return {r["sector"]: r["weight"] for r in rows}
+            for r in rows:
+                if r["sector"]:
+                    weights[r["sector"]] = float(r["weight"] or 1.0)
         finally:
             conn.close()
+
+    return weights
 
 
 # ── Morning Brief ─────────────────────────────────────────────────────────────

@@ -199,19 +199,29 @@ def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT", force
     }.get(mode, "⚡ INTRADAY ALERT")
 
     # Catalyst text
-    catalysts = []
-    if rvol >= 3.0:
-        catalysts.append(f"Volume {rvol}x above average 🔥")
-    elif rvol >= 2.0:
-        catalysts.append(f"Volume {rvol}x above average")
-    if change >= 3.0:
-        catalysts.append(f"+{change}% strong momentum")
-    elif change >= 1.5:
-        catalysts.append(f"+{change}% positive momentum")
-    if not catalysts:
-        catalysts.append(f"Score {score}/100 — multi-factor setup")
+    turnover_m = candidate.get("turnover_m", 0)
+    sec_w      = candidate.get("sector_weight", 1.0)
+    headroom   = lvl.get("circuit_headroom", 0)
 
-    catalyst_str = "\n".join(f"  • {c}" for c in catalysts[:3])
+    catalysts = []
+    if turnover_m >= 10.0:
+        catalysts.append(f"Turnover: ₨{turnover_m}M traded today 🔥")
+    if rvol >= 2.0:
+        catalysts.append(f"Volume surge: {rvol}x expected session pace")
+    elif rvol >= 1.5:
+        catalysts.append(f"Volume: {rvol}x expected pace")
+    if 1.5 <= change <= 4.8:
+        catalysts.append(f"+{change}% sweet-spot breakout momentum")
+    elif change >= 1.0:
+        catalysts.append(f"+{change}% positive momentum")
+    if sec_w >= 1.10:
+        catalysts.append(f"Sector edge: {sector} ({sec_w}x AI calibration) 🧠")
+    if headroom > 0:
+        catalysts.append(f"Ceiling: +{headroom}% headroom to +10% circuit limit")
+    if not catalysts:
+        catalysts.append(f"Score {score}/100 — multi-factor institutional setup")
+
+    catalyst_str = "\n".join(f"  • {c}" for c in catalysts[:4])
 
     text = (
         f"⚡ <b>PSX INTRADAY SETUP</b>\n"
@@ -222,10 +232,10 @@ def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT", force
         f"<b>Score:</b>   {score}/100  |  <b>RVol:</b> {rvol}x  |  <b>Move:</b> +{change}%\n\n"
         f"📍 <b>TRADE LEVELS</b>\n"
         f"  • <b>Entry:</b>   ₨{entry_min:.2f} – ₨{entry_max:.2f}\n"
-        f"  • <b>Stop:</b>    ₨{stop:.2f} (-{risk_pct}%) [Session low basis] 🛡\n"
+        f"  • <b>Stop:</b>    ₨{stop:.2f} (-{risk_pct}%) [Dynamic Risk Buffer] 🛡\n"
         f"  • <b>Target:</b>  ₨{target:.2f} (+{reward_pct}%) 🎯\n"
         f"  • <b>R:R:</b>     {rr}x\n\n"
-        f"⚡ <b>WHY NOW?</b>\n"
+        f"⚡ <b>SETUP CATALYSTS:</b>\n"
         f"{catalyst_str}\n\n"
         f"⏱ <i>Intraday only — close by 3:00 PM PKT · Scanned at {at}</i>\n"
         f"<i>PSX Alert · psx.up.railway.app</i>"
