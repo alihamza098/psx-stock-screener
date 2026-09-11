@@ -789,7 +789,7 @@ def _start_continuous_poller():
                             try:
                                 stocks_snap = stock_cache.get("data") or []
                                 idx_snap    = index_cache.get("data") or {}
-                                # 1. Evaluate today's intraday picks
+                                # 1. Evaluate today's intraday picks (updates reputation + sector weights)
                                 evaluated = intraday_learner.evaluate_eod(stocks_snap)
                                 # 2. Send EOD results summary
                                 intraday_learner.send_eod_summary(evaluated)
@@ -797,6 +797,8 @@ def _start_continuous_poller():
                                 intraday_learner.send_market_wrap(stocks_snap, idx_snap)
                                 # 4. Persist daily Upper Lock history
                                 calculate_upper_lock_analysis(stocks_snap)
+                                # 5. Send Daily Scorecard (4:15 PM PKT — SC-1)
+                                intraday_learner.send_daily_scorecard(evaluated)
                                 _last_eod_learner[0] = eod_key
                             except Exception as eode:
                                 print(f"[IntradayLearner] EOD error: {eode}")

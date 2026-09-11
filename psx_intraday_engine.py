@@ -30,6 +30,14 @@ MAX_SCHEDULED_PER_DAY = 2        # Separate quota — 10:30 AM + 1:00 PM
 INSTANT_SCORE_THRESHOLD  = 70    # Score to fire instantly
 SCHEDULED_SCORE_MIN      = 55    # Min score for scheduled picks
 
+# ── Learning Mode Overrides ────────────────────────────────────────────────────
+# When system has < 200 evaluated picks, apply stricter thresholds.
+# Fewer but much higher-quality alerts during learning phase.
+LEARNING_INSTANT_THRESHOLD = 80   # Raised from 70
+LEARNING_SCHEDULED_MIN     = 70   # Raised from 55
+LEARNING_MAX_INSTANT       = 1    # Only 1 instant alert per day during learning
+LEARNING_MAX_SCHEDULED     = 1    # Only 1 scheduled alert per day during learning
+
 # Institutional liquidity floors — stops illiquid traps like PMPK (3,475 shares)
 MIN_LIQUIDITY_PKR        = 10_000_000  # PKR 10M minimum traded value today
 MIN_VOLUME_NORMAL        = 100_000     # 100k shares min for stocks under PKR 150
@@ -45,6 +53,7 @@ ALERT_START_HOUR   = 9
 ALERT_START_MIN    = 45
 ALERT_END_HOUR     = 15
 ALERT_END_MIN      = 0
+
 
 # Scheduled times (PKT)
 MORNING_HOUR,   MORNING_MIN   = 10, 30
@@ -437,24 +446,45 @@ def scan_for_opportunities(
 # ── Instant Alert (Option A — up to 2/day, score >= 75) ──────────────────────
 
 def check_instant_alerts(candidates: List[Dict]) -> int:
-    """Fire immediately for any candidate scoring >= INSTANT_SCORE_THRESHOLD."""
+    """Fire immediately for any candidate scoring >= INSTANT_SCORE_THRESHOLD.
+    During Learning Mode (< 200 evaluated picks), stricter threshold applies.
+    """
     _reset_if_new_day()
     sent = 0
     try:
         import psx_telegram_bot as _tg
+
+        # ── Learning Mode: dynamic threshold ──────────────────────────────────
+        try:
+            import psx_intraday_learner as _learner
+            _in_learning = _learner.is_learning_mode()
+            _rep_blacklist = _learner.get_blacklisted_stocks_by_reputation()
+        except Exception:
+            _in_learning = True
+            _rep_blacklist = set()
+
+        _threshold = LEARNING_INSTANT_THRESHOLD if _in_learning else INSTANT_SCORE_THRESHOLD
+        _max_today  = LEARNING_MAX_INSTANT       if _in_learning else MAX_INSTANT_PER_DAY
+        # ── End learning mode ──────────────────────────────────────────────────
+
         with _state_lock:
             instant_sent    = _daily["instant_sent"]
             instant_symbols = list(_daily["instant_symbols"])
 
         for cand in candidates:
-            if cand["score"] < INSTANT_SCORE_THRESHOLD:
+            if cand["score"] < _threshold:
                 continue
-            if instant_sent >= MAX_INSTANT_PER_DAY:
+            if instant_sent >= _max_today:
                 break
             sym = cand["symbol"]
             if sym in instant_symbols:
                 continue
-            ok = _tg.alert_intraday_setup(cand, mode="INSTANT")
+            # Reputation blacklist check (stocks with repeated losses)
+            if sym in _rep_blacklist:
+                print(f"[Intraday] SKIPPED {sym} — reputation blacklisted")
+                continue
+            ok = _tg.alert_intraday_setup(cand, mode="INSTANT",
+                                           learning_mode=_in_learning)
             if ok:
                 with _state_lock:
                     _daily["instant_sent"] += 1
@@ -469,9 +499,9 @@ def check_instant_alerts(candidates: List[Dict]) -> int:
                 instant_sent += 1
                 instant_symbols.append(sym)
                 sent += 1
-                print(f"[Intraday] INSTANT → {sym} score={cand['score']}")
+                print(f"[Intraday] INSTANT → {sym} score={cand['score']}"
+                      f" (learning_mode={_in_learning}, threshold={_threshold})")
                 try:
-                    import psx_intraday_learner as _learner
                     _learner.record_alert(cand, mode="INSTANT")
                 except Exception:
                     pass

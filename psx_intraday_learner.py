@@ -68,7 +68,238 @@ CREATE TABLE IF NOT EXISTS score_thresholds (
     value         REAL,
     last_updated  TEXT
 );
+
+CREATE TABLE IF NOT EXISTS stock_reputation (
+    symbol        TEXT PRIMARY KEY,
+    reputation    REAL    DEFAULT 0.0,   -- starts 0; +10 per win, -15 per loss
+    win_count     INTEGER DEFAULT 0,
+    loss_count    INTEGER DEFAULT 0,
+    last_outcome  TEXT,
+    last_updated  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS learning_state (
+    key           TEXT PRIMARY KEY,
+    value         TEXT,
+    updated_at    TEXT
+);
 """
+
+
+# ── Learning Mode Helpers ─────────────────────────────────────────────────────
+# LEARNING MODE: active when < 200 intraday picks have been evaluated.
+# During learning mode, thresholds are stricter and alerts display a warning.
+
+LEARNING_MODE_THRESHOLD = 200   # picks needed to exit learning mode
+REPUTATION_WIN_BONUS    = 10.0  # reputation gained per win
+REPUTATION_LOSS_PENALTY = 15.0  # reputation lost per loss
+REPUTATION_DECAY_WEEKLY = 0.05  # 5% decay per week (no activity = slowly forgotten)
+REPUTATION_BLACKLIST_THRESHOLD = -20.0   # below this → excluded from alerts
+
+
+def is_learning_mode() -> bool:
+    """Returns True if we have fewer than LEARNING_MODE_THRESHOLD evaluated picks."""
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) as n FROM intraday_picks WHERE outcome != 'PENDING'"
+            ).fetchone()
+            return (row["n"] if row else 0) < LEARNING_MODE_THRESHOLD
+        finally:
+            conn.close()
+
+
+def get_learning_progress() -> dict:
+    """Returns learning phase progress stats for dashboard and Telegram."""
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            row = conn.execute("""
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN outcome != 'PENDING' THEN 1 ELSE 0 END) as evaluated,
+                    SUM(CASE WHEN outcome = 'TARGET_HIT' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN outcome = 'STOP_HIT'   THEN 1 ELSE 0 END) as losses,
+                    AVG(CASE WHEN outcome != 'PENDING' THEN actual_return_pct END) as avg_ret
+                FROM intraday_picks
+            """).fetchone()
+            evaluated = row["evaluated"] or 0
+            wins      = row["wins"] or 0
+            losses    = row["losses"] or 0
+            avg_ret   = round(row["avg_ret"] or 0, 2)
+            win_rate  = round(wins / max(evaluated, 1) * 100, 1)
+            in_learning = evaluated < LEARNING_MODE_THRESHOLD
+            return {
+                "evaluated":     evaluated,
+                "wins":          wins,
+                "losses":        losses,
+                "avg_return":    avg_ret,
+                "win_rate_pct":  win_rate,
+                "learning_mode": in_learning,
+                "samples_needed": max(0, LEARNING_MODE_THRESHOLD - evaluated),
+                "progress_pct":  round(min(evaluated / LEARNING_MODE_THRESHOLD * 100, 100), 1)
+            }
+        finally:
+            conn.close()
+
+
+def compute_credibility_score() -> dict:
+    """
+    Credibility Score 0–100 for the dashboard gauge.
+    Formula:
+      accuracy_30d  (40% weight) — recent prediction accuracy
+      profit_factor (20% weight) — are wins bigger than losses?
+      sample_conf   (20% weight) — how many samples backing weights?
+      consistency   (20% weight) — is accuracy stable week-over-week?
+    """
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            # Last 30 days
+            cutoff_30d = (_pkt_now() - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
+            row = conn.execute("""
+                SELECT
+                    COUNT(*) as n,
+                    SUM(CASE WHEN outcome='TARGET_HIT' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN outcome='STOP_HIT'   THEN 1 ELSE 0 END) as losses,
+                    AVG(CASE WHEN outcome='TARGET_HIT' THEN actual_return_pct ELSE NULL END) as avg_win,
+                    AVG(CASE WHEN outcome='STOP_HIT'   THEN ABS(actual_return_pct) ELSE NULL END) as avg_loss
+                FROM intraday_picks WHERE date >= ? AND outcome != 'PENDING'
+            """, (cutoff_30d,)).fetchone()
+
+            n       = row["n"] or 0
+            wins    = row["wins"] or 0
+            losses  = row["losses"] or 0
+            avg_win  = row["avg_win"] or 0
+            avg_loss = row["avg_loss"] or 1  # avoid div-by-zero
+
+            # Accuracy score (0–40)
+            accuracy_pct = wins / max(n, 1)
+            accuracy_score = round(accuracy_pct * 40, 1)
+
+            # Profit factor score (0–20)
+            pf = (avg_win * wins) / max(avg_loss * losses, 0.01)
+            pf_score = round(min(pf / 2.0, 1.0) * 20, 1)  # PF=2.0 → full 20 pts
+
+            # Sample confidence score (0–20)
+            sample_score = round(min(n / LEARNING_MODE_THRESHOLD, 1.0) * 20, 1)
+
+            # Consistency: compare last 2 weeks
+            midpoint = (_pkt_now() - datetime.timedelta(days=14)).strftime("%Y-%m-%d")
+            r1 = conn.execute("""
+                SELECT SUM(CASE WHEN outcome='TARGET_HIT' THEN 1 ELSE 0 END)*1.0 / MAX(COUNT(*),1) as wr
+                FROM intraday_picks WHERE date >= ? AND outcome != 'PENDING'
+            """, (midpoint,)).fetchone()
+            r2 = conn.execute("""
+                SELECT SUM(CASE WHEN outcome='TARGET_HIT' THEN 1 ELSE 0 END)*1.0 / MAX(COUNT(*),1) as wr
+                FROM intraday_picks WHERE date >= ? AND date < ? AND outcome != 'PENDING'
+            """, (cutoff_30d, midpoint)).fetchone()
+            wr1 = r1["wr"] if r1 else 0
+            wr2 = r2["wr"] if r2 else 0
+            consistency = 1.0 - min(abs(wr1 - wr2) * 2, 1.0)
+            consistency_score = round(consistency * 20, 1)
+
+            total_score = round(accuracy_score + pf_score + sample_score + consistency_score, 1)
+
+            if total_score >= 81:
+                label = "💎 High Confidence — Trade-Ready"
+                color = "green"
+            elif total_score >= 61:
+                label = "🟢 Reliable for Guidance"
+                color = "green"
+            elif total_score >= 31:
+                label = "🟡 Building Confidence"
+                color = "yellow"
+            else:
+                label = "🔴 Learning Phase — Do Not Trade Blindly"
+                color = "red"
+
+            return {
+                "total": total_score,
+                "components": {
+                    "accuracy": accuracy_score,
+                    "profit_factor": pf_score,
+                    "sample_confidence": sample_score,
+                    "consistency": consistency_score
+                },
+                "label": label,
+                "color": color,
+                "samples_evaluated": n
+            }
+        finally:
+            conn.close()
+
+
+# ── Stock Reputation ──────────────────────────────────────────────────────────
+
+def update_stock_reputation(symbol: str, outcome: str, return_pct: float) -> None:
+    """
+    Update a stock's reputation after an intraday outcome.
+    Wins: +10 pts. Losses: -15 pts. Neutral: no change.
+    Stocks below -20 are automatically excluded from future alerts.
+    """
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            row = conn.execute(
+                "SELECT reputation, win_count, loss_count FROM stock_reputation WHERE symbol = ?",
+                (symbol.upper(),)
+            ).fetchone()
+            rep   = row["reputation"] if row else 0.0
+            wins  = row["win_count"]  if row else 0
+            losses = row["loss_count"] if row else 0
+
+            if outcome == "TARGET_HIT":
+                rep += REPUTATION_WIN_BONUS
+                wins += 1
+            elif outcome == "STOP_HIT":
+                rep -= REPUTATION_LOSS_PENALTY
+                losses += 1
+
+            now_str = _pkt_now().isoformat()
+            conn.execute("""
+                INSERT INTO stock_reputation (symbol, reputation, win_count, loss_count, last_outcome, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol) DO UPDATE SET
+                    reputation=excluded.reputation, win_count=excluded.win_count,
+                    loss_count=excluded.loss_count, last_outcome=excluded.last_outcome,
+                    last_updated=excluded.last_updated
+            """, (symbol.upper(), round(rep, 2), wins, losses, outcome, now_str))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def get_blacklisted_stocks_by_reputation() -> set:
+    """Returns set of symbols with reputation below threshold — excluded from alerts."""
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT symbol FROM stock_reputation WHERE reputation <= ?",
+                (REPUTATION_BLACKLIST_THRESHOLD,)
+            ).fetchall()
+            return {r["symbol"] for r in rows}
+        finally:
+            conn.close()
+
+
+def get_reputation(symbol: str) -> float:
+    """Returns a stock's current reputation score (default 0.0)."""
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            row = conn.execute(
+                "SELECT reputation FROM stock_reputation WHERE symbol = ?",
+                (symbol.upper(),)
+            ).fetchone()
+            return float(row["reputation"]) if row else 0.0
+        finally:
+            conn.close()
+
+
+
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -203,6 +434,9 @@ def evaluate_eod(stocks: List[Dict[str, Any]]) -> List[Dict]:
                     "return_pct":  actual_ret,
                 })
 
+                # Update stock reputation (self-learning per stock)
+                update_stock_reputation(sym, outcome, actual_ret)
+
             conn.commit()
         finally:
             conn.close()
@@ -212,6 +446,7 @@ def evaluate_eod(stocks: List[Dict[str, Any]]) -> List[Dict]:
         _update_sector_weights()
 
     return evaluated
+
 
 
 # ── Sector Weight Learner ─────────────────────────────────────────────────────
@@ -638,4 +873,99 @@ def send_market_wrap(stocks: List[Dict[str, Any]],
 
     except Exception as e:
         print(f"[IntradayLearner] Market wrap error: {e}")
+        return False
+
+
+# ── Daily Scorecard (4:15 PM PKT — SC-1) ──────────────────────────────────────
+
+def send_daily_scorecard(today_evaluated: List[Dict] = None) -> bool:
+    """
+    Fires at 4:15 PM PKT every market day.
+    Self-accountability report: what was alerted, what happened, system accuracy,
+    learning progress, and current credibility score.
+    """
+    try:
+        import psx_telegram_bot as _tg
+        if not _tg.is_enabled():
+            return False
+
+        now    = _pkt_now()
+        today  = now.strftime("%a %d %b %Y")
+        today_evaluated = today_evaluated or []
+
+        # ── Today's intraday results ──────────────────────────────────────────
+        wins_today   = sum(1 for p in today_evaluated if p["outcome"] == "TARGET_HIT")
+        losses_today = sum(1 for p in today_evaluated if p["outcome"] == "STOP_HIT")
+        partial_today = len(today_evaluated) - wins_today - losses_today
+        avg_ret_today = (sum(p["return_pct"] for p in today_evaluated) / len(today_evaluated)
+                         if today_evaluated else 0)
+        ret_str = f"+{avg_ret_today:.1f}%" if avg_ret_today >= 0 else f"{avg_ret_today:.1f}%"
+
+        # ── Build today's picks detail ────────────────────────────────────────
+        pick_lines = []
+        for p in today_evaluated:
+            emoji = "✅" if p["outcome"] == "TARGET_HIT" else ("🛑" if p["outcome"] == "STOP_HIT" else "⚪")
+            ret_s = f"+{p['return_pct']:.1f}%" if p['return_pct'] >= 0 else f"{p['return_pct']:.1f}%"
+            pick_lines.append(f"  {emoji} {p['symbol']} — {p['outcome'].replace('_',' ')} {ret_s}")
+        if not pick_lines:
+            pick_lines = ["  (No alerts evaluated today)"]
+
+        # ── All-time learning stats ───────────────────────────────────────────
+        progress   = get_learning_progress()
+        credibility = compute_credibility_score()
+        mode_str   = "🔬 Learning Phase" if progress["learning_mode"] else "🎓 Calibrated Mode"
+        cred_score = credibility["total"]
+        cred_label = credibility["label"]
+
+        # ── Weekly scan all-time stats (from weekly_scan.db) ─────────────────
+        try:
+            import sqlite3 as _sqlite3
+            from pathlib import Path as _Path
+            _wdb = _sqlite3.connect(str(_Path("cache/weekly_scan.db")), timeout=5)
+            _wdb.row_factory = _sqlite3.Row
+            _wrow = _wdb.execute("""
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN target_reached=1 THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN stop_hit=1 THEN 1 ELSE 0 END) as stops,
+                    SUM(CASE WHEN outcome='IN_PROGRESS' THEN 1 ELSE 0 END) as active
+                FROM prediction_audits
+            """).fetchone()
+            _wdb.close()
+            weekly_total = _wrow["total"] or 0
+            weekly_wins  = _wrow["wins"]  or 0
+            weekly_stops = _wrow["stops"] or 0
+            weekly_active= _wrow["active"] or 0
+            weekly_wr    = round(weekly_wins / max(weekly_total, 1) * 100, 1)
+            weekly_line  = f"  Weekly Scan: {weekly_wins}✅ / {weekly_stops}🛑 / {weekly_active}🔄 active ({weekly_wr}% win rate)"
+        except Exception:
+            weekly_line  = "  Weekly Scan: data unavailable"
+
+        # ── Compose message ───────────────────────────────────────────────────
+        samples_str = f"{progress['evaluated']}/{200}"
+        lines = [
+            f"📊 <b>PSX AI — DAILY SCORECARD</b>",
+            f"<i>{today}</i>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"\n⚡ <b>TODAY'S INTRADAY</b>  {ret_str}",
+        ] + pick_lines + [
+            f"\n📈 <b>SYSTEM PERFORMANCE</b>",
+            f"  Intraday (all-time): {progress['wins']}W / {progress['losses']}L "
+            f"({progress['win_rate_pct']}% win rate)",
+            weekly_line,
+            f"\n🔬 <b>LEARNING PROGRESS</b>",
+            f"  Mode: {mode_str}",
+            f"  Samples: {samples_str} ({progress['progress_pct']}% to calibration)",
+            f"\n🏅 <b>CREDIBILITY SCORE: {cred_score}/100</b>",
+            f"  {cred_label}",
+            f"\n<i>Next: 9:15 AM morning brief | psxai.up.railway.app</i>",
+        ]
+
+        ok, _ = _tg._send_message("\n".join(lines))
+        if ok:
+            print("[IntradayLearner] Daily scorecard sent.")
+        return ok
+
+    except Exception as e:
+        print(f"[IntradayLearner] Daily scorecard error: {e}")
         return False

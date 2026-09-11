@@ -26,6 +26,10 @@ _cal_weights_cache: dict = {}
 _cal_weights_ts: float = 0.0
 _CAL_CACHE_TTL = 300  # refresh every 5 minutes
 
+# ── Safety Constants ──────────────────────────────────────────────────────────
+MAX_STOP_LOSS_PCT = 8.0          # Hard cap: stop never more than 8% below entry
+BLACKLIST_COOLDOWN_DAYS = 21     # Failed stocks locked out for 21 days
+
 def _load_sector_weights_from_calibration() -> dict:
     """
     Read SECTOR_INTEL and GRADE weights from cache/calibration.db.
@@ -61,6 +65,30 @@ def _load_sector_weights_from_calibration() -> dict:
     _cal_weights_cache = result
     _cal_weights_ts = _time.time()
     return result
+
+
+def _get_blacklisted_symbols() -> set:
+    """
+    Returns the set of symbols that stopped out within the last BLACKLIST_COOLDOWN_DAYS days.
+    These are excluded from new scan recommendations to prevent repeated losing picks (e.g. ASTM -36% x4).
+    Reads from weekly_scan.db prediction_audits table.
+    """
+    try:
+        conn = get_db_connection()
+        cutoff = (datetime.datetime.now(datetime.timezone.utc) -
+                  datetime.timedelta(days=BLACKLIST_COOLDOWN_DAYS)).isoformat()
+        rows = conn.execute(
+            "SELECT DISTINCT symbol FROM prediction_audits "
+            "WHERE stop_hit = 1 AND stopped_out_at >= ?",
+            (cutoff,)
+        ).fetchall()
+        conn.close()
+        blacklisted = {r["symbol"].upper() for r in rows}
+        if blacklisted:
+            print(f"[WeeklyScan] Blacklist active: {len(blacklisted)} symbols cooled down — {sorted(blacklisted)}")
+        return blacklisted
+    except Exception:
+        return set()
 
 
 # ─── Default Configuration (Section 3 of spec) ───
@@ -523,6 +551,14 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
         else:
             stop = stop_atr
             stop_basis = "ATR_MULTIPLE"
+
+        # ── Hard cap: never let stop be further than MAX_STOP_LOSS_PCT% from entry ──
+        hard_stop_floor = round(entry * (1 - MAX_STOP_LOSS_PCT / 100.0), 2)
+        if stop < hard_stop_floor:
+            stop = hard_stop_floor
+            stop_basis = stop_basis + "_CAPPED"  # e.g. "SWING_STRUCTURE_CAPPED"
+        # ── End hard cap ───────────────────────────────────────────────────────
+
         risk_dist = max(entry - stop, 0.2)
         tp1 = round(entry + (risk_dist * 1.5), 2)
         tp2 = round(entry + (risk_dist * 2.5), 2)
@@ -536,6 +572,14 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
     else:
         stop = stop_atr
         stop_basis = "ATR_MULTIPLE"
+
+        # ── Hard cap for SHORT: stop can't be further than MAX_STOP_LOSS_PCT% above entry ──
+        hard_stop_ceiling = round(entry * (1 + MAX_STOP_LOSS_PCT / 100.0), 2)
+        if stop > hard_stop_ceiling:
+            stop = hard_stop_ceiling
+            stop_basis = "ATR_MULTIPLE_CAPPED"
+        # ── End hard cap ───────────────────────────────────────────────────────
+
         risk_dist = max(stop - entry, 0.2)
         tp1 = round(entry - (risk_dist * 1.5), 2)
         tp2 = round(entry - (risk_dist * 2.5), 2)
@@ -546,6 +590,7 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
         reward_pct_tp2 = round(((entry - tp2) / entry) * 100, 2)
         entry_zone_min = round(entry * 1.008, 2)
         entry_zone_max = round(entry * 0.988, 2)
+
 
     min_rr = config["risk"]["minRewardRiskRatio"]
     if rr < min_rr:
@@ -678,15 +723,24 @@ def execute_weekly_scan(stocks, index_data=None, run_type="SCHEDULED_WEEKLY", co
         "failedLiquidity": 0,
         "circuitLockedNoQuote": 0,
         "noTriggerDetected": 0,
-        "rrBelowThreshold": 0
+        "rrBelowThreshold": 0,
+        "blacklisted": 0
     }
 
+    # Load recently-failed blacklist (stops ASTM-style repeated picks)
+    blacklisted_symbols = _get_blacklisted_symbols()
+
     for s in stocks:
+        sym = (s.get("symbol") or "").upper()
+        if sym in blacklisted_symbols:
+            excluded_counts["blacklisted"] += 1
+            continue
         cand, exc_reason = evaluate_stock_candidate(s, index_trend=index_trend, config=config)
         if cand:
             candidates.append(cand)
         elif exc_reason in excluded_counts:
             excluded_counts[exc_reason] += 1
+
 
     # Grade ranking priority: A_PLUS > A > B
     grade_rank = {"A_PLUS": 3, "A": 2, "B": 1}

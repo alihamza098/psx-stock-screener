@@ -1340,6 +1340,30 @@ class PredictionEngine:
 
         self.db.insert_prediction(pred)
 
+        # ── Fix: Record pattern occurrence for outcome tracking ────────────────
+        # This was the missing loop: patterns were detected but never stored in
+        # pattern_occurrences, so psxEdge stayed 0.0 for all 8 patterns.
+        # Now every matched pattern fires an occurrence row for 5-day follow-up.
+        if pattern_id and matched_pattern:
+            try:
+                conn = self.db._connect()
+                conn.execute("""
+                    INSERT OR IGNORE INTO pattern_occurrences
+                    (pattern_id, event_id, symbol, matched_at, similarity, outcome)
+                    VALUES (?, ?, ?, ?, ?, 'PENDING')
+                """, (
+                    pattern_id,
+                    event["id"],
+                    symbol,
+                    _now(),
+                    float(matched_pattern.get("similarity", 0.8))
+                ))
+                conn.commit()
+                conn.close()
+            except Exception as _pe:
+                pass  # Non-blocking — pattern occurrence recording failure never aborts prediction
+        # ── End pattern occurrence fix ─────────────────────────────────────────
+
 
     def _load_calibration_weights(self) -> Optional[Dict]:
         """
@@ -1430,16 +1454,43 @@ class LearningEngine:
 
             actual_return_5d = round(((current_price - entry_price) / entry_price) * 100, 2)
 
-            # Determine outcome
+            # ── Improved Outcome Scoring ──────────────────────────────────────
+            # A move of less than ±1% is NEUTRAL — the stock didn't move enough
+            # to confirm OR deny the prediction. Marking 0% moves as INCORRECT
+            # was massively inflating the error count.
             signal = pred["signal"]
-            if signal in [SIGNAL_BREAKOUT_IMMINENT, SIGNAL_CONTINUATION, SIGNAL_WATCH]:
-                outcome = "CORRECT" if actual_return_5d >= 2.0 else "INCORRECT"
+            abs_ret = abs(actual_return_5d)
+
+            if abs_ret < 1.0:
+                # Too small to call — stock was flat
+                outcome = "NEUTRAL"
+            elif signal in [SIGNAL_BREAKOUT_IMMINENT, SIGNAL_CONTINUATION, SIGNAL_WATCH]:
+                # Bullish signals: correct if stock rose >= 2%
+                if actual_return_5d >= 2.0:
+                    outcome = "CORRECT"
+                elif actual_return_5d <= -2.0:
+                    outcome = "INCORRECT"
+                else:
+                    outcome = "NEUTRAL"  # moved but not decisively
             elif signal == SIGNAL_REVERSAL_RISK:
-                outcome = "CORRECT" if actual_return_5d <= -2.0 else "INCORRECT"
+                # Bearish/caution signal: correct if stock fell >= 2%
+                if actual_return_5d <= -2.0:
+                    outcome = "CORRECT"
+                elif actual_return_5d >= 2.0:
+                    outcome = "INCORRECT"
+                else:
+                    outcome = "NEUTRAL"
             elif signal == SIGNAL_EXTENDED:
-                outcome = "CORRECT" if actual_return_5d < 0 else "INCORRECT"
+                # Extended/overbought: correct if stock declined at all
+                if actual_return_5d < -1.0:
+                    outcome = "CORRECT"
+                elif actual_return_5d >= 3.0:
+                    outcome = "INCORRECT"
+                else:
+                    outcome = "NEUTRAL"
             else:
                 outcome = "NEUTRAL"
+            # ── End improved scoring ──────────────────────────────────────────
 
             self.db.update_prediction_outcome(pred["id"], outcome, actual_return_5d)
             evaluated += 1

@@ -160,10 +160,12 @@ def _is_cooldown(key: str) -> bool:
 
 # ── FORMATTER 1: Weekly Scan Grade A/A+ candidate ────────────────────────────
 
-def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT", force: bool = False) -> bool:
+def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT",
+                          force: bool = False, learning_mode: bool = False) -> bool:
     """
     Send intraday trade alert via Telegram.
     mode: "INSTANT" | "MORNING_PICK" | "AFTERNOON_PICK" | "TODAY_SETUP"
+    learning_mode: if True, adds a caution banner to the alert.
     Returns True if alert dispatched.
     """
     if not is_enabled():
@@ -223,6 +225,22 @@ def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT", force
 
     catalyst_str = "\n".join(f"  • {c}" for c in catalysts[:4])
 
+    # Learning mode footer — credibility warning
+    if learning_mode:
+        try:
+            import psx_intraday_learner as _lrn
+            cred = _lrn.compute_credibility_score()
+            progress = _lrn.get_learning_progress()
+            cred_footer = (
+                f"\n⚠️ <b>LEARNING PHASE</b> — System Credibility: {cred['total']}/100\n"
+                f"<i>{progress['evaluated']}/200 samples collected. "
+                f"Verify manually before trading.</i>"
+            )
+        except Exception:
+            cred_footer = "\n⚠️ <i>Learning Phase — verify setup manually before trading.</i>"
+    else:
+        cred_footer = ""
+
     text = (
         f"⚡ <b>PSX INTRADAY SETUP</b>\n"
         f"<i>{mode_badge}</i>\n"
@@ -232,11 +250,12 @@ def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT", force
         f"<b>Score:</b>   {score}/100  |  <b>RVol:</b> {rvol}x  |  <b>Move:</b> +{change}%\n\n"
         f"📍 <b>TRADE LEVELS</b>\n"
         f"  • <b>Entry:</b>   ₨{entry_min:.2f} – ₨{entry_max:.2f}\n"
-        f"  • <b>Stop:</b>    ₨{stop:.2f} (-{risk_pct}%) [Dynamic Risk Buffer] 🛡\n"
+        f"  • <b>Stop:</b>    ₨{stop:.2f} (-{risk_pct}%) [Max -8% Cap] 🛡\n"
         f"  • <b>Target:</b>  ₨{target:.2f} (+{reward_pct}%) 🎯\n"
         f"  • <b>R:R:</b>     {rr}x\n\n"
         f"⚡ <b>SETUP CATALYSTS:</b>\n"
-        f"{catalyst_str}\n\n"
+        f"{catalyst_str}\n"
+        f"{cred_footer}\n"
         f"⏱ <i>Intraday only — close by 3:00 PM PKT · Scanned at {at}</i>\n"
         f"<i>PSX Alert · psxai.up.railway.app</i>"
     )
