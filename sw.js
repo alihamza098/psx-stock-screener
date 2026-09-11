@@ -1,4 +1,4 @@
-const CACHE_NAME = 'psx-screener-v11';
+const CACHE_NAME = 'psx-screener-v12';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

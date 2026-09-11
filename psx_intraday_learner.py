@@ -195,10 +195,11 @@ def compute_credibility_score() -> dict:
                 SELECT SUM(CASE WHEN outcome='TARGET_HIT' THEN 1 ELSE 0 END)*1.0 / MAX(COUNT(*),1) as wr
                 FROM intraday_picks WHERE date >= ? AND date < ? AND outcome != 'PENDING'
             """, (cutoff_30d, midpoint)).fetchone()
-            wr1 = r1["wr"] if r1 else 0
-            wr2 = r2["wr"] if r2 else 0
+            wr1 = float(r1["wr"]) if (r1 and r1["wr"] is not None) else 0.0
+            wr2 = float(r2["wr"]) if (r2 and r2["wr"] is not None) else 0.0
             consistency = 1.0 - min(abs(wr1 - wr2) * 2, 1.0)
             consistency_score = round(consistency * 20, 1)
+
 
             total_score = round(accuracy_score + pf_score + sample_score + consistency_score, 1)
 

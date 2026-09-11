@@ -194,10 +194,11 @@ def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT",
     rr         = lvl.get("rr", 0)
 
     mode_badge = {
-        "INSTANT":        "⚡ INSTANT — High Conviction Setup",
-        "MORNING_PICK":   "🌅 MORNING PICK — Best Setup (10:30 AM)",
-        "AFTERNOON_PICK": "🌆 AFTERNOON PICK — Best Setup (1:00 PM)",
-        "TODAY_SETUP":    "⭐ TODAY'S TOP SETUP — Live Review",
+        "INSTANT":         "⚡ INSTANT — High Conviction Setup",
+        "DELAYED_CONFIRM": "🎯 CONFIRMED ENTRY — Pullback Dip Absorbed",
+        "MORNING_PICK":    "🌅 MORNING PICK — Best Setup (10:30 AM)",
+        "AFTERNOON_PICK":  "🌆 AFTERNOON PICK — Best Setup (1:00 PM)",
+        "TODAY_SETUP":     "⭐ TODAY'S TOP SETUP — Live Review",
     }.get(mode, "⚡ INTRADAY ALERT")
 
     # Catalyst text

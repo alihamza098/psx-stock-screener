@@ -81,6 +81,8 @@ _daily: Dict[str, Any] = {
     "open_positions":     {},
     # All scored candidates from last tick (for scheduled picks)
     "candidates":         [],
+    # Smart Entry: watchlist for pullback-dip absorption
+    "dip_watch":          {},
 }
 
 _memory_cache: Dict[str, Dict] = {}
@@ -111,7 +113,9 @@ def _reset_if_new_day() -> None:
                 "scheduled_symbols":  [],
                 "open_positions":     {},
                 "candidates":         [],
+                "dip_watch":          {},
             })
+
 
 
 def _is_market_window() -> bool:
@@ -385,6 +389,21 @@ def scan_for_opportunities(
     tod_fraction = _get_time_of_day_fraction()
     candidates   = []
 
+    # ── Load reputation blacklist & sector rotation signals ───────────────────
+    try:
+        from psx_intraday_learner import get_blacklisted_stocks_by_reputation
+        _rep_blacklist = get_blacklisted_stocks_by_reputation()
+    except Exception:
+        _rep_blacklist = set()
+
+    try:
+        import psx_breadth_engine as _bre
+        _dump_sectors = _bre.get_dump_sectors()
+        _hot_sectors  = _bre.get_hot_sectors()
+    except Exception:
+        _dump_sectors = set()
+        _hot_sectors  = set()
+
     for stock in stocks:
         sym    = stock.get("symbol", "").upper()
         change = float(stock.get("change", 0) or 0)
@@ -394,6 +413,12 @@ def scan_for_opportunities(
 
         if not sym or price < MIN_PRICE_PKR:
             continue
+        # Skip blacklisted stocks & dump zone sectors
+        if sym in _rep_blacklist:
+            continue
+        if sector in _dump_sectors:
+            continue
+
         if change < MIN_ALLOWED_CHANGE or change > MAX_ALLOWED_CHANGE:
             continue
         if not _liquidity_ok(stock):
@@ -405,6 +430,10 @@ def scan_for_opportunities(
         sec_w    = sec_weights.get(sector, 0.6)
 
         sc = _score(stock, kse_chg, sec_avgs, avg_vol, last_rsi, sec_w)
+        # Hot sector tailwind bonus (+8 pts)
+        if sector in _hot_sectors:
+            sc = min(100, sc + 8)
+
         if sc < SCHEDULED_SCORE_MIN:
             continue
 
@@ -420,7 +449,7 @@ def scan_for_opportunities(
 
         turnover_m = round((price * volume) / 1_000_000.0, 1)
 
-        candidates.append({
+        cand = {
             "symbol":        sym,
             "name":          stock.get("name", sym),
             "sector":        sector,
@@ -433,7 +462,23 @@ def scan_for_opportunities(
             "levels":        lvl,
             "sector_weight": sec_w,
             "scanned_at":    _pkt_now().strftime("%H:%M PKT"),
-        })
+        }
+        candidates.append(cand)
+
+        # Smart Entry: register high-conviction candidate for dip-and-rebound monitoring
+        if sc >= 75:
+            with _state_lock:
+                if (sym not in _daily["dip_watch"] and
+                    sym not in _daily["instant_symbols"] and
+                    sym not in _daily["scheduled_symbols"]):
+                    _daily["dip_watch"][sym] = {
+                        "initial_price": price,
+                        "high": price,
+                        "low": price,
+                        "cand": cand,
+                        "flagged_at": _pkt_now().strftime("%H:%M"),
+                        "confirmed": False,
+                    }
 
     candidates.sort(key=lambda c: c["score"], reverse=True)
 
@@ -441,6 +486,7 @@ def scan_for_opportunities(
         _daily["candidates"] = candidates
 
     return candidates
+
 
 
 # ── Instant Alert (Option A — up to 2/day, score >= 75) ──────────────────────
@@ -511,6 +557,106 @@ def check_instant_alerts(candidates: List[Dict]) -> int:
     return sent
 
 
+# ── Smart Entry: Delayed Confirm Alert (Pullback-Dip Absorbed) ────────────────
+
+def check_delayed_confirm_alerts(stocks: List[Dict]) -> int:
+    """
+    Feature 4: Smart Entry Timing (DELAYED_CONFIRM).
+    Monitors high-scoring candidate stocks on dip_watch.
+    If a stock dipped by >= 0.8% and then rebounded by >= 0.5% from session/dip low,
+    it confirms buyers have absorbed the opening dip -> fires DELAYED_CONFIRM alert.
+    """
+    _reset_if_new_day()
+    sent = 0
+    now = _pkt_now()
+    if not (9 <= now.hour <= 11):
+        return 0
+
+    stock_map = {s.get("symbol", "").upper(): s for s in stocks if s.get("symbol")}
+    try:
+        import psx_telegram_bot as _tg
+        try:
+            import psx_intraday_learner as _learner
+            _in_learning = _learner.is_learning_mode()
+            _rep_blacklist = _learner.get_blacklisted_stocks_by_reputation()
+        except Exception:
+            _in_learning = True
+            _rep_blacklist = set()
+
+        _threshold = LEARNING_INSTANT_THRESHOLD if _in_learning else INSTANT_SCORE_THRESHOLD
+        _max_today  = LEARNING_MAX_INSTANT       if _in_learning else MAX_INSTANT_PER_DAY
+
+        with _state_lock:
+            instant_sent      = _daily["instant_sent"]
+            instant_symbols   = list(_daily["instant_symbols"])
+            scheduled_symbols = list(_daily["scheduled_symbols"])
+            dip_watch         = dict(_daily["dip_watch"])
+
+        if instant_sent >= _max_today:
+            return 0
+
+        for sym, item in dip_watch.items():
+            if item.get("confirmed"):
+                continue
+            if sym in instant_symbols or sym in scheduled_symbols or sym in _rep_blacklist:
+                continue
+
+            live_stock = stock_map.get(sym)
+            if not live_stock:
+                continue
+
+            cur_price = float(live_stock.get("price", 0) or 0)
+            if cur_price <= 0:
+                continue
+
+            high = max(item.get("high", cur_price), cur_price)
+            low  = min(item.get("low", cur_price), cur_price)
+            item["high"] = high
+            item["low"]  = low
+
+            # Check pullback absorption
+            dip_pct = ((high - low) / high) * 100 if high > 0 else 0
+            bounce_pct = ((cur_price - low) / low) * 100 if low > 0 else 0
+
+            if dip_pct >= 0.8 and bounce_pct >= 0.5 and cur_price >= low * 1.004:
+                cand = dict(item.get("cand", {}))
+                cand["price"] = cur_price
+                cand["change"] = float(live_stock.get("change", 0) or 0)
+                cand["volume"] = int(float(live_stock.get("volume", 0) or 0))
+                lvl = _build_levels(live_stock)
+                if lvl:
+                    cand["levels"] = lvl
+
+                if cand.get("score", 0) < (_threshold - 5):
+                    continue
+
+                ok = _tg.alert_intraday_setup(cand, mode="DELAYED_CONFIRM",
+                                               learning_mode=_in_learning)
+                if ok:
+                    with _state_lock:
+                        _daily["instant_sent"] += 1
+                        _daily["instant_symbols"].append(sym)
+                        _daily["dip_watch"][sym]["confirmed"] = True
+                        _daily["open_positions"][sym] = {
+                            "target":        cand["levels"]["target"],
+                            "stop":          cand["levels"]["stop"],
+                            "entry":         cur_price,
+                            "mode":          "DELAYED_CONFIRM",
+                            "close_alerted": False,
+                        }
+                    sent += 1
+                    print(f"[Intraday] DELAYED_CONFIRM → {sym} entry={cur_price} "
+                          f"(dip={dip_pct:.1f}%, bounce={bounce_pct:.1f}%)")
+                    try:
+                        _learner.record_alert(cand, mode="DELAYED_CONFIRM")
+                    except Exception:
+                        pass
+                    break
+    except Exception as e:
+        print(f"[Intraday] Delayed confirm alert error: {e}")
+    return sent
+
+
 # ── Scheduled Morning — 10:30 AM PKT ─────────────────────────────────────────
 
 def check_scheduled_morning(candidates: List[Dict]) -> bool:
@@ -522,7 +668,18 @@ def check_scheduled_morning(candidates: List[Dict]) -> bool:
         scheduled_symbols = list(_daily["scheduled_symbols"])
         scheduled_sent    = len(scheduled_symbols)
 
-    if scheduled_sent >= MAX_SCHEDULED_PER_DAY:
+    try:
+        import psx_intraday_learner as _learner
+        _in_learning = _learner.is_learning_mode()
+        _rep_blacklist = _learner.get_blacklisted_stocks_by_reputation()
+    except Exception:
+        _in_learning = True
+        _rep_blacklist = set()
+
+    _max_today = LEARNING_MAX_SCHEDULED if _in_learning else MAX_SCHEDULED_PER_DAY
+    _min_score = LEARNING_SCHEDULED_MIN if _in_learning else SCHEDULED_SCORE_MIN
+
+    if scheduled_sent >= _max_today:
         with _state_lock:
             _daily["morning_sent"] = True
         return False
@@ -530,12 +687,13 @@ def check_scheduled_morning(candidates: List[Dict]) -> bool:
     try:
         import psx_telegram_bot as _tg
         for cand in candidates:
-            if cand["score"] < SCHEDULED_SCORE_MIN:
+            if cand["score"] < _min_score:
                 continue
             sym = cand["symbol"]
-            if sym in scheduled_symbols:
+            if sym in scheduled_symbols or sym in _rep_blacklist:
                 continue
-            ok = _tg.alert_intraday_setup(cand, mode="MORNING_PICK")
+            ok = _tg.alert_intraday_setup(cand, mode="MORNING_PICK",
+                                           learning_mode=_in_learning)
             if ok:
                 with _state_lock:
                     _daily["morning_sent"]    = True
@@ -549,7 +707,6 @@ def check_scheduled_morning(candidates: List[Dict]) -> bool:
                     }
                 print(f"[Intraday] MORNING → {sym} score={cand['score']}")
                 try:
-                    import psx_intraday_learner as _learner
                     _learner.record_alert(cand, mode="MORNING_PICK")
                 except Exception:
                     pass
@@ -558,7 +715,6 @@ def check_scheduled_morning(candidates: List[Dict]) -> bool:
     except Exception as e:
         print(f"[Intraday] Morning alert error: {e}")
 
-    # Keep morning_sent as False if no candidate was dispatched so next tick retries
     return False
 
 
@@ -573,7 +729,18 @@ def check_scheduled_afternoon(candidates: List[Dict]) -> bool:
         scheduled_symbols = list(_daily["scheduled_symbols"])
         scheduled_sent    = len(scheduled_symbols)
 
-    if scheduled_sent >= MAX_SCHEDULED_PER_DAY:
+    try:
+        import psx_intraday_learner as _learner
+        _in_learning = _learner.is_learning_mode()
+        _rep_blacklist = _learner.get_blacklisted_stocks_by_reputation()
+    except Exception:
+        _in_learning = True
+        _rep_blacklist = set()
+
+    _max_today = LEARNING_MAX_SCHEDULED if _in_learning else MAX_SCHEDULED_PER_DAY
+    _min_score = LEARNING_SCHEDULED_MIN if _in_learning else SCHEDULED_SCORE_MIN
+
+    if scheduled_sent >= _max_today:
         with _state_lock:
             _daily["afternoon_sent"] = True
         return False
@@ -581,12 +748,13 @@ def check_scheduled_afternoon(candidates: List[Dict]) -> bool:
     try:
         import psx_telegram_bot as _tg
         for cand in candidates:
-            if cand["score"] < SCHEDULED_SCORE_MIN:
+            if cand["score"] < _min_score:
                 continue
             sym = cand["symbol"]
-            if sym in scheduled_symbols:
+            if sym in scheduled_symbols or sym in _rep_blacklist:
                 continue
-            ok = _tg.alert_intraday_setup(cand, mode="AFTERNOON_PICK")
+            ok = _tg.alert_intraday_setup(cand, mode="AFTERNOON_PICK",
+                                           learning_mode=_in_learning)
             if ok:
                 with _state_lock:
                     _daily["afternoon_sent"] = True
@@ -600,7 +768,6 @@ def check_scheduled_afternoon(candidates: List[Dict]) -> bool:
                     }
                 print(f"[Intraday] AFTERNOON → {sym} score={cand['score']}")
                 try:
-                    import psx_intraday_learner as _learner
                     _learner.record_alert(cand, mode="AFTERNOON_PICK")
                 except Exception:
                     pass
@@ -609,8 +776,8 @@ def check_scheduled_afternoon(candidates: List[Dict]) -> bool:
     except Exception as e:
         print(f"[Intraday] Afternoon alert error: {e}")
 
-    # Keep afternoon_sent as False if no candidate was dispatched so next tick retries
     return False
+
 
 
 

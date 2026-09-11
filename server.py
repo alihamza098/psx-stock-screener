@@ -782,9 +782,14 @@ def _start_continuous_poller():
                             if candidates:
                                 intraday_engine.check_instant_alerts(candidates)
 
+                            # 2b. Smart Entry: delayed confirm alerts (pullback dip absorbed)
+                            if stocks_snap:
+                                intraday_engine.check_delayed_confirm_alerts(stocks_snap)
+
                             # 3. Close / target monitor — runs even outside alert window
                             if stocks_snap:
                                 intraday_engine.check_target_hits(stocks_snap)
+
 
                             # 4. Scheduled morning pick — 10:30 AM to 1:00 PM PKT (resilient window)
                             if (now_pkt.hour == 10 and now_pkt.minute >= 30) or (11 <= now_pkt.hour < 13):
@@ -4179,6 +4184,48 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json({"success": True, **_ie.get_daily_status()})
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
+
+        # ─── Market Breadth & Sector Rotation API ─────────────────────────────────
+        elif parsed_path.path == "/api/breadth":
+            try:
+                import psx_breadth_engine as _bre
+                latest = _bre.get_latest_breadth()
+                rot = _bre.compute_sector_rotation()
+                self._send_json({"success": True, "breadth": latest, "rotation": rot})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        # ─── Self-Learning & Credibility Status API ───────────────────────────────
+        elif parsed_path.path == "/api/learning/status":
+            try:
+                import psx_intraday_learner as _lrn
+                progress = _lrn.get_learning_progress()
+                credibility = _lrn.compute_credibility_score()
+                blacklist = list(_lrn.get_blacklisted_stocks_by_reputation())
+                self._send_json({
+                    "success": True,
+                    "progress": progress,
+                    "credibility": credibility,
+                    "reputation_blacklist": blacklist
+                })
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        # ─── Stock Reputation API ────────────────────────────────────────────────
+        elif parsed_path.path == "/api/stocks/reputation":
+            try:
+                import psx_intraday_learner as _lrn
+                conn = _lrn._get_conn()
+                rows = conn.execute(
+                    "SELECT symbol, reputation, win_count, loss_count, last_outcome, last_updated "
+                    "FROM stock_reputation ORDER BY reputation DESC LIMIT 100"
+                ).fetchall()
+                conn.close()
+                reputations = [dict(r) for r in rows]
+                self._send_json({"success": True, "reputations": reputations})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
 
         # ─── Telegram Alert Bot Endpoints ────────────────────────────────────────
 
