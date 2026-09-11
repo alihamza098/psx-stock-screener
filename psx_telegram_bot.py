@@ -238,7 +238,7 @@ def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT", force
         f"⚡ <b>SETUP CATALYSTS:</b>\n"
         f"{catalyst_str}\n\n"
         f"⏱ <i>Intraday only — close by 3:00 PM PKT · Scanned at {at}</i>\n"
-        f"<i>PSX Alert · psx.up.railway.app</i>"
+        f"<i>PSX Alert · psxai.up.railway.app</i>"
     )
 
     _send_async(text)
@@ -284,7 +284,7 @@ def alert_intraday_close(symbol: str, entry: float, live_price: float,
         f"<b>Target was:</b>  ₨{target:.2f}\n"
         f"<b>Stop was:</b>    ₨{stop:.2f}\n\n"
         f"🔔 <b>{action_msg}</b>\n\n"
-        f"<i>PSX Intraday Monitor · psx.up.railway.app</i>"
+        f"<i>PSX Intraday Monitor · psxai.up.railway.app</i>"
     )
 
     _send_async(text)
@@ -355,7 +355,7 @@ def alert_weekly_scan_candidate(candidate: Dict[str, Any]) -> bool:
         f"  • <b>TP2:</b>        ₨{tp2:.2f} (+{rwd_tp2}%) 🚀\n"
         f"  • <b>R:R Ratio:</b>  {rr:.1f}x\n\n"
         f"⚡ <b>TRIGGERS:</b> {trig_str or 'N/A'}\n"
-        f"<i>PSX Weekly Scan · psx.up.railway.app</i>"
+        f"<i>PSX Weekly Scan · psxai.up.railway.app</i>"
     )
 
     _send_async(text)
@@ -436,7 +436,7 @@ def alert_intelligence_signal(pred: Dict[str, Any],
     if cal_note:
         text += f"\n⚙️ <i>Calibration: {cal_note}</i>\n"
 
-    text += f"\n<i>PSX Intelligence Engine · psx.up.railway.app</i>"
+    text += f"\n<i>PSX Intelligence Engine · psxai.up.railway.app</i>"
 
     _send_async(text)
     print(f"[Telegram] Intelligence alert dispatched → {sym} ({signal} {confidence}%)")
@@ -474,7 +474,7 @@ def alert_pattern_match(symbol: str, pattern_name: str, pattern_id: str,
         f"<b>Price:</b>   ₨{price:.2f}\n"
         f"<b>Confidence:</b> {confidence}%\n\n"
         f"<i>Check PSX Intelligence Engine for full cause analysis.</i>\n"
-        f"<i>psx.up.railway.app</i>"
+        f"<i>psxai.up.railway.app</i>"
     )
 
     _send_async(text)
@@ -520,7 +520,7 @@ def alert_daily_scan_summary(run_meta: Dict[str, Any],
         div    = c.get("divYield", c.get("div_yield", 0))
         lines.append(f"  • <b>{sym}</b> ({grade}) — {sector} | Score {sc:.0f}/100 | Div {div:.1f}%")
 
-    lines.append(f"\n<i>PSX Long-Term Engine · psx.up.railway.app</i>")
+    lines.append(f"\n<i>PSX Long-Term Engine · psxai.up.railway.app</i>")
     text = "\n".join(lines)
 
     _send_async(text)

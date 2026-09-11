@@ -4028,7 +4028,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                             "  • Signal conviction & causal factor weights recalibrated\n"
                             "  • Pattern confidence scores synced with live price memory\n\n"
                             "✅ <i>AI Engine is fully updated & tracking all predictions.</i>\n"
-                            "<i>psx.up.railway.app</i>"
+                            "<i>psxai.up.railway.app</i>"
                         )
                         _tg._send_async(calib_msg)
                 except Exception as tge:
@@ -4391,7 +4391,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                     "  • 📈 Weekly Scan Grade A/A+ setups\n"
                     "  • 🚨 Intelligence Engine signals\n"
                     "  • 📊 Daily Long-Term scan summaries\n\n"
-                    "<i>psx.up.railway.app</i>"
+                    "<i>psxai.up.railway.app</i>"
                 )
                 if ok:
                     self._send_json({"success": True, "message": "Test message sent! Check your Telegram."})

@@ -383,7 +383,7 @@ def send_morning_brief(stocks: List[Dict[str, Any]]) -> bool:
                 lines.append(f"  ⚠️ {s} ({w:.2f}x — avoid)")
 
         lines.append("\n⏱ <i>Market opens 9:30 AM · Alerts active from 9:45 AM PKT</i>")
-        lines.append("<i>PSX Intraday Engine · psx.up.railway.app</i>")
+        lines.append("<i>PSX Intraday Engine · psxai.up.railway.app</i>")
 
         text = "\n".join(lines)
         ok, _ = _tg._send_message(text)
@@ -628,7 +628,7 @@ def send_market_wrap(stocks: List[Dict[str, Any]],
             f"\n🔭 <b>TOMORROW'S OUTLOOK</b>  {bias_label}\n"
             f"  {outlook}\n"
             f"\n<i>Next alerts: 9:15 AM morning brief · 9:45 AM scan starts</i>\n"
-            f"<i>PSX Engine · psx.up.railway.app</i>"
+            f"<i>PSX Engine · psxai.up.railway.app</i>"
         )
 
         ok, _ = _tg._send_message(text)

@@ -806,7 +806,7 @@ def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT", force
         f"⚡ <b>SETUP CATALYSTS:</b>\n"
         f"{catalyst_str}\n\n"
         f"⏱ <i>Intraday only — close by 3:00 PM PKT · Scanned at {at}</i>\n"
-        f"<i>PSX Alert · psx.up.railway.app</i>"
+        f"<i>PSX Alert · psxai.up.railway.app</i>"
     )
 
     _send_async(text)
