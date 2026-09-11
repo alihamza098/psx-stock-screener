@@ -397,6 +397,209 @@ body {
     opacity: 1;
 }
 
+/* --- AI Intelligence & Market Breadth Bar --- */
+.ai-intelligence-bar {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-md);
+    margin-bottom: var(--space-xl);
+}
+
+@media (max-width: 992px) {
+    .ai-intelligence-bar {
+        grid-template-columns: 1fr;
+    }
+}
+
+.ai-intel-card {
+    background: var(--gradient-card);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.ai-intel-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #6366f1, #22d3ee);
+    opacity: 0.6;
+    transition: opacity 0.3s ease;
+}
+
+.ai-intel-card:hover {
+    border-color: rgba(99, 102, 241, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 16px rgba(99, 102, 241, 0.15);
+}
+
+.ai-intel-card:hover::before {
+    opacity: 1;
+}
+
+.ai-intel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-sm);
+}
+
+.ai-intel-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ai-intel-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ai-badge-bull {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+.ai-badge-neutral {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.ai-badge-bear {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.ai-badge-crash {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.ai-badge-learning {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+    border-color: rgba(168, 85, 247, 0.3);
+}
+
+.ai-badge-hot {
+    background: rgba(249, 115, 22, 0.15);
+    color: #fb923c;
+    border-color: rgba(249, 115, 22, 0.3);
+}
+
+.ai-intel-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 6px 0;
+}
+
+.ai-intel-score {
+    font-size: 1.8rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.ai-intel-denom {
+    font-size: 0.9rem;
+    color: var(--text-tertiary);
+    font-weight: 500;
+}
+
+.ai-intel-meter-wrapper {
+    flex: 1;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.ai-intel-meter-bar {
+    height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #3b82f6, #10b981);
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ai-intel-meter-bar.ai-meter-cred {
+    background: linear-gradient(90deg, #f59e0b, #6366f1);
+}
+
+.ai-intel-details {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
+.ai-intel-footer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.74rem;
+    color: var(--text-tertiary);
+}
+
+.ai-rotation-content {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0;
+}
+
+.ai-rotation-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+}
+
+.ai-rotation-label {
+    font-weight: 700;
+    color: var(--text-tertiary);
+    font-size: 0.7rem;
+    min-width: 90px;
+}
+
+.ai-rotation-val {
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
 .overview-label {
     font-size: 0.78rem;
     color: var(--text-tertiary);

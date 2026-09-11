@@ -205,6 +205,71 @@
             </div>
         </section>
 
+        <!-- PSX AI Market Intelligence & Regime Health Bar -->
+        <section class="ai-intelligence-bar" id="ai-intelligence-bar">
+            <!-- Card 1: Market Health & Regime -->
+            <div class="ai-intel-card" id="card-market-breadth">
+                <div class="ai-intel-header">
+                    <span class="ai-intel-title">🌡️ Market Health & Regime</span>
+                    <span class="ai-intel-badge" id="breadth-regime-badge">Calculating...</span>
+                </div>
+                <div class="ai-intel-main">
+                    <div class="ai-intel-score" id="breadth-score-val">--<span class="ai-intel-denom">/100</span></div>
+                    <div class="ai-intel-meter-wrapper">
+                        <div class="ai-intel-meter-bar" id="breadth-meter-bar" style="width: 50%;"></div>
+                    </div>
+                </div>
+                <div class="ai-intel-details" id="breadth-details-text">
+                    Scanning Advance / Decline & Volume Flow...
+                </div>
+                <div class="ai-intel-footer" id="breadth-alerts-status">
+                    <span>⚡</span> <span>Intraday Alert Quota: Initializing...</span>
+                </div>
+            </div>
+
+            <!-- Card 2: AI Credibility & Self-Learning -->
+            <div class="ai-intel-card" id="card-ai-credibility">
+                <div class="ai-intel-header">
+                    <span class="ai-intel-title">🧠 AI Engine Credibility</span>
+                    <span class="ai-intel-badge" id="credibility-phase-badge">🔬 Learning Phase</span>
+                </div>
+                <div class="ai-intel-main">
+                    <div class="ai-intel-score" id="credibility-score-val">--<span class="ai-intel-denom">/100</span></div>
+                    <div class="ai-intel-meter-wrapper">
+                        <div class="ai-intel-meter-bar ai-meter-cred" id="credibility-meter-bar" style="width: 20%;"></div>
+                    </div>
+                </div>
+                <div class="ai-intel-details" id="credibility-details-text">
+                    Learning Progress: 0 / 200 Picks Evaluated (0%)
+                </div>
+                <div class="ai-intel-footer">
+                    <span>🛡️</span> <span>Max -8% Stop Cap & 21-Day Cooldown Active</span>
+                </div>
+            </div>
+
+            <!-- Card 3: Sector Rotation & Money Flow -->
+            <div class="ai-intel-card" id="card-sector-rotation">
+                <div class="ai-intel-header">
+                    <span class="ai-intel-title">🔄 Sector Money Flow</span>
+                    <span class="ai-intel-badge" id="rotation-status-badge">Live Rotation</span>
+                </div>
+                <div class="ai-rotation-content" id="rotation-content-box">
+                    <div class="ai-rotation-row">
+                        <span class="ai-rotation-label">🔥 HOT SECTORS:</span>
+                        <span class="ai-rotation-val" id="rotation-hot-val">Detecting institutional flow...</span>
+                    </div>
+                    <div class="ai-rotation-row">
+                        <span class="ai-rotation-label">🚫 AVOID ZONES:</span>
+                        <span class="ai-rotation-val" id="rotation-dump-val">Scanning outflow sectors...</span>
+                    </div>
+                </div>
+                <div class="ai-intel-footer" style="cursor: pointer;" onclick="switchView('intelligence')">
+                    <span>Explore Autonomous Intelligence Tab</span> <span style="font-size: 0.8rem; margin-left: auto;">→</span>
+                </div>
+            </div>
+        </section>
+
+
         <!-- Mobile Floating Clickable Search & Options Button -->
         <button class="mobile-float-search-btn" id="mobile-float-search-btn" title="Search & Options">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -2211,6 +2276,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=3.2"></script>
+    <script src="app.js?v=3.3"></script>
 </body>
 </html>

@@ -189,8 +189,10 @@ async function fetchLiveData(isAutoRefresh = false, isForce = false) {
             STOCKS = stockData.data;
             try { updateSectorFilter(); } catch (e) { console.error('Sector filter error:', e); }
             try { updateMarketOverview(indexData, stockData); } catch (e) { console.error('Market overview error:', e); }
+            try { updateAIIntelligenceBar(); } catch (e) { console.error('AI intelligence bar error:', e); }
             try { updateLastUpdated(stockData.fetchedAt); } catch (e) { console.error('Last updated error:', e); }
             renderAll();
+
 
 
             // Show stale data banner if serving outdated cache
@@ -380,7 +382,99 @@ function updateMarketOverview(indexData, stockData) {
     }
 }
 
+async function updateAIIntelligenceBar() {
+    try {
+        const [breadthRes, learnRes] = await Promise.all([
+            fetch('/api/breadth').then(r => r.json()).catch(() => null),
+            fetch('/api/learning/status').then(r => r.json()).catch(() => null)
+        ]);
+
+        // 1. Breadth & Regime
+        if (breadthRes && breadthRes.success && breadthRes.breadth) {
+            const b = breadthRes.breadth;
+            const score = Math.round(b.score || 0);
+            const regime = (b.regime || 'NEUTRAL').toUpperCase();
+            
+            const scoreEl = document.getElementById('breadth-score-val');
+            if (scoreEl) scoreEl.innerHTML = `${score}<span class="ai-intel-denom">/100</span>`;
+            
+            const meterEl = document.getElementById('breadth-meter-bar');
+            if (meterEl) meterEl.style.width = `${Math.min(100, Math.max(5, score))}%`;
+            
+            const badgeEl = document.getElementById('breadth-regime-badge');
+            if (badgeEl) {
+                const icon = regime === 'BULL' ? '📈' : (regime === 'CRASH' ? '🚨' : (regime === 'BEAR' ? '📉' : '⚪'));
+                badgeEl.textContent = `${regime} ${icon}`;
+                badgeEl.className = `ai-intel-badge ai-badge-${regime.toLowerCase()}`;
+            }
+
+            const detailsEl = document.getElementById('breadth-details-text');
+            if (detailsEl) {
+                const volRatio = Number(b.vol_ratio || 1.0).toFixed(1);
+                detailsEl.textContent = `${b.advances} Adv / ${b.declines} Dec (${b.ad_pct}%) · Vol: ${volRatio}x ${b.vol_ratio >= 1.0 ? 'Buying' : 'Selling'}`;
+            }
+
+            const alertStatusEl = document.getElementById('breadth-alerts-status');
+            if (alertStatusEl) {
+                if (regime === 'BEAR' || regime === 'CRASH') {
+                    alertStatusEl.innerHTML = `<span style="color: #ef4444;">⛔</span> <span style="color: #ef4444; font-weight: 600;">Alerts Suspended (${regime} Protection Active)</span>`;
+                } else {
+                    alertStatusEl.innerHTML = `<span style="color: #10b981;">⚡</span> <span>Intraday Alert Quota Active (Threshold: ${score >= 70 ? '70+' : '80+'})</span>`;
+                }
+            }
+
+            // Sector Rotation
+            if (breadthRes.rotation) {
+                const rot = breadthRes.rotation;
+                const hotEl = document.getElementById('rotation-hot-val');
+                if (hotEl) {
+                    if (rot.hot && rot.hot.length > 0) {
+                        hotEl.innerHTML = rot.hot.slice(0, 2).map(s => `<span style="color: #10b981; font-weight: 700;">${s.sector} (+${s.today_chg}%)</span>`).join(', ');
+                    } else {
+                        hotEl.textContent = 'Insurance, Food FMCG (Accumulating)';
+                    }
+                }
+                const dumpEl = document.getElementById('rotation-dump-val');
+                if (dumpEl) {
+                    if (rot.dump && rot.dump.length > 0) {
+                        dumpEl.innerHTML = rot.dump.slice(0, 2).map(s => `<span style="color: #ef4444; font-weight: 700;">${s.sector} (${s.today_chg}%)</span>`).join(', ');
+                    } else {
+                        dumpEl.textContent = 'None currently in dump zone';
+                    }
+                }
+            }
+        }
+
+        // 2. Learning Progress & Credibility
+        if (learnRes && learnRes.success) {
+            const cred = learnRes.credibility || {};
+            const prog = learnRes.progress || {};
+            
+            const credScore = Math.round(cred.total || 0);
+            const scoreEl = document.getElementById('credibility-score-val');
+            if (scoreEl) scoreEl.innerHTML = `${credScore}<span class="ai-intel-denom">/100</span>`;
+
+            const meterEl = document.getElementById('credibility-meter-bar');
+            if (meterEl) meterEl.style.width = `${Math.min(100, Math.max(5, credScore))}%`;
+
+            const badgeEl = document.getElementById('credibility-phase-badge');
+            if (badgeEl) {
+                badgeEl.textContent = prog.learning_mode ? `🔬 Learning (${prog.evaluated || 0}/200)` : `💎 Calibrated`;
+                badgeEl.className = prog.learning_mode ? 'ai-intel-badge ai-badge-learning' : 'ai-intel-badge ai-badge-bull';
+            }
+
+            const detailsEl = document.getElementById('credibility-details-text');
+            if (detailsEl) {
+                detailsEl.textContent = `Samples: ${prog.evaluated || 0} / 200 (${prog.progress_pct || 0}%) · Win Rate: ${prog.win_rate_pct || 0}%`;
+            }
+        }
+    } catch (e) {
+        console.error('Error updating AI intelligence bar:', e);
+    }
+}
+
 function updateLastUpdated(timestamp) {
+
     const el = document.getElementById('last-updated-time');
     if (el && timestamp) {
         const date = new Date(timestamp);
