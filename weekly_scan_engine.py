@@ -624,6 +624,22 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
         pass  # Calibration unavailable — use base conviction
     # ── End calibration adjustment ────────────────────────────────────────────
 
+    # ── Sector Rotation Bonus (live hot money signal) ─────────────────────────
+    # Hot sectors (money flowing in) get +12 conviction.
+    # Dump zones (consistent outflows) get -20 — effectively disqualified.
+    try:
+        import psx_breadth_engine as _bre
+        rotation_adj = _bre.get_sector_score_bonus(sector)
+        if rotation_adj != 0:
+            conviction_pct = int(conviction_pct + rotation_adj)
+            conviction_pct = max(0, min(98, conviction_pct))
+            tag = "🔥 HOT SECTOR" if rotation_adj > 0 else "🚫 DUMP ZONE"
+            print(f"[WeeklyScan] {symbol} ({sector}): rotation adj {rotation_adj:+d} → {tag}")
+    except Exception:
+        pass  # Breadth engine not available — no rotation adjustment
+    # ── End rotation adjustment ───────────────────────────────────────────────
+
+
 
     # Rationale Generator
     trigger_names = ", ".join(t["type"].replace("_", " ") for t in triggers)

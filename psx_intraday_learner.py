@@ -603,6 +603,14 @@ def send_morning_brief(stocks: List[Dict[str, Any]]) -> bool:
         else:
             lines.append("\n📅 <b>YESTERDAY</b>: No intraday picks recorded.")
 
+        # Market health from breadth engine
+        try:
+            import psx_breadth_engine as _bre
+            breadth_snap = _bre.compute_breadth(stocks)
+            lines.append(f"\n{_bre.get_breadth_brief_line()}")
+        except Exception:
+            pass  # Breadth engine optional — morning brief continues without it
+
         # Learned sector edges
         weights = get_sector_weights()
         favored  = [(s, w) for s, w in weights.items() if w >= 1.2]
@@ -968,4 +976,139 @@ def send_daily_scorecard(today_evaluated: List[Dict] = None) -> bool:
 
     except Exception as e:
         print(f"[IntradayLearner] Daily scorecard error: {e}")
+        return False
+
+
+# ── Sunday Pre-Week Intelligence Report (8 PM PKT) ───────────────────────────
+
+def send_preweek_report(stocks: List[Dict[str, Any]], rotation: Dict = None) -> bool:
+    """
+    Every Sunday at 8 PM PKT — pre-week strategy briefing.
+    Covers: last week performance, top sectors for next week,
+    stocks to watch, AI learning progress, credibility score.
+    """
+    try:
+        import psx_telegram_bot as _tg
+        if not _tg.is_enabled():
+            return False
+
+        rotation = rotation or {}
+        now = _pkt_now()
+
+        # ── Last week performance ─────────────────────────────────────────────
+        cutoff_7d = (now - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+        progress  = get_learning_progress()
+        cred      = compute_credibility_score()
+
+        with _db_lock:
+            conn = _get_conn()
+            week_row = conn.execute("""
+                SELECT COUNT(*) as n,
+                    SUM(CASE WHEN outcome='TARGET_HIT' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN outcome='STOP_HIT'   THEN 1 ELSE 0 END) as losses,
+                    AVG(actual_return_pct) as avg_ret
+                FROM intraday_picks WHERE date >= ? AND outcome != 'PENDING'
+            """, (cutoff_7d,)).fetchone()
+            conn.close()
+
+        n_week  = week_row["n"] or 0
+        w_week  = week_row["wins"] or 0
+        l_week  = week_row["losses"] or 0
+        r_week  = round(week_row["avg_ret"] or 0, 1)
+
+        # ── Sector bets from rotation ─────────────────────────────────────────
+        hot_secs  = rotation.get("hot", [])
+        dump_secs = rotation.get("dump", [])
+
+        # ── Stocks near breakout from live data ───────────────────────────────
+        watchlist = []
+        for s in stocks:
+            chg  = float(s.get("change", 0) or 0)
+            vol  = float(s.get("volume", 0) or 0)
+            sym  = s.get("symbol", "")
+            sec  = s.get("sector", "")
+            # Check reputation — skip blacklisted
+            rep = get_reputation(sym)
+            if rep <= -20:
+                continue
+            # Near breakout: positive change 0.5–3%, high volume, hot sector
+            hot_names = {x["sector"] for x in hot_secs}
+            if 0.5 <= chg <= 3.5 and vol > 50_000 and sec in hot_names:
+                watchlist.append({
+                    "symbol": sym, "sector": sec,
+                    "change": chg, "volume": int(vol)
+                })
+        watchlist.sort(key=lambda x: x["change"], reverse=True)
+        watchlist = watchlist[:5]
+
+        # ── Compose message ───────────────────────────────────────────────────
+        next_week_str = (now + datetime.timedelta(days=1)).strftime("%d %b")
+        lines = [
+            f"📋 <b>PSX PRE-WEEK INTELLIGENCE</b>",
+            f"<i>Week of {next_week_str} · Sent Sunday {now.strftime('%H:%M PKT')}</i>",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        ]
+
+        # Last week recap
+        lines.append(f"\n📊 <b>LAST WEEK RECAP</b>")
+        if n_week > 0:
+            ret_sign = "+" if r_week >= 0 else ""
+            lines.append(
+                f"  Intraday: {w_week}✅ wins / {l_week}🛑 stops / "
+                f"{n_week - w_week - l_week}⚪ partial"
+            )
+            lines.append(f"  Avg return: {ret_sign}{r_week}%")
+        else:
+            lines.append("  No evaluated picks last week (learning phase)")
+
+        # Top sector bets
+        lines.append(f"\n🎯 <b>TOP SECTOR BETS THIS WEEK</b>")
+        if hot_secs:
+            for i, s in enumerate(hot_secs[:3], 1):
+                lines.append(
+                    f"  #{i} ✅ {s['sector']}: {s['today_chg']:+.1f}% avg | "
+                    f"vol {s['vol_ratio']:.1f}x | {s['breadth_pct']:.0f}% breadth"
+                )
+        else:
+            lines.append("  Accumulating data — focus on Insurance + Food (historical leaders)")
+
+        if dump_secs:
+            lines.append(f"\n🚫 <b>AVOID THIS WEEK:</b>")
+            for s in dump_secs[:3]:
+                lines.append(f"  ❌ {s['sector']}: {s['today_chg']:+.1f}% avg (dump zone)")
+
+        # Watchlist
+        if watchlist:
+            lines.append(f"\n🔍 <b>STOCKS TO WATCH MONDAY:</b>")
+            for w in watchlist:
+                lines.append(
+                    f"  👁 {w['symbol']} ({w['sector']}): "
+                    f"+{w['change']:.1f}% Fri · in hot sector"
+                )
+        else:
+            lines.append(f"\n🔍 <b>STOCKS TO WATCH:</b> Scan Monday 9:45 AM onward")
+
+        # AI status
+        mode = "🔬 Learning Phase" if progress["learning_mode"] else "🎓 Calibrated"
+        lines.append(f"\n📈 <b>AI STATUS</b>")
+        lines.append(f"  Mode: {mode} ({progress['evaluated']}/200 samples)")
+        lines.append(f"  Credibility: {cred['total']}/100 — {cred['label']}")
+
+        if progress["learning_mode"]:
+            lines.append(
+                f"\n⚠️ <i>System still learning. Verify setups manually. "
+                f"Best sectors historically: Insurance (71% win rate), "
+                f"Food & FMCG (40% win rate).</i>"
+            )
+
+        lines.append(f"\n⏰ <i>Alerts start Mon 9:45 AM · Morning brief 9:15 AM</i>")
+        lines.append(f"<i>psxai.up.railway.app</i>")
+
+        ok, _ = _tg._send_message("\n".join(lines))
+        if ok:
+            print("[IntradayLearner] Sunday pre-week report sent.")
+        return ok
+
+    except Exception as e:
+        print(f"[IntradayLearner] Pre-week report error: {e}")
         return False

@@ -603,9 +603,12 @@ def _start_continuous_poller():
         _last_calibration   = [0]   # Sunday 11 PM
         _last_lt_scrape     = [0]   # Daily 7 AM — DPS fundamentals scrape
         _last_lt_scan       = [0]   # Daily 9 AM — 7-stage pipeline scan
-        _last_intraday_tick  = [0]   # Every 5 min — intraday scanner
+        _last_intraday_tick  = [0]   # Every 5 min — intraday scanner + breadth
         _last_eod_learner    = [""]  # Daily 3:30 PM — EOD eval + market wrap
         _last_morning_brief  = [""]  # Daily 9:15 AM — morning brief
+        _last_breadth_alert  = [""]  # Breadth emergency — once per BEAR/CRASH day
+        _last_rotation_rpt   = [""]  # Friday 3:30 PM rotation report
+        _last_preweek_rpt    = [""]  # Sunday 8 PM pre-week intelligence report
 
         # Import learner once at startup
         try:
@@ -623,6 +626,15 @@ def _start_continuous_poller():
         except Exception as _ie:
             intraday_engine = None
             print(f"[Intraday] Engine load failed (non-fatal): {_ie}")
+
+
+        # Import breadth engine once at startup
+        try:
+            import psx_breadth_engine as breadth_engine
+            print("[Breadth] Market breadth + sector rotation engine loaded.")
+        except Exception as _be:
+            breadth_engine = None
+            print(f"[Breadth] Engine load failed (non-fatal): {_be}")
 
 
         while True:
@@ -732,6 +744,27 @@ def _start_continuous_poller():
                             stocks_snap = stock_cache.get("data") or []
                             idx_snap    = index_cache.get("data") or {}
 
+                            # ── Breadth compute (every 5 min) ──────────────────
+                            current_regime = "NEUTRAL"
+                            if breadth_engine and stocks_snap:
+                                try:
+                                    breadth = breadth_engine.compute_breadth(stocks_snap)
+                                    current_regime = breadth.get("regime", "NEUTRAL")
+                                    # Emergency alert — once per BEAR/CRASH day
+                                    if current_regime in ("BEAR", "CRASH"):
+                                        alert_key = now_pkt.strftime("%Y-%m-%d")
+                                        if _last_breadth_alert[0] != alert_key:
+                                            breadth_engine.send_breadth_emergency_alert(breadth)
+                                            _last_breadth_alert[0] = alert_key
+                                except Exception as be:
+                                    print(f"[Breadth] Compute error: {be}")
+
+                            # Block intraday alerts entirely in BEAR / CRASH
+                            if current_regime in ("BEAR", "CRASH"):
+                                print(f"[Intraday] Alerts SUSPENDED — market regime: {current_regime}")
+                                _last_intraday_tick[0] = cur_time
+                                continue
+
                             # Memory DB fn for avg volume baseline
                             mem_fn = None
                             if intelligence:
@@ -745,7 +778,7 @@ def _start_continuous_poller():
                                 stocks_snap, idx_snap, mem_fn
                             )
 
-                            # 2. Instant alerts (fires any time if score >= 70)
+                            # 2. Instant alerts (fires any time if score >= threshold)
                             if candidates:
                                 intraday_engine.check_instant_alerts(candidates)
 
@@ -768,7 +801,7 @@ def _start_continuous_poller():
                             print(f"[Intraday] Engine tick error: {ite}")
 
                 # ── Intraday Morning Brief — 9:15 AM PKT (resilient window 09:15 - 10:30) ─────────────────────
-                # Shows yesterday's results + learned sector edge + market outlook
+                # Shows yesterday's results + learned sector edge + market health + market outlook
                 if intraday_learner and (0 <= weekday <= 4):
                     if (now_pkt.hour == 9 and now_pkt.minute >= 15) or (now_pkt.hour == 10 and now_pkt.minute < 30):
                         brief_key = now_pkt.strftime("%Y-%m-%d")
@@ -803,7 +836,30 @@ def _start_continuous_poller():
                             except Exception as eode:
                                 print(f"[IntradayLearner] EOD error: {eode}")
 
+                # ── Friday Sector Rotation Report — 3:30 PM PKT ─────────────────
+                if breadth_engine and weekday == 4:  # Friday
+                    if (now_pkt.hour == 15 and now_pkt.minute >= 30) or (16 <= now_pkt.hour < 18):
+                        rot_key = now_pkt.strftime("%Y-%m-%d")
+                        if _last_rotation_rpt[0] != rot_key:
+                            try:
+                                rotation = breadth_engine.compute_sector_rotation()
+                                breadth_engine.send_weekly_rotation_report(rotation)
+                                _last_rotation_rpt[0] = rot_key
+                            except Exception as rre:
+                                print(f"[Breadth] Rotation report error: {rre}")
 
+                # ── Sunday Pre-Week Intelligence Report — 8 PM PKT ──────────────
+                if intraday_learner and weekday == 6:  # Sunday
+                    if now_pkt.hour == 20:
+                        preweek_key = now_pkt.strftime("%Y-%m-%d")
+                        if _last_preweek_rpt[0] != preweek_key:
+                            try:
+                                stocks_snap = stock_cache.get("data") or []
+                                rotation = breadth_engine.compute_sector_rotation() if breadth_engine else {}
+                                intraday_learner.send_preweek_report(stocks_snap, rotation)
+                                _last_preweek_rpt[0] = preweek_key
+                            except Exception as pre:
+                                print(f"[Preweek] Report error: {pre}")
 
                 time.sleep(poll_interval)
 
@@ -811,6 +867,7 @@ def _start_continuous_poller():
             except Exception as e:
                 print(f"[PSX Poller] Error: {e}")
                 time.sleep(15)
+
 
 
 
