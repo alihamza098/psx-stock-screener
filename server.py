@@ -18,6 +18,7 @@ import urllib.request
 import urllib.error
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import Dict, List, Any, Optional, Tuple, Union
 
 # Setup SSL context that handles PSX custom certificate chains
 try:
@@ -495,6 +496,94 @@ def _do_fetch_stocks():
     except Exception as e:
         print(f"[PSX Live] Stock fetch failed: {e}")
     return stock_cache.get("data")
+
+
+# ─── Unified Live Price Bus (Single Source of Truth) ──────────────────────────
+def get_live_stocks_map() -> Dict[str, Dict[str, Any]]:
+    """Returns an uppercase symbol -> stock dict mapping from the central live stock cache."""
+    stocks = stock_cache.get("data")
+    if not stocks:
+        cached = load_file_cache(STOCK_CACHE_FILE)
+        stocks = cached.get("data") if cached else []
+    if not stocks:
+        return {}
+    return {s.get("symbol", "").upper().strip(): s for s in stocks if s.get("symbol")}
+
+
+def get_live_stock_info(symbol: str) -> Optional[Dict[str, Any]]:
+    """Retrieve central real-time price & market metrics for a symbol."""
+    if not symbol:
+        return None
+    sym = symbol.upper().strip()
+    return get_live_stocks_map().get(sym)
+
+
+def inject_live_price(item: Dict[str, Any], symbol_key: str = "symbol", price_keys: List[str] = None) -> Dict[str, Any]:
+    """
+    Dynamically injects central real-time price, change, and volume into any stock dictionary.
+    Eliminates discrepancies across tabs by ensuring the single source of truth is always applied.
+    """
+    if not isinstance(item, dict):
+        return item
+    sym = (item.get(symbol_key) or item.get("symbol") or item.get("ticker") or "").upper().strip()
+    if not sym:
+        return item
+
+    live = get_live_stock_info(sym)
+    if not live or live.get("price") is None:
+        return item
+
+    try:
+        live_p = round(float(live["price"]), 2)
+    except (ValueError, TypeError):
+        return item
+
+    keys_to_update = price_keys or ["price", "current_price", "current", "currentPrice"]
+    for k in keys_to_update:
+        if k in item or k in ("price", "current_price", "currentPrice"):
+            item[k] = live_p
+
+    if live.get("change") is not None:
+        try:
+            item["change"] = round(float(live["change"]), 2)
+        except (ValueError, TypeError):
+            pass
+    if live.get("changePercent") is not None:
+        try:
+            item["changePercent"] = round(float(live["changePercent"]), 2)
+        except (ValueError, TypeError):
+            pass
+    if live.get("volume") is not None:
+        item["volume"] = live["volume"]
+    if live.get("mcap") is not None:
+        if "mcap" in item:
+            item["mcap"] = live["mcap"]
+        if "market_cap" in item:
+            item["market_cap"] = live["mcap"]
+
+    item["_price_sync"] = "LIVE_DPS"
+    return item
+
+
+def patch_undervalued_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Applies live price and dynamically recalculates margin_of_safety_pct against fair value."""
+    if not isinstance(item, dict):
+        return item
+    inject_live_price(item, symbol_key="symbol", price_keys=["price", "current_price"])
+    live_p = item.get("price")
+    iv = item.get("intrinsic_valuation")
+    if isinstance(iv, dict) and live_p:
+        fv = iv.get("fair_value_per_share")
+        if fv and float(fv) > 0:
+            iv["current_price"] = live_p
+            try:
+                mos = round(((float(fv) - float(live_p)) / float(fv)) * 100.0, 1)
+                iv["margin_of_safety_pct"] = mos
+                item["margin_of_safety_pct"] = mos
+            except Exception:
+                pass
+    return item
+
 
 
 def _do_fetch_indices():
@@ -3854,6 +3943,9 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             })
         elif parsed_path.path == "/api/dividends-corporate-actions":
             data = get_corporate_actions_and_dividends()
+            if data and data.get("dividendCalendar"):
+                for c in data["dividendCalendar"]:
+                    inject_live_price(c, symbol_key="symbol", price_keys=["price", "current_price"])
             self._send_json({
                 "success": True,
                 "data": data
@@ -3867,6 +3959,9 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 idx_data, _ = fetch_index_data()
                 if stocks:
                     run, candidates = weekly_engine.execute_weekly_scan(stocks, index_data=idx_data, run_type="SCHEDULED_WEEKLY")
+            if candidates:
+                for c in candidates:
+                    inject_live_price(c, symbol_key="symbol", price_keys=["currentPrice", "price"])
             self._send_json({
                 "success": True,
                 "run": run,
@@ -3888,6 +3983,9 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             if not run:
                 self._send_json({"success": False, "error": f"Scan run '{run_id}' not found."}, 404)
             else:
+                if candidates:
+                    for c in candidates:
+                        inject_live_price(c, symbol_key="symbol", price_keys=["currentPrice", "price"])
                 self._send_json({
                     "success": True,
                     "run": run,
@@ -4133,6 +4231,9 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                     stocks_snap = stock_cache.get("data") or []
                     engine.run_scan(stocks=stocks_snap, run_type="ON_DEMAND_FIRST_RUN")
                 resp = engine.get_shortlist_response(min_grade, sector, kse100, min_div)
+                if resp.get("shortlist"):
+                    for s in resp["shortlist"]:
+                        inject_live_price(s, symbol_key="symbol", price_keys=["price"])
                 self._send_json({"success": True, **resp})
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
@@ -4142,6 +4243,8 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 symbol = parsed_path.path.split("/api/longterm/stock/")[1].upper().strip("/")
                 engine = lt_module.get_longterm_engine()
                 resp = engine.get_stock_detail_response(symbol)
+                if resp.get("detail"):
+                    inject_live_price(resp["detail"], symbol_key="symbol", price_keys=["price"])
                 self._send_json(resp)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
@@ -4161,6 +4264,8 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                     all_stocks=stocks_snap,
                     force=force
                 )
+                if resp.get("deep_dive") and isinstance(resp["deep_dive"], dict):
+                    inject_live_price(resp["deep_dive"], symbol_key="symbol", price_keys=["price", "current_price"])
                 self._send_json(resp)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
@@ -4265,6 +4370,9 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                     if stocks_snap:
                         run_multibagger_scan(stocks_snap, price_ceiling=20.0, top_n=15)
                         data = get_latest_candidates()
+                if data and data.get("candidates"):
+                    for c in data["candidates"]:
+                        inject_live_price(c, symbol_key="ticker", price_keys=["current_price", "price"])
                 self._send_json({"success": True, "data": data})
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
@@ -4387,6 +4495,8 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 uve.run_full_undervalued_scan(stocks)
 
             items = uve.get_undervalued_stocks(verdict_filter=verdict, sector_filter=sector, limit=limit)
+            for it in items:
+                patch_undervalued_item(it)
             macro = uve.get_macro_inputs()
             self._send_json({
                 "success": True,
@@ -4408,6 +4518,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 uve.run_full_undervalued_scan(stocks)
                 stock_val = uve.get_single_stock_valuation(symbol)
             if stock_val:
+                patch_undervalued_item(stock_val)
                 self._send_json({"success": True, "data": stock_val})
             else:
                 self._send_json({"success": False, "error": "Stock not found in valuation engine."}, 404)
@@ -4984,6 +5095,8 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                     return
                 from multibagger.research.synthesizer import synthesize_research
                 report = synthesize_research(query, force_refresh=force)
+                if report and isinstance(report.get("company_profile"), dict):
+                    inject_live_price(report["company_profile"], symbol_key="symbol", price_keys=["current_price", "price"])
                 self._send_json({"success": True, "report": report})
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
@@ -4994,6 +5107,8 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 stocks_snap = stock_cache.get("data") or []
                 from multibagger.scanner import run_multibagger_scan
                 candidates = run_multibagger_scan(stocks_snap, price_ceiling=ceiling, top_n=15)
+                for c in candidates:
+                    inject_live_price(c, symbol_key="ticker", price_keys=["current_price", "price"])
                 self._send_json({"success": True, "candidates": candidates, "count": len(candidates)})
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
@@ -5131,9 +5246,15 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             if history is None:
                 self._send_json({"success": False, "error": f"No history found for {symbol}"}, 404)
             else:
+                live_info = get_live_stock_info(symbol.upper())
+                live_price = live_info.get("price") if live_info else None
                 self._send_json({
                     "success": True,
                     "symbol": symbol.upper(),
+                    "currentPrice": live_price,
+                    "change": live_info.get("change") if live_info else None,
+                    "changePercent": live_info.get("changePercent") if live_info else None,
+                    "volume": live_info.get("volume") if live_info else None,
                     "days": history,
                     "totalDays": len(history)
                 })
@@ -5165,6 +5286,8 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             if not analysis["stockInfo"]:
                 self._send_json({"success": False, "error": f"Symbol '{symbol.upper()}' not found"}, 404)
             else:
+                if isinstance(analysis.get("stockInfo"), dict):
+                    inject_live_price(analysis["stockInfo"], symbol_key="symbol", price_keys=["price", "current_price"])
                 self._send_json({"success": True, "data": analysis})
         except Exception as e:
             print(f"[PSX] Error in live trading analysis handler: {e}")
@@ -5179,6 +5302,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             if fin is None:
                 self._send_json({"success": False, "error": f"Symbol '{symbol.upper()}' not found"}, 404)
             else:
+                inject_live_price(fin, symbol_key="symbol", price_keys=["price", "current_price"])
                 self._send_json({"success": True, "data": fin})
         except Exception as e:
             print(f"[PSX] Error in financial statements handler: {e}")
@@ -5282,6 +5406,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             if not stock:
                 self._send_json({"success": False, "error": f"Symbol {symbol} not found"}, 404)
                 return
+            inject_live_price(stock)
 
             history = fetch_stock_history(symbol) or []
             if not history:
@@ -5316,8 +5441,11 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
 
     def _handle_trading_portfolio(self):
         try:
-            stocks, _ = fetch_stock_data()
-            price_map = {s.get("symbol", "").upper(): s.get("price", 0.0) for s in stocks}
+            live_map = get_live_stocks_map()
+            price_map = {sym: float(s.get("price", 0.0)) for sym, s in live_map.items() if s.get("price")}
+            if not price_map:
+                stocks, _ = fetch_stock_data()
+                price_map = {s.get("symbol", "").upper(): s.get("price", 0.0) for s in stocks}
             acct = paper_broker.get_account_data(price_map)
             acct["kill_switch_active"] = risk_engine.is_kill_switch_active
             acct["kill_switch_reason"] = risk_engine.kill_switch_reason
@@ -5328,8 +5456,11 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
 
     def _handle_trading_monitor_positions(self):
         try:
-            stocks, _ = fetch_stock_data()
-            price_map = {s.get("symbol", "").upper(): s.get("price", 0.0) for s in stocks}
+            live_map = get_live_stocks_map()
+            price_map = {sym: float(s.get("price", 0.0)) for sym, s in live_map.items() if s.get("price")}
+            if not price_map:
+                stocks, _ = fetch_stock_data()
+                price_map = {s.get("symbol", "").upper(): s.get("price", 0.0) for s in stocks}
             executed_actions = position_monitor.process_price_ticks(price_map)
             updated_acct = paper_broker.get_account_data(price_map)
             updated_acct["kill_switch_active"] = risk_engine.is_kill_switch_active

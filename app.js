@@ -8319,7 +8319,7 @@ const longtermTab = (() => {
                     <div class="lt-modal-metric"><div class="lt-metric-val">${d.pe ? _fmt(d.pe,1)+'x' : '—'}</div><div class="lt-metric-label">P/E</div></div>
                     <div class="lt-modal-metric"><div class="lt-metric-val">${d.div_yield ? _fmt(d.div_yield,1)+'%' : '—'}</div><div class="lt-metric-label">Div Yield</div></div>
                     <div class="lt-modal-metric"><div class="lt-metric-val">${d.revenue_cagr !== null ? _fmt(d.revenue_cagr,1)+'%' : '—'}</div><div class="lt-metric-label">Rev CAGR</div></div>
-                    <div class="lt-modal-metric"><div class="lt-metric-val">${d.price ? 'Rs '+_fmt(d.price,2) : '—'}</div><div class="lt-metric-label">Price</div></div>
+                    <div class="lt-modal-metric"><div class="lt-metric-val">${d.price ? 'Rs '+_fmt(d.price,2) : '—'}</div><div class="lt-metric-label">Price <span style="color:#10b981; font-size:0.65rem; font-weight:700;">● LIVE</span></div></div>
                     <div class="lt-modal-metric"><div class="lt-metric-val">${d.market_cap ? 'Rs '+_fmt(d.market_cap/1e9,1)+'B' : '—'}</div><div class="lt-metric-label">Mkt Cap</div></div>
                 </div>
 
@@ -9265,7 +9265,7 @@ async function openUndervaluedDetailModal(symbol) {
             const vs = rm.vs_sector || {};
 
             if (title) title.textContent = `${s.ticker} (${s.name || s.ticker}) — Valuation Audit`;
-            if (subtitle) subtitle.textContent = `${s.sector} | Market Price: ₨${(s.price || 0).toFixed(2)}`;
+            if (subtitle) subtitle.innerHTML = `${s.sector} | Market Price: <strong style="color:#38bdf8;">₨${(s.price || 0).toFixed(2)}</strong> <span style="display:inline-flex; align-items:center; gap:4px; font-size:0.7rem; padding:2px 6px; border-radius:4px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); margin-left:6px;"><span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#10b981;"></span>LIVE DPS SYNC</span>`;
 
             const mosVal = iv.margin_of_safety_pct;
             const mosText = mosVal !== null && mosVal !== undefined ? `${mosVal >= 0 ? '+' : ''}${mosVal.toFixed(1)}%` : "—";
@@ -9313,7 +9313,7 @@ async function openUndervaluedDetailModal(symbol) {
                         <tr><td>Hurdle Rate Used</td><td>${iv.required_return_pct_used ? `${iv.required_return_pct_used}%` : '16.5%'}</td></tr>
                         <tr><td>Growth Rate Applied</td><td>${iv.growth_rate_pct_used ? `${iv.growth_rate_pct_used}%` : '—'}</td></tr>
                         <tr><td>Intrinsic Fair Value</td><td style="color:#10b981; font-weight:900;">₨${iv.fair_value_per_share ? iv.fair_value_per_share.toFixed(2) : '—'}</td></tr>
-                        <tr><td>Current Market Price</td><td>₨${(s.price || 0).toFixed(2)}</td></tr>
+                        <tr><td>Current Market Price</td><td>₨${(s.price || 0).toFixed(2)} <span style="font-size:0.68rem; color:#10b981; font-weight:700;">● LIVE SYNC</span></td></tr>
                         <tr><td>Margin of Safety</td><td style="color:${mosColor}; font-weight:900;">${mosText}</td></tr>
                     </table>
                 </div>
@@ -9576,7 +9576,10 @@ const multibaggerTab = (() => {
                     </div>
                     
                     <div class="mb-cand-price">
-                        PKR ${_fmtNum(c.price)}
+                        PKR ${_fmtNum(c.price || c.current_price)}
+                        <span style="display:inline-flex; align-items:center; gap:3px; font-size:0.68rem; padding:1px 5px; border-radius:3px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); vertical-align:middle; margin-left:4px;">
+                            <span style="display:inline-block; width:5px; height:5px; border-radius:50%; background:#10b981;"></span>LIVE
+                        </span>
                         <span style="font-size:0.75rem; color:#94a3b8; font-weight:normal; margin-left:6px;">
                             (Float: ${_formatShares(c.free_float_shares)})
                         </span>
