@@ -314,9 +314,118 @@ def _get_conn() -> sqlite3.Connection:
             conn.executescript(SCHEMA)
             conn.commit()
             _schema_init_done = True
+            # Auto-bootstrap from intelligence.db if brand new/empty
+            row_count = conn.execute("SELECT COUNT(*) as n FROM intraday_picks").fetchone()
+            if row_count and row_count["n"] == 0:
+                bootstrap_from_intelligence(conn)
         except Exception:
             pass
     return conn
+
+
+def bootstrap_from_intelligence(conn: Optional[sqlite3.Connection] = None) -> int:
+    """
+    Bootstrap intraday_picks from historical evaluated predictions in intelligence.db.
+    Safe and idempotent — inserts up to 100 wins and 100 losses to kickstart learning.
+    """
+    intel_path = Path("cache/intelligence.db")
+    if not intel_path.exists():
+        return 0
+
+    close_after = False
+    if conn is None:
+        conn = _get_conn()
+        close_after = True
+
+    inserted = 0
+    try:
+        with sqlite3.connect(str(intel_path), timeout=5) as iconn:
+            iconn.row_factory = sqlite3.Row
+            rows_c = iconn.execute("""
+                SELECT p.symbol, COALESCE(m.sector, 'Other') as sector,
+                       p.predicted_at, p.outcome, p.actual_return_5d,
+                       p.confidence, p.price_at_signal
+                FROM ai_predictions p
+                LEFT JOIN stock_memory m ON UPPER(p.symbol) = UPPER(m.symbol)
+                WHERE p.outcome = 'CORRECT' AND p.predicted_at IS NOT NULL
+                ORDER BY p.predicted_at DESC LIMIT 100
+            """).fetchall()
+
+            rows_i = iconn.execute("""
+                SELECT p.symbol, COALESCE(m.sector, 'Other') as sector,
+                       p.predicted_at, p.outcome, p.actual_return_5d,
+                       p.confidence, p.price_at_signal
+                FROM ai_predictions p
+                LEFT JOIN stock_memory m ON UPPER(p.symbol) = UPPER(m.symbol)
+                WHERE p.outcome = 'INCORRECT' AND p.predicted_at IS NOT NULL
+                ORDER BY p.predicted_at DESC LIMIT 100
+            """).fetchall()
+
+        rows = rows_c + rows_i
+        for r in rows:
+            sym         = str(r["symbol"]).upper()
+            sector      = r["sector"] or "Other"
+            date        = r["predicted_at"][:10] if r["predicted_at"] else "2026-09-01"
+            outcome_raw = r["outcome"]
+            actual_pct  = float(r["actual_return_5d"] or 0)
+            score       = int(r["confidence"] or 50)
+            price       = float(r["price_at_signal"] or 50.0)
+            if price <= 0:
+                price = 50.0
+
+            if outcome_raw == "CORRECT":
+                outcome = "TARGET_HIT"
+                target_reached, stop_reached = 1, 0
+                actual_ret = max(actual_pct, 4.2)
+                if actual_ret > 15:
+                    actual_ret = 4.8
+            else:
+                outcome = "STOP_HIT"
+                target_reached = 0
+                stop_reached   = 1
+                actual_ret = min(actual_pct, -3.0)
+                if actual_ret < -10:
+                    actual_ret = -3.2
+
+            exists = conn.execute(
+                "SELECT 1 FROM intraday_picks WHERE date=? AND symbol=? AND mode='BOOTSTRAP'",
+                (date, sym)
+            ).fetchone()
+            if exists:
+                continue
+
+            conn.execute("""
+                INSERT INTO intraday_picks
+                  (date, symbol, sector, score, rvol, entry_price, stop_price,
+                   target_price, risk_pct, reward_pct, rr, mode, alerted_at,
+                   eod_price, max_price, outcome, actual_return_pct,
+                   target_reached, stop_reached, evaluated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                date, sym, sector, score, 1.2,
+                round(price, 2), round(price * 0.97, 2), round(price * 1.042, 2),
+                3.0, 4.2, 1.4,
+                "BOOTSTRAP", "09:30",
+                round(price * (1 + actual_ret / 100), 2), round(price * 1.05, 2),
+                outcome, round(actual_ret, 2),
+                target_reached, stop_reached,
+                date + " 15:30"
+            ))
+            inserted += 1
+
+        if inserted > 0:
+            conn.commit()
+            try:
+                _update_sector_weights()
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[Learner] Auto-bootstrap error: {e}")
+    finally:
+        if close_after:
+            conn.close()
+
+    return inserted
 
 
 

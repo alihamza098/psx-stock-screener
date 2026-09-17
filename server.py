@@ -4205,6 +4205,10 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 import psx_breadth_engine as _bre
                 latest = _bre.get_latest_breadth()
+                if not latest:
+                    stocks_snap = stock_cache.get("data") or []
+                    if stocks_snap:
+                        latest = _bre.compute_breadth(stocks_snap)
                 rot = _bre.compute_sector_rotation()
                 self._send_json({"success": True, "breadth": latest, "rotation": rot})
             except Exception as e:
