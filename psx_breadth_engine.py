@@ -22,8 +22,9 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from collections import defaultdict
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 _DB_PATH = Path("cache/breadth.db")
+_breadth_schema_done = False
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS breadth_history (
@@ -68,12 +69,19 @@ def _pkt_now():
     return datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5)
 
 def _get_conn():
+    global _breadth_schema_done
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(_DB_PATH), timeout=10)
+    conn = sqlite3.connect(str(_DB_PATH), timeout=15)
     conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
-    conn.commit()
+    if not _breadth_schema_done:
+        try:
+            conn.executescript(SCHEMA)
+            conn.commit()
+            _breadth_schema_done = True
+        except Exception:
+            pass
     return conn
+
 
 
 # ── Core Breadth Calculation ──────────────────────────────────────────────────

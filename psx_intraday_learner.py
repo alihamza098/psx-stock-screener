@@ -22,7 +22,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 DB_PATH = Path("cache/intraday_learning.db")
-_db_lock = threading.Lock()
+_db_lock = threading.RLock()
+_schema_init_done = False
 
 
 # ── Schema ────────────────────────────────────────────────────────────────────
@@ -304,12 +305,19 @@ def get_reputation(symbol: str) -> float:
 
 
 def _get_conn() -> sqlite3.Connection:
+    global _schema_init_done
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    conn = sqlite3.connect(str(DB_PATH), timeout=15)
     conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
-    conn.commit()
+    if not _schema_init_done:
+        try:
+            conn.executescript(SCHEMA)
+            conn.commit()
+            _schema_init_done = True
+        except Exception:
+            pass
     return conn
+
 
 
 def _pkt_now() -> datetime.datetime:

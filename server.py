@@ -609,6 +609,7 @@ def _start_continuous_poller():
         _last_breadth_alert  = [""]  # Breadth emergency — once per BEAR/CRASH day
         _last_rotation_rpt   = [""]  # Friday 3:30 PM rotation report
         _last_preweek_rpt    = [""]  # Sunday 8 PM pre-week intelligence report
+        _last_weekly_scan    = [""]  # Sunday 6 PM scheduled weekly options scan
 
         # Import learner once at startup
         try:
@@ -866,7 +867,21 @@ def _start_continuous_poller():
                             except Exception as pre:
                                 print(f"[Preweek] Report error: {pre}")
 
+                # ── Scheduled Weekly Options Scan — Sunday 6 PM PKT (resilient 18:00 - 19:59) ─
+                if weekly_engine and weekday == 6 and (18 <= now_pkt.hour < 20):
+                    wscan_key = now_pkt.strftime("%Y-%m-%d")
+                    if _last_weekly_scan[0] != wscan_key:
+                        try:
+                            stocks_snap = stock_cache.get("data") or []
+                            idx_snap    = index_cache.get("data") or {}
+                            print("[WeeklyScan] Sunday 6 PM — executing scheduled weekly options scan...")
+                            weekly_engine.execute_weekly_scan(stocks_snap, index_data=idx_snap, run_type="SCHEDULED_WEEKLY")
+                            _last_weekly_scan[0] = wscan_key
+                        except Exception as wse:
+                            print(f"[WeeklyScan] Scheduled scan error: {wse}")
+
                 time.sleep(poll_interval)
+
 
 
             except Exception as e:
