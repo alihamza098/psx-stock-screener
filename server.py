@@ -4278,6 +4278,11 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                                         and float(s.get("price", 0) or 0) * float(s.get("volume", 0) or 0) >= MIN_LIQUIDITY_PKR)
 
                 candidates = _ie._daily.get("candidates", [])
+                if not candidates and stocks_snap:
+                    try:
+                        candidates = _ie.scan_for_opportunities(stocks_snap, force=True)
+                    except Exception as sce:
+                        print(f"[Diagnostics] Live scan fallback error: {sce}")
                 top3 = candidates[:3] if candidates else []
 
                 self._send_json({
@@ -4921,6 +4926,11 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                         lrn_conn.commit()
                     finally:
                         lrn_conn.close()
+
+                try:
+                    _lrn._update_sector_weights()
+                except Exception:
+                    pass
 
                 new_credibility = _lrn.compute_credibility_score()
                 new_progress    = _lrn.get_learning_progress()
