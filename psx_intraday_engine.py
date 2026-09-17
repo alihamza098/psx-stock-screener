@@ -31,12 +31,13 @@ INSTANT_SCORE_THRESHOLD  = 70    # Score to fire instantly
 SCHEDULED_SCORE_MIN      = 55    # Min score for scheduled picks
 
 # ── Learning Mode Overrides ────────────────────────────────────────────────────
-# When system has < 200 evaluated picks, apply stricter thresholds.
-# Fewer but much higher-quality alerts during learning phase.
-LEARNING_INSTANT_THRESHOLD = 80   # Raised from 70
-LEARNING_SCHEDULED_MIN     = 70   # Raised from 55
-LEARNING_MAX_INSTANT       = 1    # Only 1 instant alert per day during learning
-LEARNING_MAX_SCHEDULED     = 1    # Only 1 scheduled alert per day during learning
+# When system has < 200 evaluated picks, use LOWER thresholds so alerts fire
+# and the DB accumulates training data. Without data there is no learning.
+# Each alert is clearly labelled ⚠️ LEARNING MODE on Telegram.
+LEARNING_INSTANT_THRESHOLD = 60   # Lowered from 70 (need data to learn from)
+LEARNING_SCHEDULED_MIN     = 50   # Lowered from 55 (cast wider net during training)
+LEARNING_MAX_INSTANT       = 2    # Same as normal — need data, not restrictions
+LEARNING_MAX_SCHEDULED     = 2    # Same as normal — accumulate picks faster
 
 # Institutional liquidity floors — stops illiquid traps like PMPK (3,475 shares)
 MIN_LIQUIDITY_PKR        = 10_000_000  # PKR 10M minimum traded value today
@@ -434,7 +435,13 @@ def scan_for_opportunities(
         if sector in _hot_sectors:
             sc = min(100, sc + 8)
 
-        if sc < SCHEDULED_SCORE_MIN:
+        # Dynamic scan floor: lower during learning phase to accumulate data
+        try:
+            import psx_intraday_learner as _lrn
+            _scan_floor = LEARNING_SCHEDULED_MIN if _lrn.is_learning_mode() else SCHEDULED_SCORE_MIN
+        except Exception:
+            _scan_floor = SCHEDULED_SCORE_MIN
+        if sc < _scan_floor:
             continue
 
         lvl = _build_levels(stock)
