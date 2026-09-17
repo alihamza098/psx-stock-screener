@@ -4312,101 +4312,9 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
-        # ─── Bootstrap Learning from Intelligence DB ─────────────────────────────
-        # Seeds intraday_picks from historical evaluated predictions to kickstart
-        # the credibility score. POST once when stuck at 0/200.
-        elif parsed_path.path == "/api/intraday/bootstrap-learning" and self.command == "POST":
-            try:
-                import psx_intraday_learner as _lrn
-                import sqlite3 as _sq3
-                from pathlib import Path as _Path
 
-                intel_db_path = _Path("cache/intelligence.db")
-                if not intel_db_path.exists():
-                    self._send_json({"success": False, "error": "intelligence.db not found"}, 404)
-                    return
-
-                intel_conn = _sq3.connect(str(intel_db_path))
-                intel_conn.row_factory = _sq3.Row
-                rows = intel_conn.execute("""
-                    SELECT symbol, sector, predicted_date, outcome,
-                           predicted_change_pct, actual_change_pct, confidence_score
-                    FROM ai_predictions
-                    WHERE outcome IN ('CORRECT', 'INCORRECT')
-                      AND predicted_date IS NOT NULL
-                    ORDER BY predicted_date DESC
-                    LIMIT 200
-                """).fetchall()
-                intel_conn.close()
-
-                inserted = 0
-                skipped  = 0
-                with _lrn._db_lock:
-                    lrn_conn = _lrn._get_conn()
-                    try:
-                        for r in rows:
-                            sym         = str(r["symbol"]).upper()
-                            sector      = r["sector"] or "Other"
-                            date        = r["predicted_date"][:10] if r["predicted_date"] else None
-                            outcome_raw = r["outcome"]
-                            actual_pct  = float(r["actual_change_pct"] or 0)
-                            score       = min(int((float(r["confidence_score"] or 0.5) * 80) + 20), 100)
-
-                            if outcome_raw == "CORRECT":
-                                outcome = "TARGET_HIT" if actual_pct > 0 else "PARTIAL_GAIN"
-                                target_reached, stop_reached = 1, 0
-                            else:
-                                outcome = "STOP_HIT" if actual_pct < -2.0 else "PARTIAL_LOSS"
-                                target_reached = 0
-                                stop_reached   = 1 if actual_pct < -2.0 else 0
-
-                            exists = lrn_conn.execute(
-                                "SELECT 1 FROM intraday_picks WHERE date=? AND symbol=? AND mode='BOOTSTRAP'",
-                                (date, sym)
-                            ).fetchone()
-                            if exists:
-                                skipped += 1
-                                continue
-
-                            lrn_conn.execute("""
-                                INSERT INTO intraday_picks
-                                  (date, symbol, sector, score, rvol, entry_price, stop_price,
-                                   target_price, risk_pct, reward_pct, rr, mode, alerted_at,
-                                   eod_price, max_price, outcome, actual_return_pct,
-                                   target_reached, stop_reached, evaluated_at)
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                            """, (
-                                date, sym, sector, score, 1.0,
-                                100.0, 97.0, 104.0,
-                                3.0, 4.0, 1.3,
-                                "BOOTSTRAP", "09:30",
-                                100.0 * (1 + actual_pct / 100),
-                                100.0 * (1 + max(actual_pct, 0) / 100),
-                                outcome, round(actual_pct, 2),
-                                target_reached, stop_reached,
-                                date + " 15:30"
-                            ))
-                            inserted += 1
-                        lrn_conn.commit()
-                    finally:
-                        lrn_conn.close()
-
-                new_credibility = _lrn.compute_credibility_score()
-                new_progress    = _lrn.get_learning_progress()
-                self._send_json({
-                    "success": True,
-                    "message": f"Bootstrapped {inserted} picks from intelligence DB ({skipped} already existed)",
-                    "inserted": inserted,
-                    "skipped":  skipped,
-                    "new_credibility": new_credibility,
-                    "new_progress": new_progress,
-                })
-            except Exception as e:
-                import traceback
-                self._send_json({"success": False, "error": str(e),
-                                 "trace": traceback.format_exc()}, 500)
-
-                # GET  /api/telegram/config          — view current config (admin)
+        # ─── Telegram Alert Bot Endpoints ──────────────────────────────────────────
+        # GET  /api/telegram/config          — view current config (admin)
         # POST /api/telegram/config          — save bot_token + chat_id
         # POST /api/telegram/test            — send a test message
 
@@ -4902,6 +4810,98 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                     self._send_json({"success": False, "error": order_res.get("error", "Failed to execute paper order.")}, 400)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
+        elif self.path == "/api/intraday/bootstrap-learning":
+            # Seeds intraday_picks from intelligence.db evaluated predictions
+            # to kickstart credibility score. Safe to run multiple times (idempotent).
+            try:
+                import psx_intraday_learner as _lrn
+                import sqlite3 as _sq3
+                from pathlib import Path as _Path
+
+                intel_db_path = _Path("cache/intelligence.db")
+                if not intel_db_path.exists():
+                    self._send_json({"success": False, "error": "intelligence.db not found"}, 404)
+                    return
+
+                intel_conn = _sq3.connect(str(intel_db_path))
+                intel_conn.row_factory = _sq3.Row
+                rows = intel_conn.execute("""
+                    SELECT symbol, sector, predicted_date, outcome,
+                           predicted_change_pct, actual_change_pct, confidence_score
+                    FROM ai_predictions
+                    WHERE outcome IN ('CORRECT', 'INCORRECT')
+                      AND predicted_date IS NOT NULL
+                    ORDER BY predicted_date DESC
+                    LIMIT 200
+                """).fetchall()
+                intel_conn.close()
+
+                inserted = 0
+                skipped  = 0
+                with _lrn._db_lock:
+                    lrn_conn = _lrn._get_conn()
+                    try:
+                        for r in rows:
+                            sym         = str(r["symbol"]).upper()
+                            sector      = r["sector"] or "Other"
+                            date        = r["predicted_date"][:10] if r["predicted_date"] else None
+                            outcome_raw = r["outcome"]
+                            actual_pct  = float(r["actual_change_pct"] or 0)
+                            score       = min(int((float(r["confidence_score"] or 0.5) * 80) + 20), 100)
+
+                            if outcome_raw == "CORRECT":
+                                outcome = "TARGET_HIT" if actual_pct > 0 else "PARTIAL_GAIN"
+                                target_reached, stop_reached = 1, 0
+                            else:
+                                outcome = "STOP_HIT" if actual_pct < -2.0 else "PARTIAL_LOSS"
+                                target_reached = 0
+                                stop_reached   = 1 if actual_pct < -2.0 else 0
+
+                            exists = lrn_conn.execute(
+                                "SELECT 1 FROM intraday_picks WHERE date=? AND symbol=? AND mode='BOOTSTRAP'",
+                                (date, sym)
+                            ).fetchone()
+                            if exists:
+                                skipped += 1
+                                continue
+
+                            lrn_conn.execute("""
+                                INSERT INTO intraday_picks
+                                  (date, symbol, sector, score, rvol, entry_price, stop_price,
+                                   target_price, risk_pct, reward_pct, rr, mode, alerted_at,
+                                   eod_price, max_price, outcome, actual_return_pct,
+                                   target_reached, stop_reached, evaluated_at)
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                            """, (
+                                date, sym, sector, score, 1.0,
+                                100.0, 97.0, 104.0,
+                                3.0, 4.0, 1.3,
+                                "BOOTSTRAP", "09:30",
+                                100.0 * (1 + actual_pct / 100),
+                                100.0 * (1 + max(actual_pct, 0) / 100),
+                                outcome, round(actual_pct, 2),
+                                target_reached, stop_reached,
+                                date + " 15:30"
+                            ))
+                            inserted += 1
+                        lrn_conn.commit()
+                    finally:
+                        lrn_conn.close()
+
+                new_credibility = _lrn.compute_credibility_score()
+                new_progress    = _lrn.get_learning_progress()
+                self._send_json({
+                    "success": True,
+                    "message": f"Bootstrapped {inserted} picks from intelligence DB ({skipped} already existed)",
+                    "inserted": inserted,
+                    "skipped":  skipped,
+                    "new_credibility": new_credibility,
+                    "new_progress": new_progress,
+                })
+            except Exception as e:
+                import traceback
+                self._send_json({"success": False, "error": str(e),
+                                 "trace": traceback.format_exc()}, 500)
         else:
             self.send_error(404)
 
