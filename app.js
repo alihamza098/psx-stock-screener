@@ -1122,7 +1122,7 @@ function switchView(view) {
     const activeMobileTab = document.querySelector(`.mobile-nav-item[data-view="${view}"]`);
     if (activeMobileTab) activeMobileTab.classList.add("active");
 
-    const views = ["table", "cards", "weekly-scan", "live-trading", "simulator", "corporate", "financials", "undervalued", "intelligence", "longterm"];
+    const views = ["table", "cards", "weekly-scan", "live-trading", "simulator", "corporate", "financials", "undervalued", "intelligence", "longterm", "multibagger"];
     views.forEach(v => {
         const el = document.getElementById(`view-${v}`);
         if (el) el.style.display = (view === v) ? (v === "cards" ? "grid" : "block") : "none";
@@ -1179,6 +1179,10 @@ function switchView(view) {
     } else if (view === "longterm") {
         if (typeof longtermTab !== "undefined" && longtermTab.load) {
             longtermTab.load();
+        }
+    } else if (view === "multibagger") {
+        if (typeof multibaggerTab !== "undefined" && multibaggerTab.load) {
+            multibaggerTab.load();
         }
     }
 }
@@ -9296,6 +9300,436 @@ function copyUndervaluedJSON() {
         if (typeof showToast === "function") showToast("Valuation JSON copied to clipboard!");
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🚀 Multibagger Pattern Finder Tab Controller
+// ─────────────────────────────────────────────────────────────────────────────
+const multibaggerTab = (() => {
+    let _referenceData = [];
+    let _sortCol = 'peak_multiple';
+    let _sortDir = 'desc';
+    let _candidates = [];
+    let _loaded = false;
+
+    function _esc(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function _fmtNum(n, dec = 2) {
+        if (n === null || n === undefined || isNaN(n)) return '—';
+        return Number(n).toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    }
+
+    function _formatShares(n) {
+        if (!n || isNaN(n)) return '—';
+        const num = Number(n);
+        if (num >= 1e9) return (num / 1e9).toFixed(2) + ' B';
+        if (num >= 1e6) return (num / 1e6).toFixed(2) + ' M';
+        if (num >= 1e3) return (num / 1e3).toFixed(1) + ' K';
+        return num.toLocaleString();
+    }
+
+    // ── Load All ──
+    async function load() {
+        _loaded = true;
+        await Promise.all([loadReference(), loadCandidates()]);
+    }
+
+    // ── Reference Cases ──
+    async function loadReference() {
+        const tbody = document.getElementById('mb-reference-table-body');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:24px; color:#94a3b8;">Loading historical benchmarks...</td></tr>';
+        try {
+            const res = await fetch('/api/multibagger/reference');
+            const data = await res.json();
+            if (data.success && Array.outer !== undefined || (data.reference_table && data.reference_table.length > 0)) {
+                _referenceData = data.reference_table || [];
+                const countEl = document.getElementById('mb-stat-ref-count');
+                if (countEl) countEl.textContent = _referenceData.length;
+                renderReferenceTable();
+            } else {
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:24px; color:#94a3b8;">No historical reference cases found. Click "Refresh Benchmarks".</td></tr>';
+            }
+        } catch (e) {
+            console.error('Error loading reference table:', e);
+            tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:24px; color:#f87171;">Failed to load reference cases: ${_esc(e.message)}</td></tr>`;
+        }
+    }
+
+    function sortReference(col) {
+        if (_sortCol === col) {
+            _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+            _sortCol = col;
+            _sortDir = ['peak_multiple', 'low_price', 'high_price', 'free_float_shares'].includes(col) ? 'desc' : 'asc';
+        }
+        renderReferenceTable();
+    }
+
+    function renderReferenceTable() {
+        const tbody = document.getElementById('mb-reference-table-body');
+        if (!tbody) return;
+        if (!_referenceData.length) {
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:24px; color:#94a3b8;">No benchmark records.</td></tr>';
+            return;
+        }
+
+        const sorted = [..._referenceData].sort((a, b) => {
+            let va = a[_sortCol];
+            let vb = b[_sortCol];
+            if (va === null || va === undefined) va = '';
+            if (vb === null || vb === undefined) vb = '';
+            if (typeof va === 'number' && typeof vb === 'number') {
+                return _sortDir === 'asc' ? va - vb : vb - va;
+            }
+            return _sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+        });
+
+        tbody.innerHTML = sorted.map(r => {
+            let triggers = [];
+            if (r.trigger_tags) {
+                try {
+                    triggers = typeof r.trigger_tags === 'string' ? JSON.parse(r.trigger_tags) : r.trigger_tags;
+                } catch {
+                    triggers = [r.trigger_tags];
+                }
+            }
+            const mult = Number(r.peak_multiple || 0);
+            const multBadgeClass = mult >= 20 ? 'high' : mult >= 10 ? 'med' : '';
+
+            return `
+                <tr>
+                    <td><strong style="color:#f8fafc; font-size:0.95rem;">${_esc(r.symbol)}</strong></td>
+                    <td style="color:#cbd5e1; font-weight:500;">${_esc(r.company_name || r.symbol)}</td>
+                    <td><span style="font-size:0.75rem; color:#94a3b8; background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;">${_esc(r.sector || '—')}</span></td>
+                    <td style="font-size:0.8rem; color:#94a3b8; white-space:nowrap;">${_esc(r.run_start_date || '—')} → ${_esc(r.run_peak_date || '—')}</td>
+                    <td style="font-family:'JetBrains Mono',monospace;">PKR ${_fmtNum(r.low_price)}</td>
+                    <td style="font-family:'JetBrains Mono',monospace;">PKR ${_fmtNum(r.high_price)}</td>
+                    <td>
+                        <span class="mb-multiple-badge ${multBadgeClass}">
+                            ${mult.toFixed(1)}x
+                        </span>
+                    </td>
+                    <td style="font-size:0.8rem; color:#cbd5e1;">${_formatShares(r.free_float_shares)}</td>
+                    <td>
+                        <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                            ${triggers.map(t => `<span class="mb-tag trigger" style="font-size:0.68rem; padding:2px 6px;">${_esc(t.replace(/_/g, ' '))}</span>`).join('')}
+                        </div>
+                    </td>
+                    <td>
+                        <button class="mb-btn-deep-res" onclick="multibaggerTab.runSearch('${_esc(r.symbol)}')">
+                            🔎 Investigate
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function rebuildReference() {
+        try {
+            if (typeof showToast === 'function') showToast('Rebuilding historical reference benchmarks...');
+            const res = await fetch('/api/multibagger/rebuild-reference', { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                if (typeof showToast === 'function') showToast(data.message || 'Reference cases updated!');
+                await loadReference();
+            } else {
+                alert('Failed to rebuild reference table: ' + (data.error || 'Unknown error'));
+            }
+        } catch (e) {
+            alert('Network error rebuilding reference table: ' + e.message);
+        }
+    }
+
+    // ── Daily Candidate Scanner ──
+    async function loadCandidates() {
+        const grid = document.getElementById('mb-candidates-grid');
+        if (!grid) return;
+        const maxPrice = parseFloat(document.getElementById('mb-filter-price-max')?.value || '20');
+
+        grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:32px; color:#94a3b8;">Scanning for setup patterns...</div>';
+        try {
+            const res = await fetch('/api/multibagger/candidates');
+            const resJson = await res.json();
+            if (resJson.success && resJson.data) {
+                const candidates = resJson.data.candidates || [];
+                _candidates = candidates;
+                const filtered = candidates.filter(c => Number(c.price || 0) <= maxPrice);
+                const countEl = document.getElementById('mb-stat-cand-count');
+                if (countEl) countEl.textContent = filtered.length;
+                renderCandidates(filtered);
+            } else {
+                grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:32px; color:#94a3b8;">No candidates currently found under ceiling. Click "Scan Candidates Now".</div>';
+            }
+        } catch (e) {
+            console.error('Error loading candidates:', e);
+            grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:32px; color:#f87171;">Failed to load daily candidates: ${_esc(e.message)}</div>`;
+        }
+    }
+
+    function renderCandidates(candidates) {
+        const grid = document.getElementById('mb-candidates-grid');
+        if (!grid) return;
+        if (!candidates.length) {
+            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:32px; color:#94a3b8;">No setup candidates matched the criteria today. Use Deep Research to investigate any specific symbol.</div>';
+            return;
+        }
+
+        grid.innerHTML = candidates.map(c => {
+            const score = Number(c.score || c.setup_score || 0);
+            const scoreBadgeClass = score >= 60 ? 'high' : score >= 40 ? 'med' : '';
+            const reasons = c.reasons || [];
+            const flags = c.flags || [];
+
+            return `
+                <div class="mb-candidate-card">
+                    <div class="mb-cand-header">
+                        <div>
+                            <div class="mb-cand-ticker">${_esc(c.symbol)}</div>
+                            <div class="mb-cand-sector">${_esc(c.sector || 'PSX Listed')}</div>
+                        </div>
+                        <div class="mb-cand-score-badge ${scoreBadgeClass}">
+                            ${score} / 100
+                        </div>
+                    </div>
+                    
+                    <div class="mb-cand-price">
+                        PKR ${_fmtNum(c.price)}
+                        <span style="font-size:0.75rem; color:#94a3b8; font-weight:normal; margin-left:6px;">
+                            (Float: ${_formatShares(c.free_float_shares)})
+                        </span>
+                    </div>
+
+                    <div style="font-size:0.75rem; color:#64748b; margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">
+                        Setup Characteristics:
+                    </div>
+                    <ul class="mb-cand-reasons">
+                        ${reasons.map(r => `<li>${_esc(r)}</li>`).join('')}
+                    </ul>
+
+                    ${flags.length > 0 ? `
+                        <div class="mb-cand-flags">
+                            ${flags.map(f => {
+                                const flagClass = f.toLowerCase().includes('float') ? 'low_float' : 'no_turnaround';
+                                return `<span class="mb-flag-pill ${flagClass}">⚠️ ${_esc(f.replace(/_/g, ' '))}</span>`;
+                            }).join('')}
+                        </div>
+                    ` : ''}
+
+                    <div class="mb-cand-actions">
+                        <button class="mb-btn-deep-res" onclick="multibaggerTab.runSearch('${_esc(c.symbol)}')">
+                            🔎 Deep Research
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function triggerScan() {
+        const btn = document.getElementById('btn-mb-scan-now');
+        const grid = document.getElementById('mb-candidates-grid');
+        const ceiling = parseFloat(document.getElementById('mb-filter-price-max')?.value || '20');
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '⚡ Scanning PSX Universe...';
+        }
+        if (grid) {
+            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:36px; color:#a5b4fc;">Running 100-point multibagger pattern scan across PSX universe...</div>';
+        }
+
+        try {
+            const res = await fetch('/api/multibagger/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ price_ceiling: ceiling })
+            });
+            const data = await res.json();
+            if (data.success) {
+                if (typeof showToast === 'function') showToast(`Scan complete: ${data.count} candidates identified!`);
+                await loadCandidates();
+            } else {
+                alert('Scan failed: ' + (data.error || 'Unknown error'));
+            }
+        } catch (e) {
+            alert('Scan error: ' + e.message);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '⚡ Scan Candidates Now';
+            }
+        }
+    }
+
+    // ── Deep Research Mode ──
+    async function runSearch(queryOrTicker) {
+        const input = document.getElementById('mb-search-input');
+        let q = queryOrTicker;
+        if (!q && input) {
+            q = input.value.trim();
+        } else if (q && input) {
+            input.value = q;
+        }
+
+        if (!q) {
+            alert('Please enter a PSX symbol or keyword to investigate.');
+            return;
+        }
+
+        const resContainer = document.getElementById('mb-research-results');
+        if (!resContainer) return;
+        resContainer.style.display = 'block';
+        resContainer.innerHTML = `
+            <div class="mb-research-panel" style="text-align:center; padding:36px;">
+                <div style="font-size:1.4rem; margin-bottom:12px;">🔎</div>
+                <div style="font-weight:700; color:#f8fafc; margin-bottom:6px;">Gathering multi-source intelligence on "${_esc(q.toUpperCase())}"...</div>
+                <div style="font-size:0.8rem; color:#94a3b8;">Direct scraping DPS announcements, financials, Sarmaaya, SCS Trade, Mettis, Business Recorder, ProPakistani & TradingView.</div>
+                <div style="margin-top:16px; display:inline-block; width:32px; height:32px; border:3px solid rgba(255,255,255,0.1); border-top-color:#ec4899; border-radius:50%; animation:spin 1s linear infinite;"></div>
+            </div>
+        `;
+
+        try {
+            const res = await fetch('/api/multibagger/research', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: q, force: false })
+            });
+            const resJson = await res.json();
+            if (resJson.success && resJson.report) {
+                renderResearchReport(resJson.report);
+            } else {
+                resContainer.innerHTML = `
+                    <div class="mb-research-panel" style="border-color:rgba(239,68,68,0.3); background:rgba(239,68,68,0.05);">
+                        <div style="color:#f87171; font-weight:700; margin-bottom:4px;">Research Synthesis Failed</div>
+                        <div style="color:#cbd5e1; font-size:0.85rem;">${_esc(resJson.error || 'Failed to assemble multi-source intelligence.')}</div>
+                    </div>
+                `;
+            }
+        } catch (e) {
+            console.error('Error running deep research:', e);
+            resContainer.innerHTML = `
+                <div class="mb-research-panel" style="border-color:rgba(239,68,68,0.3); background:rgba(239,68,68,0.05);">
+                    <div style="color:#f87171; font-weight:700; margin-bottom:4px;">Network Error</div>
+                    <div style="color:#cbd5e1; font-size:0.85rem;">${_esc(e.message)}</div>
+                </div>
+            `;
+        }
+    }
+
+    function renderResearchReport(rep) {
+        const resContainer = document.getElementById('mb-research-results');
+        if (!resContainer) return;
+
+        const profile = rep.company_profile || {};
+        const score = Number(rep.setup_score || 0);
+        const scoreClass = score >= 60 ? 'high' : score >= 40 ? 'med' : '';
+        const triggers = rep.triggers_detected || [];
+        const flags = rep.risk_flags || [];
+        const sources = rep.sources || [];
+        const narrative = rep.synthesis || rep.synthesis_narrative || rep.summary || 'No detailed synthesis available.';
+
+        // Format narrative paragraphs
+        const formattedNarrative = _esc(narrative)
+            .split('\n\n')
+            .map(p => `<p style="margin-bottom:12px; line-height:1.6; color:#e2e8f0;">${p.replace(/\n/g, '<br>')}</p>`)
+            .join('');
+
+        resContainer.innerHTML = `
+            <div class="mb-research-panel">
+                <div class="mb-research-header">
+                    <div>
+                        <span class="mb-res-symbol">${_esc(rep.symbol || 'RESEARCH')}</span>
+                        <span style="color:#94a3b8; font-size:0.9rem; margin-left:8px;">
+                            ${_esc(profile.name || profile.company_name || rep.symbol)} · ${_esc(profile.sector || 'PSX Listed')}
+                        </span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:0.8rem; color:#94a3b8;">Multibagger Setup Score:</span>
+                        <span class="mb-cand-score-badge ${scoreClass}">${score} / 100</span>
+                    </div>
+                </div>
+
+                <!-- Profile Stats Strip -->
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-bottom:18px; padding:12px; background:rgba(15,23,42,0.6); border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
+                    <div>
+                        <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase;">Price</div>
+                        <div style="font-size:1rem; font-weight:800; color:#f8fafc; font-family:'JetBrains Mono',monospace;">PKR ${_fmtNum(profile.price)}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase;">Free Float Shares</div>
+                        <div style="font-size:1rem; font-weight:700; color:#38bdf8;">${_formatShares(profile.free_float_shares)}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase;">Total Shares</div>
+                        <div style="font-size:1rem; font-weight:700; color:#cbd5e1;">${_formatShares(profile.total_shares)}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase;">Free Float %</div>
+                        <div style="font-size:1rem; font-weight:700; color:#a5b4fc;">${profile.free_float_pct ? _fmtNum(profile.free_float_pct, 1) + '%' : '—'}</div>
+                    </div>
+                </div>
+
+                <!-- Synthesis Section -->
+                <div class="mb-res-block">
+                    <div class="mb-res-label">🧠 Multi-Source Setup Synthesis</div>
+                    <div class="mb-res-text">
+                        ${formattedNarrative}
+                    </div>
+                </div>
+
+                <!-- Triggers & Risk Flags -->
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:18px;">
+                    <div class="mb-res-block" style="margin-bottom:0;">
+                        <div class="mb-res-label">⚡ Setup Triggers Detected</div>
+                        <div class="mb-tag-list">
+                            ${triggers.length > 0 ? triggers.map(t => `<span class="mb-tag trigger">${_esc(t.replace(/_/g, ' '))}</span>`).join('') : '<span style="font-size:0.8rem; color:#64748b;">No major trigger signatures detected.</span>'}
+                        </div>
+                    </div>
+                    <div class="mb-res-block" style="margin-bottom:0;">
+                        <div class="mb-res-label">⚠️ Risk Flags &amp; Speculation Warnings</div>
+                        <div class="mb-tag-list">
+                            ${flags.length > 0 ? flags.map(f => `<span class="mb-tag risk">${_esc(f.replace(/_/g, ' '))}</span>`).join('') : '<span style="font-size:0.8rem; color:#34d399;">No critical red flags detected.</span>'}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Verified Source Links Grid -->
+                <div class="mb-res-block" style="margin-bottom:0;">
+                    <div class="mb-res-label">🔗 Verified Source Documents &amp; External Filings (${sources.length})</div>
+                    <div class="mb-source-links-grid">
+                        ${sources.map(s => `
+                            <a href="${_esc(s.url)}" target="_blank" rel="noopener noreferrer" class="mb-source-link-card">
+                                <div class="mb-source-tag">${_esc(s.source_name || s.source || 'Source')}</div>
+                                <div class="mb-source-title">${_esc(s.title || s.url)} ↗</div>
+                                <div class="mb-source-snippet">${_esc(s.snippet || 'Click to view full disclosure or article on original site.')}</div>
+                            </a>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    return {
+        load,
+        loadReference,
+        loadCandidates,
+        triggerScan,
+        rebuildReference,
+        sortReference,
+        runSearch
+    };
+})();
+
 
 
 

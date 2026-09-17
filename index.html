@@ -450,6 +450,11 @@
                 📈 Long-Term
                 <span class="badge-tab-new" style="background:linear-gradient(135deg,#10b981,#059669);">AI</span>
             </button>
+            <button class="view-tab view-tab-multibagger" data-view="multibagger" id="tab-multibagger">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                🚀 Multibagger
+                <span class="badge-tab-new" style="background:linear-gradient(135deg,#ec4899,#f43f5e);">10x–70x</span>
+            </button>
         </div>
 
 
@@ -2183,6 +2188,123 @@
 
     </section>
     <!-- ─── End Long-Term Dashboard ─────────────────────────────────── -->
+
+    <!-- ─── Multibagger Pattern Finder Dashboard ─────────────────────── -->
+    <section class="mb-dashboard" id="view-multibagger" style="display:none;">
+
+        <!-- Verbatim Disclaimer Banner -->
+        <div class="mb-disclaimer-banner">
+            <div class="mb-disclaimer-icon">⚠️</div>
+            <div class="mb-disclaimer-content">
+                <div class="mb-disclaimer-title">Speculative Setups — Pattern Match Only</div>
+                <div class="mb-disclaimer-body">
+                    These are stocks matching historical characteristics of past PSX runners (name/sector changes, capital raises, volume spikes, low float). This is not a buy recommendation. Verify all filings directly on PSX before acting — this category is also where pump-and-dump schemes operate.
+                </div>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <div class="mb-header">
+            <div class="mb-header-left">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <h2 class="mb-title">🚀 Multibagger Pattern Finder</h2>
+                    <span class="mb-badge-tag">PSX 10x–70x Benchmark Model</span>
+                </div>
+                <p class="mb-subtitle">Identify PSX penny &amp; microcap stocks (&lt; 20 PKR) exhibiting setup patterns of historic runners (ITANZ 14x, Thatta Cement THCCL 86x, Power Cement POWER 6.5x).</p>
+            </div>
+            <div class="mb-header-controls">
+                <div class="mb-pill-stat">Total Reference Cases: <strong id="mb-stat-ref-count">0</strong></div>
+                <div class="mb-pill-stat">Screened Today: <strong id="mb-stat-cand-count">0</strong></div>
+                <button class="btn btn-primary" id="btn-mb-scan-now" onclick="multibaggerTab.triggerScan()" style="font-size:0.8rem; padding: 6px 14px; background: linear-gradient(135deg, #ec4899, #be185d);">
+                    ⚡ Scan Candidates Now
+                </button>
+            </div>
+        </div>
+
+        <!-- Deliverable C: Deep Research Mode Search Box -->
+        <div class="mb-card">
+            <div class="mb-card-header">
+                <div>
+                    <h3 class="mb-card-title">🔍 Deep Research Mode (Multi-Source Synthesis)</h3>
+                    <p style="font-size:0.75rem; color:#94a3b8; margin:2px 0 0;">Zero-API direct scraping across DPS, Sarmaaya, SCS Trade, Mettis, Business Recorder, ProPakistani &amp; TradingView.</p>
+                </div>
+            </div>
+            <div class="mb-search-container">
+                <input type="text" id="mb-search-input" class="mb-search-input" placeholder="Enter symbol or keywords (e.g., THCCL, ITANZ, textile to tech, capital increase)..." onkeydown="if(event.key==='Enter') multibaggerTab.runSearch();" />
+                <button id="btn-mb-search" class="mb-search-btn" onclick="multibaggerTab.runSearch()">
+                    <span>🔎 Investigate Setup</span>
+                </button>
+            </div>
+            <div class="mb-quick-chips">
+                <span style="font-size:0.75rem; color:#64748b; margin-right:4px;">Quick Explore:</span>
+                <span class="mb-chip" onclick="multibaggerTab.runSearch('THCCL')">THCCL (Thatta Cement)</span>
+                <span class="mb-chip" onclick="multibaggerTab.runSearch('ITANZ')">ITANZ (Zahur Cotton → Tech)</span>
+                <span class="mb-chip" onclick="multibaggerTab.runSearch('POWER')">POWER (Turnaround)</span>
+                <span class="mb-chip" onclick="multibaggerTab.runSearch('PACE')">PACE (Penny Float)</span>
+            </div>
+            <div id="mb-research-results" style="margin-top:16px; display:none;">
+                <!-- Filled dynamically by multibaggerTab -->
+            </div>
+        </div>
+
+        <!-- Deliverable B: Daily Candidate Scanner -->
+        <div class="mb-card">
+            <div class="mb-card-header">
+                <div>
+                    <h3 class="mb-card-title">🎯 Ranked Setup Candidates (Price &lt; 20 PKR)</h3>
+                    <p style="font-size:0.75rem; color:#94a3b8; margin:2px 0 0;">Scored out of 100 based on Name/Sector Change (25), Capital Increase (20), Volume Z-Score (20), Turnaround (15), Price (10), Momentum (10).</p>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <label style="font-size:0.75rem; color:#94a3b8;">Max Price (PKR):</label>
+                    <input type="number" id="mb-filter-price-max" value="20" min="1" max="100" style="width:60px; padding:4px 8px; font-size:0.8rem; background:#0f172a; border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff;" onchange="multibaggerTab.loadCandidates()" />
+                    <button class="btn btn-secondary" onclick="multibaggerTab.loadCandidates()" style="font-size:0.75rem; padding:4px 10px;">Filter</button>
+                </div>
+            </div>
+            <div id="mb-candidates-grid" class="mb-candidates-grid">
+                <!-- Candidate Cards Rendered Here -->
+            </div>
+        </div>
+
+        <!-- Deliverable A: Historical Reference Cases -->
+        <div class="mb-card">
+            <div class="mb-card-header">
+                <div>
+                    <h3 class="mb-card-title">📚 Historical 5x–70x Reference Table</h3>
+                    <p style="font-size:0.75rem; color:#94a3b8; margin:2px 0 0;">Verified PSX historical super-runners and their primary setup triggers at start of run.</p>
+                </div>
+                <button class="btn btn-secondary" onclick="multibaggerTab.rebuildReference()" style="font-size:0.75rem; padding:4px 10px;">
+                    🔄 Refresh Benchmarks
+                </button>
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="mb-table" id="mb-reference-table">
+                    <thead>
+                        <tr>
+                            <th onclick="multibaggerTab.sortReference('symbol')">Symbol ⇅</th>
+                            <th onclick="multibaggerTab.sortReference('company_name')">Company ⇅</th>
+                            <th onclick="multibaggerTab.sortReference('sector')">Sector ⇅</th>
+                            <th onclick="multibaggerTab.sortReference('run_start_date')">Run Period ⇅</th>
+                            <th onclick="multibaggerTab.sortReference('low_price')">Low Price ⇅</th>
+                            <th onclick="multibaggerTab.sortReference('high_price')">High Price ⇅</th>
+                            <th onclick="multibaggerTab.sortReference('peak_multiple')">Multiple ⇅</th>
+                            <th onclick="multibaggerTab.sortReference('free_float_shares')">Free Float ⇅</th>
+                            <th>Setup Triggers</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mb-reference-table-body">
+                        <!-- Reference rows rendered here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Footer Note -->
+        <div class="mb-footer-note" style="margin-top:20px; font-size:0.75rem; color:#64748b; text-align:center; padding:16px;">
+            Multibagger Pattern Finder · Pattern Matching Screener Only (No Buy/Sell Calls) · Data sourced from DPS &amp; Public Disclosures
+        </div>
+    </section>
+    <!-- ─── End Multibagger Dashboard ─────────────────────────────────── -->
 
     <!-- ─── Long-Term Stock Detail Modal ────────────────────────────── -->
     <div id="lt-stock-modal" class="lt-modal-overlay" style="display:none;" onclick="longtermTab.closeModal(event)">

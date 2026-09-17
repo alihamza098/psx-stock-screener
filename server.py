@@ -4245,6 +4245,30 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
+        # ─── Multibagger Pattern Finder GET Endpoints ────────────────────────────
+        elif parsed_path.path == "/api/multibagger/reference":
+            try:
+                from multibagger.historical_backtest import get_historical_reference_table
+                query = parse_qs(parsed_path.query)
+                sort_by = query.get("sort", ["multiple"])[0]
+                rows = get_historical_reference_table(sort_by=sort_by)
+                self._send_json({"success": True, "reference_table": rows, "count": len(rows)})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/multibagger/candidates":
+            try:
+                from multibagger.scanner import get_latest_candidates, run_multibagger_scan
+                data = get_latest_candidates()
+                if not data.get("candidates"):
+                    stocks_snap = stock_cache.get("data") or []
+                    if stocks_snap:
+                        run_multibagger_scan(stocks_snap, price_ceiling=20.0, top_n=15)
+                        data = get_latest_candidates()
+                self._send_json({"success": True, "data": data})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
         # ─── Intraday Diagnostics API ────────────────────────────────────────────
         # Tells you exactly why stocks are/are not firing alerts — invaluable debug
         elif parsed_path.path == "/api/intraday/diagnostics":
@@ -4950,6 +4974,37 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 import traceback
                 self._send_json({"success": False, "error": str(e),
                                  "trace": traceback.format_exc()}, 500)
+        elif self.path == "/api/multibagger/research":
+            try:
+                body = json.loads(post_data.decode("utf-8")) if post_data else {}
+                query = body.get("query") or body.get("ticker") or ""
+                force = bool(body.get("force", False))
+                if not query:
+                    self._send_json({"success": False, "error": "Missing query or ticker parameter"}, 400)
+                    return
+                from multibagger.research.synthesizer import synthesize_research
+                report = synthesize_research(query, force_refresh=force)
+                self._send_json({"success": True, "report": report})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+        elif self.path == "/api/multibagger/scan":
+            try:
+                body = json.loads(post_data.decode("utf-8")) if post_data else {}
+                ceiling = float(body.get("price_ceiling", 20.0))
+                stocks_snap = stock_cache.get("data") or []
+                from multibagger.scanner import run_multibagger_scan
+                candidates = run_multibagger_scan(stocks_snap, price_ceiling=ceiling, top_n=15)
+                self._send_json({"success": True, "candidates": candidates, "count": len(candidates)})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+        elif self.path == "/api/multibagger/rebuild-reference":
+            try:
+                from multibagger.historical_backtest import run_historical_backtest, get_historical_reference_table
+                added = run_historical_backtest(min_multiple=5.0)
+                rows = get_historical_reference_table()
+                self._send_json({"success": True, "message": f"Backtest processed {added} runs.", "reference_table": rows})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
         else:
             self.send_error(404)
 
