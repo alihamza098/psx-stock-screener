@@ -119,6 +119,83 @@ class TestMultibaggerScoring(unittest.TestCase):
         self.assertIn("no_capital_increase_yet", res["flags"])
         self.assertTrue(any("Zahur Cotton to ITANZ" in r for r in res["reasons"]))
 
+    def test_nearest_analog_matching_itanz(self):
+        from multibagger.analogs import find_nearest_analog
+        # Synthetic setup matching ITANZ:
+        # Price 3.60 PKR, volume surge 4.0x, float 48M, name change YES, capital increase YES, Tech sector
+        match = find_nearest_analog(
+            price=3.60,
+            float_shares=48_500_000,
+            volume_spike_ratio=4.2,
+            has_name_change=True,
+            has_capital_increase=True,
+            qoq_growth_streak=0,
+            sector="Technology & Communication"
+        )
+        self.assertEqual(match["nearest_analog"], "ITANZ")
+        self.assertGreaterEqual(match["similarity_pct"], 90)
+        self.assertEqual(match["confidence_tier"], "strong_match")
+        self.assertIn("name_or_sector_change", match["matched_on"])
+        self.assertIn("capital_increase", match["matched_on"])
+        self.assertIn("volume_spike", match["matched_on"])
+        self.assertIn("Of 8 past cases matching 3+ tags", match["historical_hit_rate"])
+
+    def test_nearest_analog_turnaround_thccl_power(self):
+        from multibagger.analogs import find_nearest_analog
+        # Cement turnaround setup matching THCCL / POWER
+        match = find_nearest_analog(
+            price=2.50,
+            float_shares=150_000_000,
+            volume_spike_ratio=2.5,
+            has_name_change=False,
+            has_capital_increase=False,
+            qoq_growth_streak=3,
+            sector="Cement"
+        )
+        self.assertIn(match["nearest_analog"], ("THCCL", "POWER", "FLYNG"))
+        self.assertGreaterEqual(match["similarity_pct"], 75)
+        self.assertIn("revenue_turnaround", match["matched_on"])
+
+    def test_trigger_detection_patterns(self):
+        from multibagger.announcements_scraper import detect_triggers
+        # Name change
+        t1 = detect_triggers("Change in Principal Activity and Alteration in Memorandum of Association")
+        self.assertIn("NAME_OR_SECTOR_CHANGE", t1)
+
+        # Capital increase / rights
+        t2 = detect_triggers("Increase in Authorised Share Capital and Issuance of 150% Right Shares")
+        self.assertIn("CAPITAL_INCREASE", t2)
+
+        # Turnaround / revival
+        t3 = detect_triggers("Commencement of Commercial Operations and Resumption of Production")
+        self.assertIn("TURNAROUND_RELATED", t3)
+
+        # Ordinary routine announcement -> no triggers
+        t4 = detect_triggers("Transmission of Quarterly Report for the Period Ended March 31, 2026")
+        self.assertEqual(t4, [])
+
+    def test_qoq_growth_streak_calculator(self):
+        from multibagger.financials_scraper import compute_consecutive_qoq_growth
+        # Quarterly array ordered newest first: [Q3, Q2, Q1, Q4]
+        # Q3: 300, Q2: 250, Q1: 200 -> 2 consecutive quarterly improvements
+        quarterly = [
+            {"period": "Q3 2026", "sales": 300.0},
+            {"period": "Q2 2026", "sales": 250.0},
+            {"period": "Q1 2026", "sales": 200.0},
+            {"period": "Q4 2025", "sales": 220.0}
+        ]
+        streak = compute_consecutive_qoq_growth(quarterly)
+        self.assertEqual(streak, 2)
+
+        # Flat or decreasing -> 0 streak
+        quarterly_flat = [
+            {"period": "Q3 2026", "sales": 150.0},
+            {"period": "Q2 2026", "sales": 180.0},
+            {"period": "Q1 2026", "sales": 200.0}
+        ]
+        self.assertEqual(compute_consecutive_qoq_growth(quarterly_flat), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+

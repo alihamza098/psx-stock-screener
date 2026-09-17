@@ -152,9 +152,26 @@ def scan_ticker_for_runs(symbol: str, candles: List[List[float]], min_multiple: 
 
 def seed_reference_benchmarks() -> None:
     """Ensure standard verified reference cases exist in historical_multibaggers table."""
+    from .analogs import ARCHETYPE_LIBRARY
     now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     with get_conn() as conn:
-        for b in KNOWN_REFERENCE_BENCHMARKS:
+        all_cases = list(KNOWN_REFERENCE_BENCHMARKS)
+        for a in ARCHETYPE_LIBRARY:
+            if not any(k["ticker"] == a["ticker"] and k["run_start_date"] == a["run_start_date"] for k in all_cases):
+                all_cases.append({
+                    "ticker": a["ticker"],
+                    "run_start_date": a["run_start_date"],
+                    "run_peak_date": a["run_peak_date"],
+                    "start_price": a["price"],
+                    "peak_price": round(a["price"] * a["peak_multiple"], 2),
+                    "multiple_achieved": a["peak_multiple"],
+                    "trigger_tags": [t.upper() for t in a.get("tags", [])],
+                    "float_at_breakout": a.get("float_shares"),
+                    "sector": a.get("sector"),
+                    "notes": a.get("notes", "")
+                })
+
+        for b in all_cases:
             conn.execute("""
                 INSERT INTO historical_multibaggers
                   (ticker, run_start_date, run_peak_date, start_price, peak_price,
@@ -208,7 +225,6 @@ def run_historical_backtest(symbols: Optional[List[str]] = None, min_multiple: f
             with get_conn() as conn:
                 for r in runs:
                     tags = r.get("trigger_tags", [])
-                    # Enrich with sector and float from profile
                     sector = profile.get("sector")
                     float_shares = profile.get("free_float_shares")
 
@@ -288,3 +304,23 @@ def get_historical_reference_table(sort_by: str = "multiple") -> List[Dict[str, 
                 "notes": r["notes"] or ""
             })
         return results
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Multibagger Historical Reference & Backtest Job")
+    parser.add_argument("--rebuild", action="store_true", help="Rebuild historical reference table")
+    parser.add_argument("--min-multiple", type=float, default=5.0, help="Minimum multiple threshold (default: 5.0x)")
+    args = parser.parse_args()
+
+    print(f"[Multibagger] Seeding reference benchmarks (min {args.min_multiple}x)...")
+    seed_reference_benchmarks()
+    if args.rebuild:
+        added = run_historical_backtest(min_multiple=args.min_multiple)
+        print(f"[Multibagger] Backtest completed. Scanned runs added: {added}")
+    table = get_historical_reference_table()
+    print(f"[Multibagger] Historical Reference Table ({len(table)} cases loaded):")
+    for row in table[:10]:
+        t_str = ", ".join(row.get("trigger_tags", []))
+        print(f"  • {row['ticker']:<8} | {row['multiple_achieved']:>5.1f}x | ₨{row['start_price']} -> ₨{row['peak_price']} | {row['sector']:<25} | Tags: [{t_str}]")
+

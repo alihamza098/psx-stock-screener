@@ -9592,8 +9592,37 @@ const multibaggerTab = (() => {
                         ${reasons.map(r => `<li>${_esc(r)}</li>`).join('')}
                     </ul>
 
+                    ${c.nearest_analog ? `
+                        <div class="mb-analog-match-box">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <span style="font-weight:700; font-size:0.8rem; color:#818cf8;">
+                                    🎯 Nearest Analog: ${_esc(c.nearest_analog)} (${c.similarity_pct || 0}% match)
+                                </span>
+                                <span class="mb-confidence-badge ${c.confidence_tier || 'early_signal'}">
+                                    ${(c.confidence_tier || 'early_signal').replace(/_/g, ' ')}
+                                </span>
+                            </div>
+                            <div style="font-size:0.75rem; color:#cbd5e1;">
+                                ${_esc(c.analog_company || '')} ${c.analog_multiple ? `· <span style="color:#34d399; font-weight:700;">${c.analog_multiple}x</span>` : ''}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${((c.matched_on && c.matched_on.length) || (c.not_yet_matched && c.not_yet_matched.length)) ? `
+                        <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px;">
+                            ${(c.matched_on || []).map(m => `<span class="mb-tag-pill matched">✓ ${_esc(m.replace(/_/g, ' '))}</span>`).join('')}
+                            ${(c.not_yet_matched || []).map(u => `<span class="mb-tag-pill unmatched">⏳ Missing: ${_esc(u.replace(/_/g, ' '))}</span>`).join('')}
+                        </div>
+                    ` : ''}
+
+                    ${c.historical_hit_rate ? `
+                        <div class="mb-hit-rate-box">
+                            <span style="font-weight:700; color:#c7d2fe;">Historical Base Rate:</span> ${_esc(c.historical_hit_rate)}
+                        </div>
+                    ` : ''}
+
                     ${flags.length > 0 ? `
-                        <div class="mb-cand-flags">
+                        <div class="mb-cand-flags" style="margin-top:10px;">
                             ${flags.map(f => {
                                 const flagClass = f.toLowerCase().includes('float') ? 'low_float' : 'no_turnaround';
                                 return `<span class="mb-flag-pill ${flagClass}">⚠️ ${_esc(f.replace(/_/g, ' '))}</span>`;
@@ -9602,7 +9631,7 @@ const multibaggerTab = (() => {
                     ` : ''}
 
                     <div class="mb-cand-actions">
-                        <button class="mb-btn-deep-res" onclick="multibaggerTab.runSearch('${_esc(c.symbol)}')">
+                        <button class="mb-btn-deep-res" onclick="multibaggerTab.runSearch('${_esc(c.symbol || c.ticker)}')">
                             🔎 Deep Research
                         </button>
                     </div>

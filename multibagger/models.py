@@ -106,6 +106,34 @@ def get_conn() -> sqlite3.Connection:
             _SCHEMA_DONE = True
         except Exception as e:
             print(f"[MultibaggerDB] Schema error: {e}")
+
+    # Check and migrate columns if necessary
+    try:
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(daily_multibagger_candidates)")
+        existing_cols = {row["name"] for row in cur.fetchall()}
+        new_cols = [
+            ("nearest_analog", "TEXT"),
+            ("analog_company", "TEXT"),
+            ("analog_multiple", "REAL"),
+            ("similarity_pct", "INTEGER"),
+            ("matched_on_json", "TEXT"),
+            ("not_yet_matched_json", "TEXT"),
+            ("confidence_tier", "TEXT"),
+            ("historical_hit_rate", "TEXT")
+        ]
+        for col_name, col_type in new_cols:
+            if col_name not in existing_cols:
+                cur.execute(f"ALTER TABLE daily_multibagger_candidates ADD COLUMN {col_name} {col_type}")
+        
+        cur.execute("PRAGMA table_info(historical_multibaggers)")
+        hist_cols = {row["name"] for row in cur.fetchall()}
+        if "feature_vector_json" not in hist_cols:
+            cur.execute("ALTER TABLE historical_multibaggers ADD COLUMN feature_vector_json TEXT")
+        conn.commit()
+    except Exception as e:
+        print(f"[MultibaggerDB] Migration notice: {e}")
+
     return conn
 
 

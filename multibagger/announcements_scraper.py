@@ -91,9 +91,17 @@ def detect_triggers(title: str) -> List[str]:
     return triggers
 
 
-def fetch_dps_company_page(symbol: str, timeout: int = 12) -> str:
-    """Download HTML from dps.psx.com.pk/company/{symbol} with browser headers."""
+_PAGE_CACHE: Dict[str, Tuple[float, str]] = {}
+
+def fetch_dps_company_page(symbol: str, timeout: int = 5) -> str:
+    """Download HTML from dps.psx.com.pk/company/{symbol} with browser headers and in-memory cache."""
     symbol = symbol.upper()
+    now = time.time()
+    if symbol in _PAGE_CACHE:
+        ts, cached_html = _PAGE_CACHE[symbol]
+        if now - ts < 300:  # 5 min TTL
+            return cached_html
+
     url = f"https://dps.psx.com.pk/company/{symbol}"
     req = urllib.request.Request(
         url,
@@ -104,7 +112,9 @@ def fetch_dps_company_page(symbol: str, timeout: int = 12) -> str:
         }
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", errors="ignore")
+        content = resp.read().decode("utf-8", errors="ignore")
+        _PAGE_CACHE[symbol] = (now, content)
+        return content
 
 
 def parse_company_profile(html: str, symbol: str) -> Dict[str, Any]:
