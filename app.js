@@ -1110,6 +1110,58 @@ function renderComingSoonTab(view) {
     </div>`;
 }
 
+// ─── Left Sidebar Navigation Controllers ───
+function toggleSidebarCollapse() {
+    const sidebar = document.getElementById("app-sidebar");
+    if (!sidebar) return;
+    const isCollapsed = sidebar.classList.toggle("collapsed");
+    const icon = document.getElementById("sidebar-collapse-icon");
+    if (icon) {
+        icon.innerHTML = isCollapsed 
+            ? '<polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/>' 
+            : '<polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/>';
+    }
+    try {
+        localStorage.setItem("psx_sidebar_collapsed", isCollapsed ? "true" : "false");
+    } catch (e) {}
+}
+
+function toggleMobileSidebar(forceState) {
+    const sidebar = document.getElementById("app-sidebar");
+    const backdrop = document.getElementById("sidebar-backdrop");
+    if (!sidebar) return;
+    const shouldOpen = typeof forceState === "boolean" ? forceState : !sidebar.classList.contains("mobile-open");
+    if (shouldOpen) {
+        sidebar.classList.add("mobile-open");
+        backdrop?.classList.add("active");
+    } else {
+        sidebar.classList.remove("mobile-open");
+        backdrop?.classList.remove("active");
+    }
+}
+
+function toggleNavGroup(headerEl) {
+    const group = headerEl.closest(".nav-group");
+    if (group) {
+        group.classList.toggle("collapsed");
+    }
+}
+
+function initSidebarState() {
+    try {
+        if (localStorage.getItem("psx_sidebar_collapsed") === "true") {
+            const sidebar = document.getElementById("app-sidebar");
+            const icon = document.getElementById("sidebar-collapse-icon");
+            if (sidebar && window.innerWidth > 768) {
+                sidebar.classList.add("collapsed");
+                if (icon) {
+                    icon.innerHTML = '<polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/>';
+                }
+            }
+        }
+    } catch (e) {}
+}
+
 // ─── View Switching ───
 function switchView(view) {
     currentView = view;
@@ -1117,10 +1169,29 @@ function switchView(view) {
     document.querySelectorAll(".mobile-nav-item").forEach(t => t.classList.remove("active"));
 
     const activeTab = document.querySelector(`[data-view="${view}"]`);
-    if (activeTab) activeTab.classList.add("active");
+    if (activeTab) {
+        activeTab.classList.add("active");
+        const parentGroup = activeTab.closest('.nav-group');
+        if (parentGroup && parentGroup.classList.contains('collapsed')) {
+            parentGroup.classList.remove('collapsed');
+        }
+    }
 
     const activeMobileTab = document.querySelector(`.mobile-nav-item[data-view="${view}"]`);
     if (activeMobileTab) activeMobileTab.classList.add("active");
+
+    // Sync Screener Sub-View Pill Toggle (Table vs Cards)
+    document.querySelectorAll(".screener-toggle-btn").forEach(btn => {
+        btn.classList.remove("active");
+    });
+    if (view === "table") {
+        document.getElementById("btn-toggle-table")?.classList.add("active");
+    } else if (view === "cards") {
+        document.getElementById("btn-toggle-cards")?.classList.add("active");
+    }
+
+    // Auto-close mobile drawer on navigation
+    toggleMobileSidebar(false);
 
     const views = ["table", "cards", "weekly-scan", "live-trading", "simulator", "corporate", "financials", "undervalued", "intelligence", "longterm", "multibagger"];
     views.forEach(v => {
@@ -1138,10 +1209,12 @@ function switchView(view) {
     const marketOverview = document.getElementById("market-overview");
     const screenerControls = document.getElementById("screener-controls");
     const searchContainer = document.getElementById("search-container");
+    const screenerToggle = document.getElementById("screener-view-toggle");
 
     if (marketOverview) marketOverview.style.display = isScreenerView ? "grid" : "none";
     if (screenerControls) screenerControls.style.display = isScreenerView ? "block" : "none";
     if (searchContainer) searchContainer.style.display = isScreenerView ? "flex" : "none";
+    if (screenerToggle) screenerToggle.style.display = isScreenerView ? "flex" : "none";
 
     // Check if this tab is marked COMING SOON / OFFLINE
     if (appTabStatuses[view] && appTabStatuses[view].status === "OFFLINE") {
@@ -5327,6 +5400,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initPWAAndMobile();
     initTermsCheck();
     initTrialSystem();
+    initSidebarState();
     startVisitorHeartbeat();
     
     // Live Pakistan Clock Ticker
