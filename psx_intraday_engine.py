@@ -405,6 +405,14 @@ def scan_for_opportunities(
         _dump_sectors = set()
         _hot_sectors  = set()
 
+    # ── Determine scan floor once (not per-stock — avoids 208 DB hits) ────────
+    try:
+        import psx_intraday_learner as _lrn_pre
+        _in_learning_mode = _lrn_pre.is_learning_mode()
+    except Exception:
+        _in_learning_mode = True  # assume learning if uncertain
+    _scan_floor = LEARNING_SCHEDULED_MIN if _in_learning_mode else SCHEDULED_SCORE_MIN
+
     for stock in stocks:
         sym    = stock.get("symbol", "").upper()
         change = float(stock.get("change", 0) or 0)
@@ -428,19 +436,24 @@ def scan_for_opportunities(
         mem = _get_stock_memory(sym, memory_db_fn)
         avg_vol  = mem.get("avg_daily_volume", 0.0)
         last_rsi = mem.get("last_rsi", 50.0)
-        sec_w    = sec_weights.get(sector, 0.6)
+        # Neutral weight (1.0) when no learned data — 0.6 default was penalising
+        # all stocks by -8 pts, ensuring 0 candidates during learning phase
+        sec_w = sec_weights.get(sector, 1.0)
 
-        sc = _score(stock, kse_chg, sec_avgs, avg_vol, last_rsi, sec_w)
+        # Volume fallback: when avg_vol is unknown, estimate from current volume
+        # pace (current_vol / time_fraction ≈ expected daily volume). This lets
+        # the RVOL score still reward genuine early-session surges.
+        effective_avg_vol = avg_vol
+        if effective_avg_vol <= 0:
+            cur_vol = float(stock.get("volume", 0) or 0)
+            if tod_fraction > 0 and cur_vol > 0:
+                effective_avg_vol = cur_vol / max(tod_fraction, 0.1)
+
+        sc = _score(stock, kse_chg, sec_avgs, effective_avg_vol, last_rsi, sec_w)
         # Hot sector tailwind bonus (+8 pts)
         if sector in _hot_sectors:
             sc = min(100, sc + 8)
 
-        # Dynamic scan floor: lower during learning phase to accumulate data
-        try:
-            import psx_intraday_learner as _lrn
-            _scan_floor = LEARNING_SCHEDULED_MIN if _lrn.is_learning_mode() else SCHEDULED_SCORE_MIN
-        except Exception:
-            _scan_floor = SCHEDULED_SCORE_MIN
         if sc < _scan_floor:
             continue
 
@@ -448,8 +461,8 @@ def scan_for_opportunities(
         if not lvl:
             continue
 
-        if avg_vol > 0:
-            exp_vol = max(avg_vol * tod_fraction, 1000.0)
+        if effective_avg_vol > 0:
+            exp_vol = max(effective_avg_vol * tod_fraction, 1000.0)
             rvol = round(volume / exp_vol, 1)
         else:
             rvol = 1.0
