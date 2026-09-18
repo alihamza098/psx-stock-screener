@@ -584,13 +584,16 @@
                 <!-- Dynamically populated by renderWeeklySpotlight() -->
             </div>
 
-            <!-- Sub-Tab Selector: Active Candidates vs Performance Ledger -->
+            <!-- Sub-Tab Selector: Active Candidates vs Performance Ledger vs Sector Edge -->
             <div class="weekly-subtab-bar">
                 <button class="weekly-subtab-btn active" id="btn-subtab-candidates" onclick="switchWeeklySubtab('candidates')">
                     ⚡ All Qualified Setups (<span id="count-subtab-candidates">0</span>)
                 </button>
                 <button class="weekly-subtab-btn" id="btn-subtab-performance" onclick="switchWeeklySubtab('performance')">
                     🎯 Prediction Accuracy & Performance Ledger (<span id="count-subtab-performance">0</span>)
+                </button>
+                <button class="weekly-subtab-btn" id="btn-subtab-sectors" onclick="switchWeeklySubtab('sectors')">
+                    📊 Sector Edge & Track Record (<span id="count-subtab-sectors">0</span>)
                 </button>
             </div>
 
@@ -766,6 +769,51 @@
                         </thead>
                         <tbody id="audit-ledger-body">
                             <tr><td colspan="12" style="text-align:center; padding: 32px; color: #94a3b8;">Loading prediction audit ledger...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ─── PANE 3: Sector Edge & Historical Track Record ─── -->
+            <div id="weekly-sectors-pane" style="display:none;">
+                <div class="weekly-header-card" style="margin-top: 14px; background: linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,41,59,0.7)); border: 1px solid rgba(99,102,241,0.25);">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
+                        <div>
+                            <div style="font-size: 0.78rem; font-weight:700; color:#818cf8; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">
+                                🔁 Self-Calibrating Sector Intelligence
+                            </div>
+                            <h3 style="font-size: 1.15rem; font-weight:700; color:#f8fafc; margin:0 0 6px 0;">
+                                Empirical PSX Sector Track Record & Multipliers
+                            </h3>
+                            <p style="font-size: 0.82rem; color:#94a3b8; max-width:700px; margin:0; line-height:1.5;">
+                                The AI engine continuously tracks the actual P&L of every past prediction by sector. Sectors with consistent profitability receive a conviction boost (1.3x), while chronic underperformers (e.g. Textile Spinning, Leather) receive heavy conviction penalties (0.5x) or complete cooling-off.
+                            </p>
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick="loadWeeklySectorPerformance(true)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                            <span>Refresh Sector Data</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="audit-table-wrapper" style="margin-top: 14px;">
+                    <table class="audit-ledger-table">
+                        <thead>
+                            <tr>
+                                <th>Sector</th>
+                                <th>AI Verdict</th>
+                                <th>Multiplier</th>
+                                <th>Tracked Picks</th>
+                                <th>Wins / Losses</th>
+                                <th>Win Rate</th>
+                                <th>Avg 5D/Audit Return</th>
+                                <th>Avg Max Peak</th>
+                                <th>Avg Max Drawdown</th>
+                                <th>Open Trades</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sector-track-ledger-body">
+                            <tr><td colspan="10" style="text-align:center; padding: 32px; color: #94a3b8;">Loading sector track record...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -1834,6 +1882,10 @@
                 <div class="intel-stat">
                     <span class="intel-stat-value" id="intel-stat-last-tick">—</span>
                     <span class="intel-stat-label">Last Scan</span>
+                </div>
+                <div class="intel-stat">
+                    <span class="intel-stat-value" id="intel-stat-calibration">—</span>
+                    <span class="intel-stat-label">Calibration Sync</span>
                 </div>
             </div>
             <div class="intel-status-pill" id="intel-engine-status">

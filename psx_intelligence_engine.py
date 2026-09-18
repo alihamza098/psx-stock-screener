@@ -444,12 +444,24 @@ class IntelligenceDB:
             total = conn.execute(
                 "SELECT COUNT(*) FROM ai_predictions"
             ).fetchone()[0]
-            evaluated = conn.execute(
-                "SELECT COUNT(*) FROM ai_predictions WHERE outcome != 'PENDING'"
-            ).fetchone()[0]
             correct = conn.execute(
                 "SELECT COUNT(*) FROM ai_predictions WHERE outcome = 'CORRECT'"
             ).fetchone()[0]
+            incorrect = conn.execute(
+                "SELECT COUNT(*) FROM ai_predictions WHERE outcome = 'INCORRECT'"
+            ).fetchone()[0]
+            neutral = conn.execute(
+                "SELECT COUNT(*) FROM ai_predictions WHERE outcome = 'NEUTRAL'"
+            ).fetchone()[0]
+            pending = conn.execute(
+                "SELECT COUNT(*) FROM ai_predictions WHERE outcome = 'PENDING'"
+            ).fetchone()[0]
+            # ── P1-B FIX: Only CORRECT+INCORRECT count toward win rate ────────
+            # NEUTRAL = stock moved < ±1% — not a prediction failure, just no signal.
+            # Old denominator included NEUTRAL, artificially deflating win rate to ~14%.
+            decisive = correct + incorrect
+            win_rate = round((correct / max(decisive, 1)) * 100, 1)
+            # ── End P1-B fix ──────────────────────────────────────────────────
             events_total = conn.execute(
                 "SELECT COUNT(*) FROM stock_events"
             ).fetchone()[0]
@@ -460,11 +472,14 @@ class IntelligenceDB:
             last_tick = conn.execute(
                 "SELECT MAX(detected_at) FROM stock_events"
             ).fetchone()[0]
-            win_rate = round((correct / max(evaluated, 1)) * 100, 1)
             return {
                 "total_predictions": total,
-                "evaluated_predictions": evaluated,
+                "evaluated_predictions": decisive + neutral,
                 "correct_predictions": correct,
+                "incorrect_predictions": incorrect,
+                "neutral_predictions": neutral,
+                "pending_predictions": pending,
+                "decisive_predictions": decisive,
                 "win_rate_pct": win_rate,
                 "total_events_detected": events_total,
                 "patterns_discovered": patterns_total,
@@ -472,6 +487,7 @@ class IntelligenceDB:
             }
         finally:
             conn.close()
+
 
     def get_pending_predictions_for_evaluation(self, days_old: int = 5) -> List[Dict]:
         cutoff = (datetime.utcnow() - timedelta(days=days_old)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -723,8 +739,35 @@ class AnomalyDetector:
 
         # Determine event type(s)
         event_type = None
+        consecutive_upper_lock_days = 0  # QW6: track multi-day upper lock runs
+
         if change_pct >= THRESH_UPPER_LOCK_PCT:
             event_type = EVENT_UPPER_LOCK
+            # ── QW6: Consecutive Upper Lock detector ─────────────────────────
+            # Stocks that hit upper lock 2+ consecutive days are in extreme
+            # institutional/retail demand — highest-probability momentum setup on PSX.
+            # Check today's upper lock against yesterday's close (sequential lock run).
+            try:
+                conn = self.db._connect()
+                prev_locks = conn.execute("""
+                    SELECT trade_date FROM stock_events
+                    WHERE symbol = ? AND event_type = 'UPPER_LOCK'
+                      AND trade_date >= date('now', '-3 days')
+                    ORDER BY trade_date DESC
+                    LIMIT 3
+                """, (symbol,)).fetchall()
+                conn.close()
+                # Count how many of the last 3 trading dates also had upper locks
+                consecutive_upper_lock_days = len(prev_locks)
+                if consecutive_upper_lock_days >= 2:
+                    # Override to a special event_type for more aggressive signal
+                    event_type = "CONSECUTIVE_UPPER_LOCK"
+                    print(f"[Intelligence] 🔒 CIRCUIT RUNNER: {symbol} — "
+                          f"{consecutive_upper_lock_days}+ consecutive upper locks!")
+            except Exception:
+                pass  # Non-blocking
+            # ── End QW6 ──────────────────────────────────────────────────────
+
         elif change_pct <= THRESH_LOWER_LOCK_PCT:
             event_type = EVENT_LOWER_LOCK
         elif rvol >= THRESH_RVOL and change_pct >= 2.0:
@@ -1092,6 +1135,33 @@ class PatternLibrary:
                         WHERE event_id = ? AND outcome != 'PENDING'
                         LIMIT 1
                     """, (ev["id"],)).fetchone()
+
+                    # ── P1-A Fallback & Historical Backfill ───────────────────
+                    # If pattern_occurrences has no closed outcome yet, check
+                    # ai_predictions for this event. This backfills all past
+                    # evaluated predictions into pattern learning.
+                    if not occ:
+                        pred = conn.execute("""
+                            SELECT outcome, actual_return_5d FROM ai_predictions
+                            WHERE event_id = ? AND outcome != 'PENDING'
+                            LIMIT 1
+                        """, (ev["id"],)).fetchone()
+                        if pred:
+                            p_out = pred["outcome"]
+                            ret5 = pred["actual_return_5d"]
+                            mapped_outcome = "WIN" if p_out == "CORRECT" else ("LOSS" if p_out == "INCORRECT" else "NEUTRAL")
+                            # Insert into pattern_occurrences for permanent storage
+                            try:
+                                conn.execute("""
+                                    INSERT OR IGNORE INTO pattern_occurrences
+                                    (pattern_id, event_id, symbol, matched_at, similarity, outcome, return_5d)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                """, (pat_def["id"], ev["id"], ev.get("symbol", ""), now, 0.9, mapped_outcome, ret5))
+                                conn.commit()
+                            except Exception:
+                                pass
+                            occ = {"outcome": mapped_outcome, "return_3d": None, "return_5d": ret5}
+
                     if occ:
                         occ = dict(occ)
                         if occ["outcome"] == "WIN":
@@ -1454,26 +1524,23 @@ class LearningEngine:
 
             actual_return_5d = round(((current_price - entry_price) / entry_price) * 100, 2)
 
-            # ── Improved Outcome Scoring ──────────────────────────────────────
-            # A move of less than ±1% is NEUTRAL — the stock didn't move enough
-            # to confirm OR deny the prediction. Marking 0% moves as INCORRECT
-            # was massively inflating the error count.
+            # ── Improved Outcome Scoring (3-tier) ─────────────────────────────
+            # NEUTRAL: move < ±1% — too small to confirm or deny the prediction.
+            # Marking every flat day as INCORRECT was inflating the error count to 85%.
+            # Only CORRECT and INCORRECT count toward win rate; NEUTRAL is excluded.
             signal = pred["signal"]
             abs_ret = abs(actual_return_5d)
 
             if abs_ret < 1.0:
-                # Too small to call — stock was flat
                 outcome = "NEUTRAL"
             elif signal in [SIGNAL_BREAKOUT_IMMINENT, SIGNAL_CONTINUATION, SIGNAL_WATCH]:
-                # Bullish signals: correct if stock rose >= 2%
                 if actual_return_5d >= 2.0:
                     outcome = "CORRECT"
                 elif actual_return_5d <= -2.0:
                     outcome = "INCORRECT"
                 else:
-                    outcome = "NEUTRAL"  # moved but not decisively
+                    outcome = "NEUTRAL"
             elif signal == SIGNAL_REVERSAL_RISK:
-                # Bearish/caution signal: correct if stock fell >= 2%
                 if actual_return_5d <= -2.0:
                     outcome = "CORRECT"
                 elif actual_return_5d >= 2.0:
@@ -1481,7 +1548,6 @@ class LearningEngine:
                 else:
                     outcome = "NEUTRAL"
             elif signal == SIGNAL_EXTENDED:
-                # Extended/overbought: correct if stock declined at all
                 if actual_return_5d < -1.0:
                     outcome = "CORRECT"
                 elif actual_return_5d >= 3.0:
@@ -1495,8 +1561,50 @@ class LearningEngine:
             self.db.update_prediction_outcome(pred["id"], outcome, actual_return_5d)
             evaluated += 1
 
+            # ── P1-A FIX: Backfill pattern_occurrences WIN/LOSS/NEUTRAL ──────
+            # PatternLibrary.rebuild() reads pattern_occurrences to compute
+            # win_count/loss_count. Previously evaluate_day_outcomes only wrote
+            # to ai_predictions — never to pattern_occurrences — so all 6
+            # patterns showed win_count=0 forever. This fix writes every
+            # evaluated prediction back so the overnight rebuild accumulates
+            # real win rates.
+            pattern_id = pred.get("pattern_id")
+            event_id   = pred.get("event_id")
+            if pattern_id and event_id:
+                pat_outcome = ("WIN"  if outcome == "CORRECT" else
+                               "LOSS" if outcome == "INCORRECT" else "NEUTRAL")
+                try:
+                    conn = self.db._connect()
+                    try:
+                        existing = conn.execute(
+                            "SELECT id FROM pattern_occurrences"
+                            " WHERE event_id = ? AND pattern_id = ?",
+                            (event_id, pattern_id)
+                        ).fetchone()
+                        if existing:
+                            conn.execute("""
+                                UPDATE pattern_occurrences
+                                SET outcome = ?, return_5d = ?
+                                WHERE event_id = ? AND pattern_id = ? AND outcome = 'PENDING'
+                            """, (pat_outcome, actual_return_5d, event_id, pattern_id))
+                        else:
+                            conn.execute("""
+                                INSERT OR IGNORE INTO pattern_occurrences
+                                (pattern_id, event_id, symbol, matched_at,
+                                 similarity, outcome, return_5d)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """, (pattern_id, event_id, symbol, _now(),
+                                  0.9, pat_outcome, actual_return_5d))
+                        conn.commit()
+                    finally:
+                        conn.close()
+                except Exception:
+                    pass  # Non-blocking — pattern backfill never aborts EOD eval
+            # ── End P1-A fix ──────────────────────────────────────────────────
+
         if evaluated:
-            print(f"[Intelligence] LearningEngine: evaluated {evaluated} predictions.")
+            print(f"[Intelligence] LearningEngine: evaluated {evaluated} predictions, "
+                  f"pattern backfill applied.")
 
 
 # ── PSX Noticeboard Scraper ───────────────────────────────────────────────────
@@ -1588,6 +1696,17 @@ class IntelligenceEngine:
         self._last_eod_date: str = ""
         self._last_overnight_date: str = ""
         print("[Intelligence] Engine initialized. DB:", str(self.db.db_path))
+        # ── Startup Backfill Check ───────────────────────────────────────────
+        try:
+            patterns = self.db.get_patterns(min_occurrences=1)
+            total_wins = sum(p.get("win_count", 0) for p in patterns)
+            total_losses = sum(p.get("loss_count", 0) for p in patterns)
+            if (total_wins + total_losses) == 0:
+                print("[Intelligence] Pattern library has zero recorded wins/losses — initiating historical backfill...")
+                self.pattern_lib.rebuild()
+        except Exception as _re:
+            print(f"[Intelligence] Pattern startup rebuild error: {_re}")
+        # ── End Startup Backfill Check ───────────────────────────────────────
 
     def tick(self, stocks: List[Dict[str, Any]], index_data: Dict[str, Any] = None,
              history_fn=None):
@@ -1629,10 +1748,31 @@ class IntelligenceEngine:
         recent_events = self.db.get_recent_events(limit=5)
         active_predictions = self.db.get_active_predictions(limit=5)
 
+        # ── QW5: Calibration Engine Status ───────────────────────────────────
+        calib_info = {"last_run": None, "win_rate": None, "runs_count": 0}
+        try:
+            from psx_calibration_engine import CALIB_DB
+            import sqlite3 as _sq3
+            if CALIB_DB.exists():
+                with _sq3.connect(str(CALIB_DB), timeout=2) as conn:
+                    conn.row_factory = _sq3.Row
+                    r = conn.execute("SELECT run_at, overall_win_rate FROM calibration_runs ORDER BY id DESC LIMIT 1").fetchone()
+                    cnt = conn.execute("SELECT COUNT(*) FROM calibration_runs").fetchone()[0]
+                    if r:
+                        calib_info = {
+                            "last_run": r["run_at"],
+                            "win_rate": round(float(r["overall_win_rate"] or 0) * 100, 1),
+                            "runs_count": cnt
+                        }
+        except Exception:
+            pass
+        # ── End QW5 ──────────────────────────────────────────────────────────
+
         return {
             "stats": stats,
             "recent_events_count": len(recent_events),
             "active_predictions_count": len(active_predictions),
+            "calibration": calib_info,
             "engine_status": "ONLINE",
             "generated_at": _now()
         }

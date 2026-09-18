@@ -6531,20 +6531,82 @@ function switchWeeklySubtab(tab) {
     currentWeeklySubtab = tab;
     const btnCand = document.getElementById("btn-subtab-candidates");
     const btnPerf = document.getElementById("btn-subtab-performance");
+    const btnSect = document.getElementById("btn-subtab-sectors");
     const paneCand = document.getElementById("weekly-candidates-pane");
     const panePerf = document.getElementById("weekly-performance-pane");
+    const paneSect = document.getElementById("weekly-sectors-pane");
 
-    if (tab === "candidates") {
-        if (btnCand) btnCand.classList.add("active");
-        if (btnPerf) btnPerf.classList.remove("active");
-        if (paneCand) paneCand.style.display = "block";
-        if (panePerf) panePerf.style.display = "none";
-    } else {
-        if (btnCand) btnCand.classList.remove("active");
-        if (btnPerf) btnPerf.classList.add("active");
-        if (paneCand) paneCand.style.display = "none";
-        if (panePerf) panePerf.style.display = "block";
+    if (btnCand) btnCand.classList.toggle("active", tab === "candidates");
+    if (btnPerf) btnPerf.classList.toggle("active", tab === "performance");
+    if (btnSect) btnSect.classList.toggle("active", tab === "sectors");
+
+    if (paneCand) paneCand.style.display = tab === "candidates" ? "block" : "none";
+    if (panePerf) panePerf.style.display = tab === "performance" ? "block" : "none";
+    if (paneSect) paneSect.style.display = tab === "sectors" ? "block" : "none";
+
+    if (tab === "performance") {
         loadWeeklyPerformanceData();
+    } else if (tab === "sectors") {
+        loadWeeklySectorPerformance();
+    }
+}
+
+async function loadWeeklySectorPerformance(showLoading = true) {
+    const tbody = document.getElementById("sector-track-ledger-body");
+    const countBadge = document.getElementById("count-subtab-sectors");
+    if (showLoading && tbody) {
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:32px; color:#94a3b8;"><div class="spinner" style="margin: 0 auto 10px;"></div>Analyzing empirical sector track record...</td></tr>`;
+    }
+
+    try {
+        const res = await fetch("/api/weekly-scan/sector-performance");
+        const json = await res.json();
+        if (json.success && json.sectors) {
+            const sectors = json.sectors;
+            if (countBadge) countBadge.textContent = sectors.length;
+
+            if (sectors.length === 0) {
+                if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:32px; color:#94a3b8;">No sector outcome data recorded yet.</td></tr>`;
+                return;
+            }
+
+            if (tbody) {
+                tbody.innerHTML = sectors.map(s => {
+                    const isEdge = s.avg_return_pct > 3.0;
+                    const isAvoid = s.avg_return_pct < -5.0;
+                    const verdictBadge = isEdge ? 
+                        `<span style="background: rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.75rem;">✅ EDGE</span>` :
+                        (isAvoid ? 
+                        `<span style="background: rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.75rem;">❌ AVOID ZONE</span>` :
+                        `<span style="background: rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3); padding:3px 8px; border-radius:4px; font-weight:600; font-size:0.75rem;">⚠️ NEUTRAL</span>`);
+                    
+                    const mult = isEdge ? "1.3x (+30% Score)" : (isAvoid ? "0.5x (-50% Penalty)" : "1.0x (Standard)");
+                    const multColor = isEdge ? "#34d399" : (isAvoid ? "#f87171" : "#94a3b8");
+                    const retColor = s.avg_return_pct >= 0 ? "#34d399" : "#f87171";
+
+                    return `
+                    <tr>
+                        <td style="font-weight:700; color:#f8fafc;">${s.sector}</td>
+                        <td>${verdictBadge}</td>
+                        <td style="font-weight:700; color:${multColor}; font-size:0.8rem;">${mult}</td>
+                        <td style="color:#cbd5e1; font-weight:600;">${s.total}</td>
+                        <td>
+                            <span style="color:#10b981; font-weight:700;">${s.wins}W</span> / 
+                            <span style="color:#ef4444; font-weight:700;">${s.losses}L</span>
+                        </td>
+                        <td style="font-weight:700; color:#f8fafc;">${s.win_rate_pct}%</td>
+                        <td style="font-weight:700; color:${retColor}; font-size:0.88rem;">${s.avg_return_pct >= 0 ? '+' : ''}${s.avg_return_pct}%</td>
+                        <td style="color:#10b981; font-weight:600;">+${s.avg_max_gain_pct}%</td>
+                        <td style="color:#ef4444; font-weight:600;">-${Math.abs(s.avg_max_loss_pct)}%</td>
+                        <td style="color:#94a3b8;">${s.open} active</td>
+                    </tr>
+                    `;
+                }).join("");
+            }
+        }
+    } catch (e) {
+        console.error("Error loading sector performance:", e);
+        if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:32px; color:#f87171;">Failed to load sector track record.</td></tr>`;
     }
 }
 
@@ -7566,10 +7628,12 @@ const intelligenceTab = (() => {
 
     function renderHeader(summary) {
         const s = summary.stats || {};
+        const cal = summary.calibration || {};
         _setText('intel-stat-events',   s.total_events_detected ?? '—');
         _setText('intel-stat-patterns', s.patterns_discovered ?? '—');
         _setText('intel-stat-winrate',  s.evaluated_predictions > 0 ? s.win_rate_pct + '%' : '—');
         _setText('intel-stat-last-tick', _timeAgo(s.last_anomaly_tick));
+        _setText('intel-stat-calibration', cal.last_run ? _timeAgo(cal.last_run) : 'v1.0.1');
         _setText('intel-footer-preds',   s.total_predictions ?? 0);
         _setText('intel-footer-correct', s.correct_predictions ?? 0);
         const pill = document.getElementById('intel-engine-status');

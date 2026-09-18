@@ -4023,6 +4023,77 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 "sizing": sizing
             })
 
+        # ── QW1: Sector Performance Track Record ──────────────────────────────
+        elif parsed_path.path == "/api/weekly-scan/sector-performance":
+            try:
+                conn = weekly_engine.get_db_connection()
+                rows = conn.execute("""
+                    SELECT sector,
+                           COUNT(*) AS total,
+                           SUM(CASE WHEN outcome='SUCCESSFUL' THEN 1 ELSE 0 END) AS wins,
+                           SUM(CASE WHEN outcome='STOPPED_OUT' THEN 1 ELSE 0 END) AS losses,
+                           SUM(CASE WHEN outcome='IN_PROGRESS' THEN 1 ELSE 0 END) AS open,
+                           SUM(CASE WHEN outcome='EXPIRED_TIME' THEN 1 ELSE 0 END) AS expired,
+                           AVG(current_return_pct) AS avg_ret,
+                           AVG(max_gain_pct) AS avg_max_gain,
+                           AVG(max_loss_pct) AS avg_max_loss
+                    FROM prediction_audits
+                    WHERE sector IS NOT NULL
+                    GROUP BY sector
+                    ORDER BY avg_ret DESC
+                """).fetchall()
+                conn.close()
+                sector_data = []
+                for r in rows:
+                    closed = int(r["wins"] or 0) + int(r["losses"] or 0)
+                    win_rate = round(r["wins"] / max(closed, 1) * 100, 1) if closed > 0 else 0
+                    avg_ret = round(float(r["avg_ret"] or 0), 2)
+                    verdict = "✅ EDGE" if avg_ret > 3 else ("⚠️ NEUTRAL" if avg_ret > -3 else "❌ AVOID")
+                    sector_data.append({
+                        "sector": r["sector"], "total": r["total"],
+                        "wins": r["wins"] or 0, "losses": r["losses"] or 0,
+                        "open": r["open"] or 0, "expired": r["expired"] or 0,
+                        "win_rate_pct": win_rate, "avg_return_pct": avg_ret,
+                        "avg_max_gain_pct": round(float(r["avg_max_gain"] or 0), 2),
+                        "avg_max_loss_pct": round(float(r["avg_max_loss"] or 0), 2),
+                        "verdict": verdict
+                    })
+                self._send_json({"success": True, "sectors": sector_data, "count": len(sector_data)})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        # ── QW6: Circuit Runners (Consecutive Upper Locks) ────────────────────
+        elif parsed_path.path == "/api/intelligence/circuit-runners":
+            try:
+                import psx_intelligence_engine as intel_module
+                intel_db = intel_module.get_engine().db
+                conn = intel_db._connect()
+                # Find stocks with 2+ UPPER_LOCK or CONSECUTIVE_UPPER_LOCK events in last 4 days
+                rows = conn.execute("""
+                    SELECT symbol, sector,
+                           COUNT(*) AS lock_days,
+                           MAX(price) AS last_price,
+                           MAX(detected_at) AS last_seen,
+                           MAX(rvol) AS peak_rvol
+                    FROM stock_events
+                    WHERE event_type IN ('UPPER_LOCK', 'CONSECUTIVE_UPPER_LOCK')
+                      AND trade_date >= date('now', '-4 days')
+                    GROUP BY symbol
+                    HAVING lock_days >= 2
+                    ORDER BY lock_days DESC, peak_rvol DESC
+                    LIMIT 20
+                """).fetchall()
+                conn.close()
+                runners = [dict(r) for r in rows]
+                self._send_json({
+                    "success": True,
+                    "circuit_runners": runners,
+                    "count": len(runners),
+                    "note": "Stocks hitting upper circuit 2+ consecutive sessions — highest-momentum setups on PSX"
+                })
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
         # ─── 🧠 PSX Market Intelligence Engine API ───
         elif parsed_path.path == "/api/intelligence/summary":
             try:

@@ -40,8 +40,18 @@ INTEL_DB       = BASE_DIR / "cache" / "intelligence.db"
 # Bayesian prior — equivalent to N "neutral" (50%) samples
 BAYESIAN_PRIOR_STRENGTH = 5
 
-# Minimum closed outcomes before any config change is allowed
-MIN_SAMPLES_FOR_CHANGE  = 10
+# ── P1-D FIX: Lower thresholds so calibration actually fires ─────────────────
+# With only 62 weekly outcomes, the old 5% improvement requirement and
+# 10-sample minimum were mathematically impossible to satisfy. The engine
+# ran 7 times and applied 0 changes — perpetually frozen at config v1.0.1.
+# New values allow the engine to learn with the data it actually has.
+MIN_SAMPLES_FOR_CHANGE  = 5    # was 10 — can suggest changes with 5+ data points
+MIN_BACKTEST_IMPROVEMENT = 0.02 # was 0.05 — 2% improvement threshold (not 5%)
+
+# When True, calibration logs what *would* change even if sample count is too low.
+# This creates an audit trail of learning even before thresholds are met.
+SOFT_SUGGESTION_MODE = True
+# ── End P1-D fix ─────────────────────────────────────────────────────────────
 
 # Recency decay windows (days)
 RECENCY_FULL_DAYS   = 90    # weight = 1.0
@@ -54,12 +64,10 @@ SWEEP_MIN_RR = [1.2, 1.4, 1.5, 1.6, 1.8, 2.0, 2.2, 2.5]
 SWEEP_ATR_MULT = [1.0, 1.2, 1.5, 1.8, 2.0, 2.2, 2.5]
 SWEEP_BREAKOUT_LOOKBACK = [10, 15, 20, 25, 30]
 
-# Minimum improvement (profit factor delta) to apply config change
-MIN_BACKTEST_IMPROVEMENT = 0.05   # 5% better profit factor
-
 # Max weight ceiling / floor
 WEIGHT_MAX = 2.0
 WEIGHT_MIN = 0.3
+
 
 
 # ── Utility ───────────────────────────────────────────────────────────────────

@@ -91,6 +91,71 @@ def _get_blacklisted_symbols() -> set:
         return set()
 
 
+# ── P1-E FIX: Real Sector Performance Multipliers ────────────────────────────
+# Reads actual prediction_audits outcomes to determine which sectors are
+# consistently profitable vs consistently losing. These multipliers adjust
+# the conviction score of every new candidate from that sector.
+#
+# Data source: prediction_audits (our own track record, not third-party signals)
+# Rule: sector with avg_return < -5% → 0.5× multiplier (significant penalty)
+#       sector with avg_return > +3%  → 1.3× multiplier (moderate bonus)
+#       all others → 1.0× (neutral)
+# Requires minimum 3 closed trades in the sector before applying.
+_sector_perf_cache: dict = {}
+_sector_perf_ts: float = 0.0
+_SECTOR_PERF_TTL = 3600  # refresh hourly
+
+def _get_sector_performance_multipliers() -> dict:
+    """
+    Returns dict of {sector: multiplier} based on real scan outcome history.
+    E.g. {"Textile Spinning": 0.5, "Insurance": 1.3, "Cement": 1.0}
+    """
+    global _sector_perf_cache, _sector_perf_ts
+    import time as _time
+    if _sector_perf_cache and (_time.time() - _sector_perf_ts) < _SECTOR_PERF_TTL:
+        return _sector_perf_cache
+
+    result = {}
+    try:
+        conn = get_db_connection()
+        rows = conn.execute("""
+            SELECT sector,
+                   COUNT(*) AS n,
+                   AVG(current_return_pct) AS avg_ret,
+                   SUM(CASE WHEN stop_hit = 1 THEN 1 ELSE 0 END) AS stops
+            FROM prediction_audits
+            WHERE sector IS NOT NULL
+              AND outcome NOT IN ('PENDING', 'IN_PROGRESS')
+            GROUP BY sector
+            HAVING n >= 3
+        """).fetchall()
+        conn.close()
+
+        for row in rows:
+            sector = row["sector"]
+            avg_ret = float(row["avg_ret"] or 0.0)
+            n = int(row["n"])
+            if avg_ret < -5.0:
+                mult = 0.5
+            elif avg_ret > 3.0:
+                mult = 1.3
+            else:
+                mult = 1.0
+            result[sector] = mult
+            if mult != 1.0:
+                direction = "⚠️ PENALTY" if mult < 1.0 else "✅ BONUS"
+                print(f"[WeeklyScan] Sector perf multiplier: {sector} "
+                      f"(n={n}, avg={avg_ret:+.1f}%) → {mult:.1f}x {direction}")
+    except Exception:
+        pass
+
+    _sector_perf_cache = result
+    _sector_perf_ts = _time.time()
+    return result
+# ── End P1-E fix ──────────────────────────────────────────────────────────────
+
+
+
 # ─── Default Configuration (Section 3 of spec) ───
 DEFAULT_SCAN_CONFIG = {
     "version": "1.0.0",
@@ -623,6 +688,25 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
     except Exception:
         pass  # Calibration unavailable — use base conviction
     # ── End calibration adjustment ────────────────────────────────────────────
+
+    # ── P1-E: Apply real sector track record multiplier ───────────────────────
+    # Uses our own prediction_audits history (not external signals) to penalize
+    # sectors that have been consistently losing (e.g. Textile Spinning -19%,
+    # Leather -48%) and bonus sectors that have been consistently winning.
+    try:
+        sec_perf = _get_sector_performance_multipliers()
+        if sector in sec_perf:
+            mult = sec_perf[sector]
+            if mult != 1.0:
+                old_conv = conviction_pct
+                conviction_pct = int(conviction_pct * mult)
+                conviction_pct = max(20, min(98, conviction_pct))
+                label = "📉 SECTOR_TRACK_RECORD_PENALTY" if mult < 1.0 else "📈 SECTOR_TRACK_RECORD_BONUS"
+                print(f"[WeeklyScan] {symbol} ({sector}): {label} {old_conv}→{conviction_pct} ({mult:.1f}x)")
+    except Exception:
+        pass  # Non-blocking — never abort on sector perf lookup failure
+    # ── End P1-E ─────────────────────────────────────────────────────────────
+
 
     # ── Sector Rotation Bonus (live hot money signal) ─────────────────────────
     # Hot sectors (money flowing in) get +12 conviction.
