@@ -9478,6 +9478,9 @@ const multibaggerTab = (() => {
     let _sortDir = 'desc';
     let _candidates = [];
     let _loaded = false;
+    let _currentStageFilter = 'ALL';
+    let _shariahOnly = false;
+    let _safeShieldOnly = true;
 
     function _esc(str) {
         if (!str) return '';
@@ -9617,23 +9620,74 @@ const multibaggerTab = (() => {
         }
     }
 
+    // ── Stage & Risk Shield Filtering ──
+    function setStageFilter(stage, btn) {
+        _currentStageFilter = stage;
+        ['mb-stage-all', 'mb-stage-1', 'mb-stage-2', 'mb-stage-3'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.remove('active');
+        });
+        if (btn) btn.classList.add('active');
+        applyFiltersAndRenderCandidates();
+    }
+
+    function toggleShariahFilter(btn) {
+        _shariahOnly = !_shariahOnly;
+        if (btn) {
+            btn.classList.toggle('active', _shariahOnly);
+            btn.style.background = _shariahOnly ? 'rgba(16,185,129,0.2)' : 'transparent';
+        }
+        applyFiltersAndRenderCandidates();
+    }
+
+    function toggleSafeShield(btn) {
+        _safeShieldOnly = !_safeShieldOnly;
+        if (btn) {
+            btn.classList.toggle('active', _safeShieldOnly);
+            btn.style.background = _safeShieldOnly ? 'rgba(99,102,241,0.2)' : 'transparent';
+        }
+        applyFiltersAndRenderCandidates();
+    }
+
+    function applyFiltersAndRenderCandidates() {
+        const maxPrice = parseFloat(document.getElementById('mb-filter-price-max')?.value || '20');
+        
+        // Update stage counts across ceiling
+        const inPrice = _candidates.filter(c => Number(c.price || 0) <= maxPrice);
+        const cntAll = document.getElementById('mb-cnt-all');
+        const cntS1 = document.getElementById('mb-cnt-s1');
+        const cntS2 = document.getElementById('mb-cnt-s2');
+        const cntS3 = document.getElementById('mb-cnt-s3');
+        if (cntAll) cntAll.textContent = inPrice.length;
+        if (cntS1) cntS1.textContent = inPrice.filter(c => c.stage === 'STAGE_1_STEALTH').length;
+        if (cntS2) cntS2.textContent = inPrice.filter(c => c.stage === 'STAGE_2_CATALYST').length;
+        if (cntS3) cntS3.textContent = inPrice.filter(c => c.stage === 'STAGE_3_VELOCITY').length;
+
+        // Apply selected filters
+        const filtered = inPrice.filter(c => {
+            if (_currentStageFilter !== 'ALL' && c.stage !== _currentStageFilter) return false;
+            if (_shariahOnly && !c.is_shariah) return false;
+            if (_safeShieldOnly && c.risk_shield && c.risk_shield.status === 'FAIL') return false;
+            return true;
+        });
+
+        const countEl = document.getElementById('mb-stat-cand-count');
+        if (countEl) countEl.textContent = filtered.length;
+        renderCandidates(filtered);
+    }
+
     // ── Daily Candidate Scanner ──
     async function loadCandidates() {
         const grid = document.getElementById('mb-candidates-grid');
         if (!grid) return;
-        const maxPrice = parseFloat(document.getElementById('mb-filter-price-max')?.value || '20');
 
         grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:32px; color:#94a3b8;">Scanning for setup patterns...</div>';
         try {
             const res = await fetch('/api/multibagger/candidates');
             const resJson = await res.json();
             if (resJson.success && resJson.data) {
-                const candidates = resJson.data.candidates || [];
-                _candidates = candidates;
-                const filtered = candidates.filter(c => Number(c.price || 0) <= maxPrice);
-                const countEl = document.getElementById('mb-stat-cand-count');
-                if (countEl) countEl.textContent = filtered.length;
-                renderCandidates(filtered);
+                _candidates = resJson.data.candidates || [];
+                applyFiltersAndRenderCandidates();
             } else {
                 grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:32px; color:#94a3b8;">No candidates currently found under ceiling. Click "Scan Candidates Now".</div>';
             }
@@ -9647,7 +9701,7 @@ const multibaggerTab = (() => {
         const grid = document.getElementById('mb-candidates-grid');
         if (!grid) return;
         if (!candidates.length) {
-            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:32px; color:#94a3b8;">No setup candidates matched the criteria today. Use Deep Research to investigate any specific symbol.</div>';
+            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:32px; color:#94a3b8;">No setup candidates matched current filters. Use Deep Research to investigate any specific symbol.</div>';
             return;
         }
 
@@ -9656,77 +9710,126 @@ const multibaggerTab = (() => {
             const scoreBadgeClass = score >= 60 ? 'high' : score >= 40 ? 'med' : '';
             const reasons = c.reasons || [];
             const flags = c.flags || [];
+            const squeeze = Number(c.float_squeeze_index || 0);
+            const squeezeColor = squeeze >= 80 ? '#34d399' : squeeze >= 60 ? '#38bdf8' : '#cbd5e1';
+
+            // Stage badge formatting
+            let stageBadge = '';
+            if (c.stage === 'STAGE_1_STEALTH') {
+                stageBadge = `<span style="font-size:0.68rem; font-weight:700; padding:2px 8px; border-radius:4px; background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.3); letter-spacing:0.5px;">🌱 STAGE 1: STEALTH</span>`;
+            } else if (c.stage === 'STAGE_2_CATALYST') {
+                stageBadge = `<span style="font-size:0.68rem; font-weight:700; padding:2px 8px; border-radius:4px; background:rgba(245,158,11,0.15); color:#fbbf24; border:1px solid rgba(245,158,11,0.3); letter-spacing:0.5px;">⚡ STAGE 2: CATALYST</span>`;
+            } else if (c.stage === 'STAGE_3_VELOCITY') {
+                stageBadge = `<span style="font-size:0.68rem; font-weight:700; padding:2px 8px; border-radius:4px; background:rgba(236,72,153,0.15); color:#f472b6; border:1px solid rgba(236,72,153,0.3); letter-spacing:0.5px;">🚀 STAGE 3: VELOCITY</span>`;
+            }
+
+            // Risk shield formatting
+            let shieldBadge = '';
+            if (c.risk_shield) {
+                if (c.risk_shield.status === 'PASS') {
+                    shieldBadge = `<span style="font-size:0.68rem; padding:2px 6px; border-radius:3px; background:rgba(99,102,241,0.12); color:#818cf8; border:1px solid rgba(99,102,241,0.25);">🛡️ Shield: PASS</span>`;
+                } else if (c.risk_shield.status === 'WARNING') {
+                    shieldBadge = `<span style="font-size:0.68rem; padding:2px 6px; border-radius:3px; background:rgba(245,158,11,0.12); color:#fbbf24; border:1px solid rgba(245,158,11,0.25);">⚠️ Shield: WARNING</span>`;
+                } else {
+                    shieldBadge = `<span style="font-size:0.68rem; padding:2px 6px; border-radius:3px; background:rgba(239,68,68,0.12); color:#f87171; border:1px solid rgba(239,68,68,0.25);">🛑 Trap Shield: FAIL</span>`;
+                }
+            }
 
             return `
-                <div class="mb-candidate-card">
-                    <div class="mb-cand-header">
-                        <div>
-                            <div class="mb-cand-ticker">${_esc(c.symbol)}</div>
-                            <div class="mb-cand-sector">${_esc(c.sector || 'PSX Listed')}</div>
-                        </div>
-                        <div class="mb-cand-score-badge ${scoreBadgeClass}">
-                            ${score} / 100
-                        </div>
-                    </div>
-                    
-                    <div class="mb-cand-price">
-                        PKR ${_fmtNum(c.price || c.current_price)}
-                        <span style="display:inline-flex; align-items:center; gap:3px; font-size:0.68rem; padding:1px 5px; border-radius:3px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); vertical-align:middle; margin-left:4px;">
-                            <span style="display:inline-block; width:5px; height:5px; border-radius:50%; background:#10b981;"></span>LIVE
-                        </span>
-                        <span style="font-size:0.75rem; color:#94a3b8; font-weight:normal; margin-left:6px;">
-                            (Float: ${_formatShares(c.free_float_shares)})
-                        </span>
-                    </div>
-
-                    <div style="font-size:0.75rem; color:#64748b; margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">
-                        Setup Characteristics:
-                    </div>
-                    <ul class="mb-cand-reasons">
-                        ${reasons.map(r => `<li>${_esc(r)}</li>`).join('')}
-                    </ul>
-
-                    ${c.nearest_analog ? `
-                        <div class="mb-analog-match-box">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                <span style="font-weight:700; font-size:0.8rem; color:#818cf8;">
-                                    🎯 Nearest Analog: ${_esc(c.nearest_analog)} (${c.similarity_pct || 0}% match)
-                                </span>
-                                <span class="mb-confidence-badge ${c.confidence_tier || 'early_signal'}">
-                                    ${(c.confidence_tier || 'early_signal').replace(/_/g, ' ')}
-                                </span>
+                <div class="mb-candidate-card" style="display:flex; flex-direction:column; justify-content:space-between;">
+                    <div>
+                        <div class="mb-cand-header">
+                            <div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span class="mb-cand-ticker">${_esc(c.symbol)}</span>
+                                    ${stageBadge}
+                                </div>
+                                <div class="mb-cand-sector">${_esc(c.sector || 'PSX Listed')}</div>
                             </div>
-                            <div style="font-size:0.75rem; color:#cbd5e1;">
-                                ${_esc(c.analog_company || '')} ${c.analog_multiple ? `· <span style="color:#34d399; font-weight:700;">${c.analog_multiple}x</span>` : ''}
+                            <div class="mb-cand-score-badge ${scoreBadgeClass}">
+                                ${score} / 100
                             </div>
                         </div>
-                    ` : ''}
-
-                    ${((c.matched_on && c.matched_on.length) || (c.not_yet_matched && c.not_yet_matched.length)) ? `
-                        <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px;">
-                            ${(c.matched_on || []).map(m => `<span class="mb-tag-pill matched">✓ ${_esc(m.replace(/_/g, ' '))}</span>`).join('')}
-                            ${(c.not_yet_matched || []).map(u => `<span class="mb-tag-pill unmatched">⏳ Missing: ${_esc(u.replace(/_/g, ' '))}</span>`).join('')}
+                        
+                        <div class="mb-cand-price" style="margin-top:6px;">
+                            PKR ${_fmtNum(c.price || c.current_price)}
+                            <span style="display:inline-flex; align-items:center; gap:3px; font-size:0.68rem; padding:1px 5px; border-radius:3px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); vertical-align:middle; margin-left:4px;">
+                                <span style="display:inline-block; width:5px; height:5px; border-radius:50%; background:#10b981;"></span>LIVE
+                            </span>
+                            <span style="font-size:0.75rem; color:#94a3b8; font-weight:normal; margin-left:6px;">
+                                (Float: ${_formatShares(c.free_float_shares)})
+                            </span>
                         </div>
-                    ` : ''}
 
-                    ${c.historical_hit_rate ? `
-                        <div class="mb-hit-rate-box">
-                            <span style="font-weight:700; color:#c7d2fe;">Historical Base Rate:</span> ${_esc(c.historical_hit_rate)}
+                        <!-- Float Squeeze Index Meter -->
+                        <div style="margin: 8px 0 10px 0; background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:6px 10px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.72rem; margin-bottom:4px;">
+                                <span style="color:#94a3b8; font-weight:600;">⚡ Float Squeeze Potential:</span>
+                                <span style="font-weight:700; color:${squeezeColor}">${squeeze} / 100</span>
+                            </div>
+                            <div style="width:100%; height:4px; background:rgba(255,255,255,0.1); border-radius:2px; overflow:hidden;">
+                                <div style="width:${Math.min(100, Math.max(0, squeeze))}%; height:100%; background:linear-gradient(90deg, #6366f1, #ec4899); border-radius:2px;"></div>
+                            </div>
                         </div>
-                    ` : ''}
 
-                    ${flags.length > 0 ? `
-                        <div class="mb-cand-flags" style="margin-top:10px;">
-                            ${flags.map(f => {
-                                const flagClass = f.toLowerCase().includes('float') ? 'low_float' : 'no_turnaround';
-                                return `<span class="mb-flag-pill ${flagClass}">⚠️ ${_esc(f.replace(/_/g, ' '))}</span>`;
-                            }).join('')}
+                        <!-- Safety & Shariah Badges -->
+                        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
+                            ${c.is_shariah ? `<span style="font-size:0.68rem; padding:2px 6px; border-radius:3px; background:rgba(16,185,129,0.12); color:#34d399; border:1px solid rgba(16,185,129,0.25);">🌙 Shariah</span>` : ''}
+                            ${shieldBadge}
                         </div>
-                    ` : ''}
 
-                    <div class="mb-cand-actions">
-                        <button class="mb-btn-deep-res" onclick="multibaggerTab.runSearch('${_esc(c.symbol || c.ticker)}')">
-                            🔎 Deep Research
+                        <div style="font-size:0.75rem; color:#64748b; margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">
+                            Setup Characteristics:
+                        </div>
+                        <ul class="mb-cand-reasons">
+                            ${reasons.map(r => `<li>${_esc(r)}</li>`).join('')}
+                        </ul>
+
+                        ${c.nearest_analog ? `
+                            <div class="mb-analog-match-box">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                    <span style="font-weight:700; font-size:0.8rem; color:#818cf8;">
+                                        🎯 Nearest Analog: ${_esc(c.nearest_analog)} (${c.similarity_pct || 0}% match)
+                                    </span>
+                                    <span class="mb-confidence-badge ${c.confidence_tier || 'early_signal'}">
+                                        ${(c.confidence_tier || 'early_signal').replace(/_/g, ' ')}
+                                    </span>
+                                </div>
+                                <div style="font-size:0.75rem; color:#cbd5e1;">
+                                    ${_esc(c.analog_company || '')} ${c.analog_multiple ? `· <span style="color:#34d399; font-weight:700;">${c.analog_multiple}x</span>` : ''}
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        ${((c.matched_on && c.matched_on.length) || (c.not_yet_matched && c.not_yet_matched.length)) ? `
+                            <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px;">
+                                ${(c.matched_on || []).map(m => `<span class="mb-tag-pill matched">✓ ${_esc(m.replace(/_/g, ' '))}</span>`).join('')}
+                                ${(c.not_yet_matched || []).map(u => `<span class="mb-tag-pill unmatched">⏳ Missing: ${_esc(u.replace(/_/g, ' '))}</span>`).join('')}
+                            </div>
+                        ` : ''}
+
+                        ${c.historical_hit_rate ? `
+                            <div class="mb-hit-rate-box">
+                                <span style="font-weight:700; color:#c7d2fe;">Historical Base Rate:</span> ${_esc(c.historical_hit_rate)}
+                            </div>
+                        ` : ''}
+
+                        ${flags.length > 0 ? `
+                            <div class="mb-cand-flags" style="margin-top:10px;">
+                                ${flags.map(f => {
+                                    const flagClass = f.toLowerCase().includes('float') ? 'low_float' : 'no_turnaround';
+                                    return `<span class="mb-flag-pill ${flagClass}">⚠️ ${_esc(f.replace(/_/g, ' '))}</span>`;
+                                }).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <div class="mb-cand-actions" style="margin-top:14px; display:flex; gap:8px;">
+                        <button class="mb-btn-deep-res" onclick="multibaggerTab.showThesis('${_esc(c.symbol || c.ticker)}')" style="flex:1; background:linear-gradient(135deg, #ec4899, #be185d); font-weight:700;">
+                            📜 1-Click Thesis
+                        </button>
+                        <button class="mb-btn-deep-res" onclick="multibaggerTab.runSearch('${_esc(c.symbol || c.ticker)}')" style="flex:1; background:rgba(99,102,241,0.2); border:1px solid rgba(99,102,241,0.4); color:#c7d2fe;">
+                            🔎 Research
                         </button>
                     </div>
                 </div>
@@ -9919,6 +10022,150 @@ const multibaggerTab = (() => {
         `;
     }
 
+    // ── 4-Pillar Investment Thesis Modal ──
+    async function showThesis(symbol) {
+        const modal = document.getElementById('mb-thesis-modal');
+        const content = document.getElementById('mb-thesis-modal-content');
+        if (!modal || !content) return;
+
+        modal.style.display = 'flex';
+        content.innerHTML = `
+            <div style="text-align:center; padding:48px 16px;">
+                <div style="font-size:2rem; margin-bottom:12px;">📜</div>
+                <div style="font-size:1.1rem; font-weight:700; color:#f8fafc; margin-bottom:6px;">Synthesizing 4-Pillar Investment Thesis for ${_esc(symbol)}...</div>
+                <div style="font-size:0.8rem; color:#94a3b8; margin-bottom:16px;">Analyzing catalytic sparks, float squeeze dynamics, asset floors, and invalidation criteria.</div>
+                <div style="display:inline-block; width:32px; height:32px; border:3px solid rgba(255,255,255,0.1); border-top-color:#ec4899; border-radius:50%; animation:spin 1s linear infinite;"></div>
+            </div>
+        `;
+
+        try {
+            const res = await fetch(`/api/multibagger/thesis?symbol=${encodeURIComponent(symbol)}`);
+            const resJson = await res.json();
+            if (resJson.success && resJson.data) {
+                renderThesisModalContent(resJson.data);
+            } else {
+                content.innerHTML = `
+                    <div style="text-align:center; padding:32px 16px;">
+                        <div style="font-size:1.8rem; margin-bottom:8px; color:#f87171;">⚠️</div>
+                        <div style="font-weight:700; color:#f87171; margin-bottom:6px;">Thesis Generation Failed</div>
+                        <div style="color:#94a3b8; font-size:0.85rem; margin-bottom:16px;">${_esc(resJson.error || 'Unable to assemble thesis for this symbol.')}</div>
+                        <button class="btn btn-secondary" onclick="multibaggerTab.closeThesisModal()">Close</button>
+                    </div>
+                `;
+            }
+        } catch (e) {
+            content.innerHTML = `
+                <div style="text-align:center; padding:32px 16px;">
+                    <div style="font-size:1.8rem; margin-bottom:8px; color:#f87171;">⚠️</div>
+                    <div style="font-weight:700; color:#f87171; margin-bottom:6px;">Network Error</div>
+                    <div style="color:#94a3b8; font-size:0.85rem; margin-bottom:16px;">${_esc(e.message)}</div>
+                    <button class="btn btn-secondary" onclick="multibaggerTab.closeThesisModal()">Close</button>
+                </div>
+            `;
+        }
+    }
+
+    function renderThesisModalContent(data) {
+        const content = document.getElementById('mb-thesis-modal-content');
+        if (!content) return;
+        const pillars = data.thesis_pillars || {};
+        const p1 = pillars.pillar_1_spark || {};
+        const p2 = pillars.pillar_2_float_squeeze || {};
+        const p3 = pillars.pillar_3_asset_floor || {};
+        const p4 = pillars.pillar_4_invalidation || {};
+        const twin = data.historical_twin || {};
+        const shield = data.risk_shield || {};
+
+        content.innerHTML = `
+            <div style="padding: 10px 14px;">
+                <!-- Header -->
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:12px; margin-bottom:16px;">
+                    <div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <h2 style="margin:0; font-size:1.35rem; font-weight:800; color:#f8fafc; letter-spacing:0.5px;">${_esc(data.symbol)}</h2>
+                            <span style="font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(236,72,153,0.15); color:#f472b6; border:1px solid rgba(236,72,153,0.3); font-weight:700;">
+                                ${_esc(data.stage_name || data.stage || 'Asymmetric Setup')}
+                            </span>
+                            ${data.is_shariah ? `<span style="font-size:0.72rem; padding:2px 6px; border-radius:3px; background:rgba(16,185,129,0.15); color:#34d399;">🌙 Shariah</span>` : ''}
+                        </div>
+                        <div style="color:#94a3b8; font-size:0.85rem; margin-top:2px;">${_esc(data.company_name || '')} · PKR ${_fmtNum(data.current_price)}</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:1.15rem; font-weight:800; color:#38bdf8;">Setup: ${data.score || 0}/100</div>
+                        <div style="font-size:0.75rem; color:#a5b4fc;">Squeeze Index: <strong>${data.float_squeeze_index || 0}/100</strong></div>
+                    </div>
+                </div>
+
+                <!-- 4 Pillars Grid -->
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:12px; margin-bottom:16px;">
+                    <!-- Pillar 1 -->
+                    <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(236,72,153,0.25); border-radius:8px; padding:12px;">
+                        <div style="display:flex; align-items:center; gap:6px; font-weight:700; font-size:0.85rem; color:#f472b6; margin-bottom:6px;">
+                            <span>${_esc(p1.title || '1. The Spark')}</span>
+                        </div>
+                        <div style="font-size:0.8rem; color:#cbd5e1; line-height:1.5;">${_esc(p1.content || 'None identified.')}</div>
+                    </div>
+
+                    <!-- Pillar 2 -->
+                    <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(99,102,241,0.25); border-radius:8px; padding:12px;">
+                        <div style="display:flex; align-items:center; gap:6px; font-weight:700; font-size:0.85rem; color:#818cf8; margin-bottom:6px;">
+                            <span>${_esc(p2.title || '2. Mechanical Float Edge')}</span>
+                        </div>
+                        <div style="font-size:0.8rem; color:#cbd5e1; line-height:1.5;">${_esc(p2.content || 'None identified.')}</div>
+                    </div>
+
+                    <!-- Pillar 3 -->
+                    <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(16,185,129,0.25); border-radius:8px; padding:12px;">
+                        <div style="display:flex; align-items:center; gap:6px; font-weight:700; font-size:0.85rem; color:#34d399; margin-bottom:6px;">
+                            <span>${_esc(p3.title || '3. Asset Floor & Valuation')}</span>
+                        </div>
+                        <div style="font-size:0.8rem; color:#cbd5e1; line-height:1.5;">${_esc(p3.content || 'None identified.')}</div>
+                    </div>
+
+                    <!-- Pillar 4 -->
+                    <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(239,68,68,0.25); border-radius:8px; padding:12px;">
+                        <div style="display:flex; align-items:center; gap:6px; font-weight:700; font-size:0.85rem; color:#f87171; margin-bottom:6px;">
+                            <span>${_esc(p4.title || '4. Invalidation Rules (Exit)')}</span>
+                        </div>
+                        <div style="font-size:0.8rem; color:#cbd5e1; line-height:1.5;">${_esc(p4.content || 'None specified.')}</div>
+                    </div>
+                </div>
+
+                <!-- Historical Twin & Risk Shield Box -->
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:16px;">
+                    <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px 12px;">
+                        <div style="font-size:0.75rem; font-weight:700; color:#818cf8; margin-bottom:4px;">🎯 Nearest Historical Twin: ${_esc(twin.symbol || 'N/A')} (${twin.run_multiple || 'N/A'})</div>
+                        <div style="font-size:0.75rem; color:#94a3b8; line-height:1.4;">${_esc(twin.why_comparable || 'Historical setup pattern matched across PSX databases.')}</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px 12px;">
+                        <div style="font-size:0.75rem; font-weight:700; color:${shield.status === 'PASS' ? '#34d399' : shield.status === 'WARNING' ? '#fbbf24' : '#f87171'}; margin-bottom:4px;">
+                            🛡️ Trap Shield Status: ${_esc(shield.status || 'PASS')}
+                        </div>
+                        <div style="font-size:0.75rem; color:#94a3b8; line-height:1.4;">
+                            ${(shield.flags && shield.flags.length) ? shield.flags.map(f => `⚠️ ${_esc(f)}`).join('<br>') : 'Zero operator trap or non-compliance risks detected.'}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Actions -->
+                <div style="display:flex; justify-content:flex-end; gap:8px;">
+                    <button class="btn btn-secondary" onclick="multibaggerTab.closeThesisModal()" style="font-size:0.8rem; padding:6px 14px;">Close</button>
+                    <button class="btn btn-primary" onclick="multibaggerTab.closeThesisModal(); multibaggerTab.runSearch('${_esc(data.symbol)}');" style="font-size:0.8rem; padding:6px 14px; background:linear-gradient(135deg, #6366f1, #ec4899);">
+                        🔎 Open Deep Intelligence
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    function closeThesisModal(e) {
+        if (e && e.target && e.target.id !== 'mb-thesis-modal' && !e.target.classList.contains('lt-modal-close')) {
+            return;
+        }
+        const modal = document.getElementById('mb-thesis-modal');
+        if (modal) modal.style.display = 'none';
+    }
+
     return {
         load,
         loadReference,
@@ -9926,7 +10173,13 @@ const multibaggerTab = (() => {
         triggerScan,
         rebuildReference,
         sortReference,
-        runSearch
+        runSearch,
+        setStageFilter,
+        toggleShariahFilter,
+        toggleSafeShield,
+        applyFiltersAndRenderCandidates,
+        showThesis,
+        closeThesisModal
     };
 })();
 

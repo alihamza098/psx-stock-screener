@@ -4551,6 +4551,46 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
+        elif parsed_path.path == "/api/multibagger/stages":
+            try:
+                from multibagger.scanner import get_latest_candidates, run_multibagger_scan
+                data = get_latest_candidates()
+                if not data.get("candidates"):
+                    stocks_snap = stock_cache.get("data") or []
+                    if stocks_snap:
+                        run_multibagger_scan(stocks_snap, price_ceiling=20.0, top_n=15)
+                        data = get_latest_candidates()
+                cands = data.get("candidates", []) if data else []
+                for c in cands:
+                    inject_live_price(c, symbol_key="ticker", price_keys=["current_price", "price"])
+
+                stages = {
+                    "stage_1_stealth": [c for c in cands if c.get("stage") == "STAGE_1_STEALTH"],
+                    "stage_2_catalyst": [c for c in cands if c.get("stage") == "STAGE_2_CATALYST"],
+                    "stage_3_velocity": [c for c in cands if c.get("stage") == "STAGE_3_VELOCITY"],
+                    "all_candidates": cands
+                }
+                self._send_json({"success": True, "stages": stages, "total": len(cands)})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path.startswith("/api/multibagger/thesis"):
+            try:
+                from multibagger.research.synthesizer import generate_investment_thesis
+                query = parse_qs(parsed_path.query)
+                symbol = query.get("symbol", [""])[0].upper()
+                if not symbol:
+                    parts = parsed_path.path.strip("/").split("/")
+                    if len(parts) >= 4:
+                        symbol = parts[3].upper()
+                if not symbol:
+                    symbol = "THCCL"
+                thesis = generate_investment_thesis(symbol)
+                inject_live_price(thesis, symbol_key="symbol", price_keys=["current_price", "price"])
+                self._send_json({"success": True, "data": thesis, "thesis": thesis})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
         # ─── Intraday Diagnostics API ────────────────────────────────────────────
         # Tells you exactly why stocks are/are not firing alerts — invaluable debug
         elif parsed_path.path == "/api/intraday/diagnostics":

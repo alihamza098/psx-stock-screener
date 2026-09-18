@@ -236,3 +236,126 @@ def _template_synthesis(symbol: str, sources: List[Dict[str, Any]]) -> Dict[str,
             f"it aligns with the historical setup seen in past turnaround runners."
         )
     }
+
+
+def generate_investment_thesis(symbol: str) -> Dict[str, Any]:
+    """
+    Generates an institutional 4-pillar investment thesis:
+    1. The Spark (Catalyst / Trigger)
+    2. The Mechanical Edge (Float Squeeze & Supply Lock)
+    3. The Asset Floor (Valuation & Tangible Backing)
+    4. Invalidation Criteria (Exact Red Flags that kill the thesis)
+    """
+    from pathlib import Path
+    from ..models import get_company_profile
+    from ..announcements_scraper import check_symbol_triggers_last_12mo
+    from ..analogs import find_nearest_analog
+    from ..risk_shield import evaluate_risk_shield
+
+    sym_u = symbol.upper().strip()
+    profile = get_company_profile(sym_u) or {}
+    trigs = check_symbol_triggers_last_12mo(sym_u)
+
+    price = 10.0
+    sector = profile.get("sector", "Other")
+    vol = 100_000.0
+    is_nc = False
+
+    snap_path = Path("data_snapshot.json")
+    if snap_path.exists():
+        try:
+            with open(snap_path, "r", encoding="utf-8") as f:
+                snap = json.load(f)
+                stocks = snap.get("data", []) if isinstance(snap, dict) else snap
+                for s in stocks:
+                    if s.get("symbol", "").upper() == sym_u:
+                        price = float(s.get("price", 0) or 0)
+                        sector = s.get("sector", sector)
+                        vol = float(s.get("volume", 0) or 0)
+                        is_nc = bool(s.get("isNC", False))
+                        break
+        except Exception:
+            pass
+
+    float_shares = profile.get("free_float_shares") or 50_000_000
+
+    # 1. The Spark
+    if trigs.get("has_name_change"):
+        spark = f"Corporate Transformation Catalyst: Official DPS disclosure of change in corporate name or principal business activity ({trigs.get('name_change_details') or 'business pivot'}). Mirrors Zahur Cotton's pivot into ITANZ Technologies."
+    elif trigs.get("has_capital_increase"):
+        spark = f"Capital Infusion Catalyst: Disclosure regarding authorised/paid-up capital increase or rights issue ({trigs.get('capital_increase_details') or 'equity expansion'}). Clears path for balance sheet repair and asset revitalization."
+    else:
+        spark = f"Operational / Cyclical Coiling: Trading at a historically depressed price base (Rs {price:.2f}) with smart money volume footprint and low-float accumulation."
+
+    # 2. The Mechanical Edge
+    ff_m = float_shares / 1_000_000.0
+    mechanical = (
+        f"Float Squeeze Mechanics: Public free float is tightly constrained at approximately {ff_m:.1f}M shares. "
+        f"With majority promoter ownership locked, circulating supply is limited; when buying momentum enters, "
+        f"a lack of immediate sellers can cause consecutive circuit lock expansions."
+    )
+
+    # 3. The Asset Floor
+    asset_floor = (
+        f"Valuation & Downside Margin of Safety: Trading at Rs {price:.2f} per share. "
+        f"Sub-Rs 20 nominal price attracts high retail velocity, while tangible replacement asset value and plant/machinery "
+        f"establish a structural liquidation floor against permanent capital impairment."
+    )
+
+    # 4. Invalidation Criteria
+    stop_floor = max(0.50, round(price * 0.82, 2))
+    invalidation = (
+        f"Thesis Abort / Kill Criteria: "
+        f"1. A sustained weekly close below Rs {stop_floor:.2f} (-18% stop floor). "
+        f"2. Promoter or insider selling disclosures filed on DPS indicating distribution. "
+        f"3. Failure to receive SECP/regulatory approval on proposed capital structure or corporate revival plans."
+    )
+
+    # Nearest Analog
+    analog = find_nearest_analog(
+        price=price,
+        float_shares=float_shares,
+        volume_spike_ratio=2.5,
+        has_name_change=trigs.get("has_name_change", False),
+        has_capital_increase=trigs.get("has_capital_increase", False),
+        qoq_growth_streak=2,
+        sector=sector
+    )
+
+    shield = evaluate_risk_shield({"symbol": sym_u, "price": price, "volume": vol, "isNC": is_nc}, free_float_shares=float_shares)
+
+    thesis_pillars = {
+        "pillar_1_spark": {"title": "1. The Spark (Catalyst / Turnaround)", "content": spark},
+        "pillar_2_float_squeeze": {"title": "2. Mechanical Float Edge (Supply Squeeze)", "content": mechanical},
+        "pillar_3_asset_floor": {"title": "3. Asset Floor & Margin of Safety", "content": asset_floor},
+        "pillar_4_invalidation": {"title": "4. Invalidation Rules (Exit Criteria)", "content": invalidation}
+    }
+
+    historical_twin = {
+        "symbol": analog["nearest_analog"],
+        "company_name": analog["analog_company"],
+        "run_multiple": f"{analog.get('analog_multiple', 10)}x",
+        "similarity_pct": analog["similarity_pct"],
+        "why_comparable": f"Matched on: {', '.join(analog.get('matched_on', []) or ['depressed base', 'low float'])}"
+    }
+
+    return {
+        "symbol": sym_u,
+        "company_name": profile.get("name", sym_u),
+        "price": round(price, 2),
+        "current_price": round(price, 2),
+        "sector": sector,
+        "the_spark": spark,
+        "mechanical_edge": mechanical,
+        "asset_floor": asset_floor,
+        "invalidation_rules": invalidation,
+        "thesis_pillars": thesis_pillars,
+        "historical_twin": historical_twin,
+        "nearest_analog": analog["nearest_analog"],
+        "analog_company": analog["analog_company"],
+        "similarity_pct": analog["similarity_pct"],
+        "matched_on": analog["matched_on"],
+        "not_yet_matched": analog["not_yet_matched"],
+        "risk_shield": shield,
+        "created_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    }

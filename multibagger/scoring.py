@@ -21,6 +21,78 @@ Never issues buy or sell recommendations.
 import math
 from typing import Dict, Any, List, Optional, Tuple
 
+STAGE_1_STEALTH = "STAGE_1_STEALTH"
+STAGE_2_CATALYST = "STAGE_2_CATALYST"
+STAGE_3_VELOCITY = "STAGE_3_VELOCITY"
+
+
+def calculate_float_squeeze_index(stock: Dict[str, Any]) -> int:
+    """
+    Computes a float squeeze index from 0 to 100 based on shares and float percentage.
+    Lower float = higher squeeze potential.
+    """
+    free_float_shares = stock.get("free_float_shares")
+    free_float_pct = stock.get("free_float_pct")
+
+    if free_float_shares and free_float_shares > 0:
+        if free_float_shares < 25_000_000:
+            return 95
+        elif free_float_shares < 50_000_000:
+            return 80
+        elif free_float_shares < 100_000_000:
+            return 60
+        else:
+            return 35
+    elif free_float_pct and free_float_pct > 0:
+        if free_float_pct < 20.0:
+            return 90
+        elif free_float_pct < 35.0:
+            return 75
+        else:
+            return 45
+    return 50
+
+
+def classify_lifecycle_stage(
+    stock: Dict[str, Any],
+    breakdown: Optional[Dict[str, Any]] = None,
+    vol_ratio: float = 1.0,
+    raw_z: float = 0.0
+) -> Dict[str, str]:
+    """
+    Classify a stock setup into one of 3 asymmetric lifecycle stages:
+    Stage 1: Stealth Coiling
+    Stage 2: Catalyst Emergence / Disclosed
+    Stage 3: Velocity Breakout
+    """
+    bk = breakdown or {}
+    has_cat = (bk.get('capital_increase_pts', 0) > 0) or (bk.get('name_change_pts', 0) > 0)
+    change = float(stock.get('change', 0) or 0)
+    vol_r = float(stock.get('vol_ratio', vol_ratio) or vol_ratio)
+
+    if (vol_r >= 3.0 and raw_z >= 2.0) or (vol_r >= 3.0 and change >= 4.0):
+        return {
+            "stage": STAGE_3_VELOCITY,
+            "stage_name": "Stage 3: Velocity Breakout",
+            "stage_description": "High volume ignition and momentum expansion underway.",
+            "stage_action": "Ride momentum with trailing stop at 20-day EMA."
+        }
+    elif has_cat or stock.get('has_capital_increase') or stock.get('has_name_change'):
+        return {
+            "stage": STAGE_2_CATALYST,
+            "stage_name": "Stage 2: Catalyst Disclosed",
+            "stage_description": "Corporate restructuring, capital increase, or business pivot disclosed.",
+            "stage_action": "Verify rights issue / takeover terms; optimal entry before public frenzy."
+        }
+    else:
+        return {
+            "stage": STAGE_1_STEALTH,
+            "stage_name": "Stage 1: Stealth Coiling",
+            "stage_description": "Depressed price base with smart money accumulation and tight float.",
+            "stage_action": "Accumulate patiently near low base; wait for catalyst announcement."
+        }
+
+
 
 def calculate_volume_zscore(volumes: List[float]) -> Tuple[float, float, float]:
     """
@@ -207,17 +279,38 @@ def calculate_multibagger_score(
     raw_total = name_pts + cap_pts + vol_pts + turnaround_pts + price_pts + sec_pts
     final_score = int(round(max(0.0, min(100.0, raw_total))))
 
+    # Lifecycle Stage & Float Squeeze
+    breakdown_dict = {
+        "name_change_pts": name_pts,
+        "capital_increase_pts": cap_pts,
+        "volume_zscore_pts": vol_pts,
+        "turnaround_pts": turnaround_pts,
+        "price_ceiling_pts": price_pts,
+        "sector_momentum_pts": sec_pts
+    }
+
+    stage_info = classify_lifecycle_stage(
+        stock={"current": price, "has_capital_increase": has_capital_increase, "has_name_change": has_name_or_sector_change},
+        breakdown=breakdown_dict,
+        vol_ratio=vol_ratio,
+        raw_z=raw_z
+    )
+
+    float_squeeze_index = calculate_float_squeeze_index({
+        "free_float_shares": free_float_shares,
+        "free_float_pct": free_float_pct
+    })
+
     return {
         "score": final_score,
         "raw_score": round(raw_total, 2),
-        "breakdown": {
-            "name_change_pts": name_pts,
-            "capital_increase_pts": cap_pts,
-            "volume_zscore_pts": vol_pts,
-            "turnaround_pts": turnaround_pts,
-            "price_ceiling_pts": price_pts,
-            "sector_momentum_pts": sec_pts
-        },
+        "stage": stage_info["stage"],
+        "stage_label": stage_info["stage_name"],
+        "stage_name": stage_info["stage_name"],
+        "stage_description": stage_info["stage_description"],
+        "stage_action": stage_info.get("stage_action", ""),
+        "float_squeeze_index": float_squeeze_index,
+        "breakdown": breakdown_dict,
         "reasons": reasons,
         "flags": flags,
         "metrics": {
@@ -225,6 +318,7 @@ def calculate_multibagger_score(
             "volume_zscore_raw": raw_z,
             "volume_ratio_20d_90d": vol_ratio,
             "turnaround_quarters": consecutive_qoq_growth,
-            "sector_momentum_norm": sec_norm
+            "sector_momentum_norm": sec_norm,
+            "float_squeeze_index": float_squeeze_index
         }
     }

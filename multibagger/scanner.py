@@ -168,17 +168,39 @@ def run_multibagger_scan(
                 sector=sector
             )
 
+            # 7. Operator Trap & Pump-and-Dump Risk Shield
+            from .risk_shield import evaluate_risk_shield
+            from psx_shariah import is_shariah_compliant
+            shield = evaluate_risk_shield(
+                stock=stock,
+                free_float_shares=float_shares,
+                volume_history=vols,
+                recent_announcements_count=1 if (trigs["has_name_change"] or trigs["has_capital_increase"]) else 0
+            )
+
+            # Combined flags
+            all_flags = list(eval_res["flags"])
+            for f in shield["flags"]:
+                if f not in all_flags:
+                    all_flags.append(f)
+
             scored_candidates.append({
                 "symbol": sym,
                 "ticker": sym,
                 "score": eval_res["score"],
                 "setup_score": eval_res["score"],
+                "stage": eval_res.get("stage", "STAGE_1_STEALTH"),
+                "stage_label": eval_res.get("stage_label", "Stage 1: Stealth Coiling"),
+                "stage_description": eval_res.get("stage_description", ""),
+                "float_squeeze_index": eval_res.get("float_squeeze_index", 50),
+                "shariahCompliant": is_shariah_compliant(sym),
                 "price": round(price, 2),
                 "reasons": eval_res["reasons"],
                 "sector": sector,
                 "float_shares": float_shares,
                 "free_float_shares": float_shares,
-                "flags": eval_res["flags"],
+                "flags": all_flags,
+                "risk_shield": shield,
                 "nearest_analog": analog_match["nearest_analog"],
                 "analog_company": analog_match["analog_company"],
                 "analog_multiple": analog_match["analog_multiple"],

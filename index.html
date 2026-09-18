@@ -2607,17 +2607,43 @@
 
         <!-- Deliverable B: Daily Candidate Scanner -->
         <div class="mb-card">
-            <div class="mb-card-header">
+            <div class="mb-card-header" style="flex-wrap:wrap; gap:12px;">
                 <div>
-                    <h3 class="mb-card-title">🎯 Ranked Setup Candidates (Price &lt; 20 PKR)</h3>
-                    <p style="font-size:0.75rem; color:#94a3b8; margin:2px 0 0;">Scored out of 100 based on Name/Sector Change (25), Capital Increase (20), Volume Z-Score (20), Turnaround (15), Price (10), Momentum (10).</p>
+                    <h3 class="mb-card-title">🎯 Ranked Multibagger Setups (Multibagger 2.0 Engine)</h3>
+                    <p style="font-size:0.75rem; color:#94a3b8; margin:2px 0 0;">4-Stage Lifecycle Model · Float Squeeze Mechanics · Operator Trap Shield · Twin Analog Match</p>
                 </div>
-                <div style="display:flex; align-items:center; gap:10px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                     <label style="font-size:0.75rem; color:#94a3b8;">Max Price (PKR):</label>
-                    <input type="number" id="mb-filter-price-max" value="20" min="1" max="100" style="width:60px; padding:4px 8px; font-size:0.8rem; background:#0f172a; border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff;" onchange="multibaggerTab.loadCandidates()" />
+                    <input type="number" id="mb-filter-price-max" value="20" min="1" max="100" style="width:55px; padding:4px 8px; font-size:0.8rem; background:#0f172a; border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff;" onchange="multibaggerTab.loadCandidates()" />
+
+                    <button class="pill-btn" id="mb-filter-shariah" onclick="multibaggerTab.toggleShariahFilter(this)" style="font-size:0.75rem; padding:4px 10px; border:1px solid rgba(16,185,129,0.3); color:#34d399; background:transparent;">
+                        <span>🌙 Shariah Only</span>
+                    </button>
+
+                    <button class="pill-btn active" id="mb-filter-safe-shield" onclick="multibaggerTab.toggleSafeShield(this)" style="font-size:0.75rem; padding:4px 10px; border:1px solid rgba(99,102,241,0.4); color:#818cf8; background:rgba(99,102,241,0.15);">
+                        <span>🛡️ Trap Shield Active</span>
+                    </button>
+
                     <button class="btn btn-secondary" onclick="multibaggerTab.loadCandidates()" style="font-size:0.75rem; padding:4px 10px;">Filter</button>
                 </div>
             </div>
+
+            <!-- Stage Filter Subtabs -->
+            <div style="display:flex; gap:8px; padding:10px 16px; border-bottom:1px solid rgba(255,255,255,0.06); background:rgba(0,0,0,0.15); overflow-x:auto;">
+                <button class="pill-btn active" id="mb-stage-all" onclick="multibaggerTab.setStageFilter('ALL', this)" style="font-size:0.74rem; padding:4px 12px; font-weight:700;">
+                    All Stages (<span id="mb-cnt-all">0</span>)
+                </button>
+                <button class="pill-btn" id="mb-stage-1" onclick="multibaggerTab.setStageFilter('STAGE_1_STEALTH', this)" style="font-size:0.74rem; padding:4px 12px; border-color:rgba(16,185,129,0.3); color:#34d399;">
+                    🌱 Stage 1: Stealth Coiling (<span id="mb-cnt-s1">0</span>)
+                </button>
+                <button class="pill-btn" id="mb-stage-2" onclick="multibaggerTab.setStageFilter('STAGE_2_CATALYST', this)" style="font-size:0.74rem; padding:4px 12px; border-color:rgba(245,158,11,0.3); color:#fbbf24;">
+                    ⚡ Stage 2: Catalyst Disclosed (<span id="mb-cnt-s2">0</span>)
+                </button>
+                <button class="pill-btn" id="mb-stage-3" onclick="multibaggerTab.setStageFilter('STAGE_3_VELOCITY', this)" style="font-size:0.74rem; padding:4px 12px; border-color:rgba(236,72,153,0.3); color:#f472b6;">
+                    🚀 Stage 3: Velocity Breakout (<span id="mb-cnt-s3">0</span>)
+                </button>
+            </div>
+
             <div id="mb-candidates-grid" class="mb-candidates-grid">
                 <!-- Candidate Cards Rendered Here -->
             </div>
@@ -2673,8 +2699,16 @@
             <div id="lt-modal-content"><!-- filled by JS --></div>
         </div>
     </div>
+    <!-- ─── Multibagger 2.0 4-Pillar Investment Thesis Modal ────────────── -->
+    <div id="mb-thesis-modal" class="lt-modal-overlay" style="display:none;" onclick="multibaggerTab.closeThesisModal(event)">
+        <div class="lt-modal-box" style="max-width: 760px; width: 92vw; background:#0f172a; border: 1px solid rgba(236,72,153,0.4); box-shadow: 0 25px 60px rgba(0,0,0,0.9);" onclick="event.stopPropagation()">
+            <button class="lt-modal-close" onclick="multibaggerTab.closeThesisModal()">✕</button>
+            <div id="mb-thesis-modal-content" style="padding: 6px 4px;">
+                <!-- Dynamically populated by multibaggerTab.showThesis(symbol) -->
+            </div>
+        </div>
+    </div>
     <!-- ─────────────────────────────────────────────────────────────── -->
-
 
     <!-- Weekly Trade Direct Buy Modal -->
     <div id="weekly-buy-modal" class="terms-modal-overlay" style="display:none;">
