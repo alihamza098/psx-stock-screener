@@ -237,6 +237,51 @@ def calculate_rvol(current_volume: float, historical_volumes: List[float], perio
     return round(current_volume / max(avg_vol, 1.0), 2)
 
 
+def compute_fibonacci_levels(high: float, low: float, trend: str = "UP") -> Dict[str, float]:
+    """Computes key Fibonacci retracement and extension levels."""
+    diff = max(high - low, 0.01)
+    return {
+        "swing_high": round(high, 2),
+        "swing_low": round(low, 2),
+        "23.6%": round(high - diff * 0.236, 2),
+        "38.2%": round(high - diff * 0.382, 2),
+        "50.0%": round(high - diff * 0.500, 2),
+        "61.8%": round(high - diff * 0.618, 2),  # Golden pocket
+        "78.6%": round(high - diff * 0.786, 2),
+        "127.2%": round(high + diff * 0.272, 2),
+        "161.8%": round(high + diff * 0.618, 2), # Expansion TP target
+    }
+
+
+def compute_bollinger_squeeze(prices: List[float], period: int = 20, threshold_pct: float = 6.5) -> Dict[str, Any]:
+    """Detects volatility compression / Bollinger Band squeeze."""
+    bb = calculate_bollinger_bands(prices, period=period)
+    width = round((bb["upper"] - bb["lower"]) / max(bb["middle"], 0.01) * 100.0, 2)
+    return {
+        "is_squeeze": width < threshold_pct,
+        "bandwidth": width,
+        "middle": bb["middle"],
+        "upper": bb["upper"],
+        "lower": bb["lower"]
+    }
+
+
+def compute_obv(close_series: List[float], volume_series: List[float]) -> List[float]:
+    """Computes On-Balance Volume (OBV) series."""
+    if not close_series or not volume_series:
+        return []
+    obv_values = [0.0]
+    for i in range(1, min(len(close_series), len(volume_series))):
+        prev = obv_values[-1]
+        if close_series[i] > close_series[i - 1]:
+            obv_values.append(prev + volume_series[i])
+        elif close_series[i] < close_series[i - 1]:
+            obv_values.append(prev - volume_series[i])
+        else:
+            obv_values.append(prev)
+    return obv_values
+
+
 def analyze_symbol_technical_profile(candles_1d: List[Dict[str, Any]], current_price: float, current_volume: float) -> Dict[str, Any]:
     """
     Computes a full institutional technical profile across multiple timeframes for a given symbol.
@@ -279,6 +324,31 @@ def analyze_symbol_technical_profile(candles_1d: List[Dict[str, Any]], current_p
     support = round(min(c.get("low", c["close"]) for c in recent_bars), 2)
     resistance = round(max(c.get("high", c["close"]) for c in recent_bars), 2)
     
+    # ── P2-E: Fibonacci Levels ────────────────────────────────────────────────
+    diff = max(resistance - support, 0.01)
+    fib_levels = {
+        "swing_high": resistance,
+        "swing_low": support,
+        "fib_236": round(resistance - diff * 0.236, 2),
+        "fib_382": round(resistance - diff * 0.382, 2),
+        "fib_500": round(resistance - diff * 0.500, 2),
+        "fib_618": round(resistance - diff * 0.618, 2), # Golden Pocket
+        "fib_786": round(resistance - diff * 0.786, 2),
+        "fib_ext_1272": round(resistance + diff * 0.272, 2),
+        "fib_ext_1618": round(resistance + diff * 0.618, 2), # Key TP Target
+    }
+
+    # ── P2-E: Bollinger Squeeze & OBV ─────────────────────────────────────────
+    bb_width = round((bb["upper"] - bb["lower"]) / max(bb["middle"], 0.01) * 100, 2)
+    bb_squeeze = bb_width < 6.5  # Bandwidth compression precedes explosive breakouts
+
+    obv = 0.0
+    for i in range(1, min(len(closes), len(volumes))):
+        if closes[i] > closes[i-1]:
+            obv += volumes[i]
+        elif closes[i] < closes[i-1]:
+            obv -= volumes[i]
+    
     trend = "BULLISH" if current_price > ema50 and ema50 >= ema200 else ("BEARISH" if current_price < ema50 else "NEUTRAL")
     
     return {
@@ -294,7 +364,8 @@ def analyze_symbol_technical_profile(candles_1d: List[Dict[str, Any]], current_p
             "sma200": sma200,
             "price_above_ema50": current_price > ema50,
             "price_above_ema200": current_price > ema200,
-            "golden_cross": ema50 > ema200
+            "golden_cross": ema50 > ema200,
+            "death_cross": ema50 < ema200
         },
         "macd_1d": macd_1d,
         "macd_4h": macd_4h,
@@ -303,8 +374,10 @@ def analyze_symbol_technical_profile(candles_1d: List[Dict[str, Any]], current_p
         "divergence_1d": divergence_1d,
         "divergence_4h": divergence_4h,
         "atr14": atr14,
-        "bollinger": bb,
+        "bollinger": {**bb, "bandwidth_pct": bb_width, "is_squeeze": bb_squeeze},
+        "obv": round(obv, 1),
         "rvol": rvol,
+        "fibonacci": fib_levels,
         "levels": {
             "support": support,
             "resistance": resistance,

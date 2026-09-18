@@ -4421,6 +4421,109 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
+        # ─── P2-A: Shariah Compliance APIs ───────────────────────────────────────
+        elif parsed_path.path == "/api/shariah/list":
+            try:
+                import psx_shariah as _shariah
+                symbols = _shariah.get_shariah_symbols()
+                meta = _shariah.get_shariah_metadata()
+                self._send_json({"success": True, "symbols": symbols, "count": len(symbols), **meta})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/shariah/check":
+            try:
+                import psx_shariah as _shariah
+                query = parse_qs(parsed_path.query)
+                symbol = query.get("symbol", [""])[0].upper()
+                compliant = _shariah.is_shariah_compliant(symbol)
+                self._send_json({"success": True, "symbol": symbol, "shariah_compliant": compliant})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        # ─── P2-B: SBP Macro Context API ─────────────────────────────────────────
+        elif parsed_path.path == "/api/macro/context":
+            try:
+                import psx_macro_context as _macro
+                macro_state = _macro.get_macro_state()
+                query = parse_qs(parsed_path.query)
+                sector = query.get("sector", [None])[0]
+                sector_mult = _macro.get_sector_macro_multiplier(sector) if sector else None
+                sector_rationale = _macro.get_sector_macro_rationale(sector) if sector else None
+                self._send_json({
+                    "success": True,
+                    "macro": macro_state,
+                    "sector": sector,
+                    "sector_multiplier": sector_mult,
+                    "sector_rationale": sector_rationale
+                })
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        # ─── P2-C: Corporate Actions & Ex-Date Tracker API ───────────────────────
+        elif parsed_path.path == "/api/corporate-actions/upcoming":
+            try:
+                import psx_corporate_actions as _ca
+                query = parse_qs(parsed_path.query)
+                days = int(query.get("days", ["21"])[0])
+                actions = _ca.get_upcoming_corporate_actions(days_forward=days)
+                self._send_json({"success": True, "corporate_actions": actions, "count": len(actions)})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        # ─── P2-D: Piotroski F-Score API ─────────────────────────────────────────
+        elif parsed_path.path.startswith("/api/fundamentals/piotroski/"):
+            try:
+                sym = parsed_path.path.replace("/api/fundamentals/piotroski/", "").strip("/").upper()
+                import psx_piotroski as _pio
+                score_data = _pio.calculate_piotroski_fscore(sym)
+                self._send_json({"success": True, **score_data})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        # ─── P3-A: Portfolio Management & Live P&L API ───────────────────────────
+        elif parsed_path.path == "/api/portfolio/summary":
+            try:
+                import psx_portfolio as _port
+                summary = _port.get_portfolio_summary()
+                self._send_json({"success": True, **summary})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        # ─── P3-B: PSX Corporate Earnings Calendar API ───────────────────────────
+        elif parsed_path.path == "/api/earnings/calendar":
+            try:
+                import psx_earnings_calendar as _earn
+                import datetime as _dt
+                query = parse_qs(parsed_path.query)
+                days = int(query.get("days", ["30"])[0])
+                meetings = _earn.get_earnings_calendar(days_forward=days)
+                week_cutoff = (_dt.date.today() + _dt.timedelta(days=7)).isoformat()
+                this_week = sum(1 for m in meetings if m.get("meeting_date", "") <= week_cutoff)
+                self._send_json({
+                    "success": True,
+                    "meetings": meetings,
+                    "upcoming_meetings": meetings,
+                    "total_meetings": len(meetings),
+                    "upcoming_this_week": this_week,
+                    "count": len(meetings)
+                })
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        # ─── P3-E: Multi-Lingual NLP Explainer API ───────────────────────────────
+        elif parsed_path.path == "/api/explain":
+            try:
+                import psx_nlp_explainer as _nlp
+                query = parse_qs(parsed_path.query)
+                lang = query.get("lang", ["en"])[0]
+                symbol = query.get("symbol", [""])[0].upper()
+                # If symbol provided, synthesize a quick explanation
+                explanation = f"Signal analysis for {symbol}."
+                self._send_json({"success": True, "symbol": symbol, "lang": lang, "explanation": explanation})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
         # ─── Multibagger Pattern Finder GET Endpoints ────────────────────────────
         elif parsed_path.path == "/api/multibagger/reference":
             try:

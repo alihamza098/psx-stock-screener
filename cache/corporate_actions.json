@@ -1,0 +1,52 @@
+[
+  {
+    "symbol": "MEBL",
+    "action_type": "DIVIDEND",
+    "payout_pkr": 7.0,
+    "bonus_pct": 0,
+    "ex_date": "2026-09-22",
+    "book_closure_start": "2026-09-23",
+    "book_closure_end": "2026-09-30",
+    "announcement_date": "2026-09-02"
+  },
+  {
+    "symbol": "OGDC",
+    "action_type": "DIVIDEND",
+    "payout_pkr": 4.0,
+    "bonus_pct": 0,
+    "ex_date": "2026-09-25",
+    "book_closure_start": "2026-09-26",
+    "book_closure_end": "2026-10-02",
+    "announcement_date": "2026-09-04"
+  },
+  {
+    "symbol": "HUBC",
+    "action_type": "DIVIDEND",
+    "payout_pkr": 8.5,
+    "bonus_pct": 0,
+    "ex_date": "2026-09-28",
+    "book_closure_start": "2026-09-29",
+    "book_closure_end": "2026-10-06",
+    "announcement_date": "2026-09-05"
+  },
+  {
+    "symbol": "LUCK",
+    "action_type": "DIVIDEND",
+    "payout_pkr": 18.0,
+    "bonus_pct": 0,
+    "ex_date": "2026-10-02",
+    "book_closure_start": "2026-10-03",
+    "book_closure_end": "2026-10-10",
+    "announcement_date": "2026-09-08"
+  },
+  {
+    "symbol": "SYS",
+    "action_type": "BONUS",
+    "payout_pkr": 0.0,
+    "bonus_pct": 10.0,
+    "ex_date": "2026-10-05",
+    "book_closure_start": "2026-10-06",
+    "book_closure_end": "2026-10-12",
+    "announcement_date": "2026-09-09"
+  }
+]

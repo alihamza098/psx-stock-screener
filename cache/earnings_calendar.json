@@ -1,0 +1,56 @@
+[
+  {
+    "symbol": "SYS",
+    "name": "Systems Limited",
+    "meeting_date": "2026-09-24",
+    "meeting_time": "11:00 AM",
+    "period_ended": "September 30, 2026",
+    "agenda": "Third Quarter Financial Statements & Interim Dividend",
+    "status": "SCHEDULED"
+  },
+  {
+    "symbol": "MEBL",
+    "name": "Meezan Bank Limited",
+    "meeting_date": "2026-09-25",
+    "meeting_time": "02:30 PM",
+    "period_ended": "September 30, 2026",
+    "agenda": "3rd Quarter Financial Results and 3rd Interim Cash Dividend",
+    "status": "SCHEDULED"
+  },
+  {
+    "symbol": "LUCK",
+    "name": "Lucky Cement Limited",
+    "meeting_date": "2026-09-29",
+    "meeting_time": "03:00 PM",
+    "period_ended": "June 30, 2026",
+    "agenda": "Annual Audited Accounts & Final Dividend Declaration",
+    "status": "SCHEDULED"
+  },
+  {
+    "symbol": "OGDC",
+    "name": "Oil & Gas Development Company",
+    "meeting_date": "2026-10-01",
+    "meeting_time": "10:30 AM",
+    "period_ended": "September 30, 2026",
+    "agenda": "Quarterly Financial Results & Interim Dividend",
+    "status": "SCHEDULED"
+  },
+  {
+    "symbol": "HUBC",
+    "name": "Hub Power Company Limited",
+    "meeting_date": "2026-10-06",
+    "meeting_time": "12:00 PM",
+    "period_ended": "September 30, 2026",
+    "agenda": "First Quarter Unaudited Accounts",
+    "status": "SCHEDULED"
+  },
+  {
+    "symbol": "FFC",
+    "name": "Fauji Fertilizer Company",
+    "meeting_date": "2026-10-12",
+    "meeting_time": "02:00 PM",
+    "period_ended": "September 30, 2026",
+    "agenda": "Quarterly Accounts & 3rd Interim Dividend",
+    "status": "SCHEDULED"
+  }
+]

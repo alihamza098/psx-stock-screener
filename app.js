@@ -1193,7 +1193,7 @@ function switchView(view) {
     // Auto-close mobile drawer on navigation
     toggleMobileSidebar(false);
 
-    const views = ["table", "cards", "weekly-scan", "live-trading", "simulator", "corporate", "financials", "undervalued", "intelligence", "longterm", "multibagger"];
+    const views = ["table", "cards", "weekly-scan", "live-trading", "simulator", "portfolio", "corporate", "earnings", "financials", "undervalued", "intelligence", "longterm", "multibagger"];
     views.forEach(v => {
         const el = document.getElementById(`view-${v}`);
         if (el) el.style.display = (view === v) ? (v === "cards" ? "grid" : "block") : "none";
@@ -1233,8 +1233,12 @@ function switchView(view) {
         fetchLiveTradingAnalysis(currentLiveSymbol);
     } else if (view === "simulator") {
         initTradingSimulator();
+    } else if (view === "portfolio") {
+        loadPortfolioData();
     } else if (view === "corporate") {
         fetchCorporateActionsData();
+    } else if (view === "earnings") {
+        loadEarningsCalendar();
     } else if (view === "financials") {
         const symInput = document.getElementById("fin-symbol-input");
         const symbol = symInput ? (symInput.value.trim() || "UNITY") : "UNITY";
@@ -6882,6 +6886,18 @@ function setWeeklyDirFilter(btn, dir) {
     filterAndRenderWeeklyCandidates();
 }
 
+let weeklyShariahOnly = false;
+
+function toggleWeeklyShariahFilter(btn) {
+    weeklyShariahOnly = !weeklyShariahOnly;
+    if (btn) {
+        btn.classList.toggle("active", weeklyShariahOnly);
+        btn.style.background = weeklyShariahOnly ? "rgba(16,185,129,0.25)" : "transparent";
+        btn.style.fontWeight = weeklyShariahOnly ? "700" : "500";
+    }
+    filterAndRenderWeeklyCandidates();
+}
+
 function filterAndRenderWeeklyCandidates() {
     const container = document.getElementById("weekly-candidates-container");
     if (!container) return;
@@ -6895,6 +6911,7 @@ function filterAndRenderWeeklyCandidates() {
     let filtered = (currentWeeklyCandidates || []).filter(c => {
         if (weeklyGradeFilter !== "ALL" && c.grade !== weeklyGradeFilter) return false;
         if (weeklyDirFilter !== "ALL" && c.direction !== weeklyDirFilter) return false;
+        if (weeklyShariahOnly && !c.shariahCompliant) return false;
         
         // Strategy Filter
         if (strategyFilter !== "ALL") {
@@ -6934,7 +6951,12 @@ function filterAndRenderWeeklyCandidates() {
     });
 
     if (filtered.length === 0) {
-        container.innerHTML = `<div class="weekly-empty-state">No scan candidates match the selected filters. Try choosing "All Grades" or a different strategy.</div>`;
+        container.innerHTML = `
+        <div class="weekly-empty-state">
+            <div class="empty-icon">🔍</div>
+            <h3>No Trade Setups Match Selected Filters</h3>
+            <p>Try resetting Grade, Direction, or Shariah filters to expand scanner universe.</p>
+        </div>`;
         return;
     }
 
@@ -6947,6 +6969,11 @@ function filterAndRenderWeeklyCandidates() {
         const rawScore = c.score?.rawScore || 0;
         const scorePct = Math.round((rawScore / 6) * 100);
         const conviction = c.conviction || (c.grade === "A_PLUS" ? 92 : (c.grade === "A" ? 82 : 72));
+
+        // P2-A, P2-B, P2-C Badges
+        const shariahBadge = c.shariahCompliant ? `<span style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); padding:2px 6px; border-radius:4px; font-size:0.68rem; font-weight:700;">🌙 SHARIAH</span>` : '';
+        const exDivBadge = c.nearExDividend ? `<span style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:2px 6px; border-radius:4px; font-size:0.68rem; font-weight:700;" title="Ex-Dividend Book Closure within 5 days">⚠️ EX-DIV</span>` : '';
+        const macroBadge = (c.macro && c.macro.multiplier > 1.0) ? `<span style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); padding:2px 6px; border-radius:4px; font-size:0.68rem; font-weight:700;" title="${c.macro.rationale || ''}">🏛️ SBP EASING</span>` : '';
 
         // Risk Parameters
         const entry = c.risk?.entry || 1.0;
@@ -7001,7 +7028,10 @@ function filterAndRenderWeeklyCandidates() {
                     <div class="candidate-symbol" onclick="showDetail('${c.symbol}')" style="cursor: pointer;">${c.symbol}</div>
                     <div class="candidate-sector">${c.sector}</div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    ${shariahBadge}
+                    ${exDivBadge}
+                    ${macroBadge}
                     ${zoneBadgeHtml}
                     <div class="candidate-grade-badge ${gradeClass}">${gradeLabel}</div>
                 </div>
@@ -7071,9 +7101,9 @@ function filterAndRenderWeeklyCandidates() {
 
             <!-- Action Plan & Bilingual Urdu Summary -->
             <div class="candidate-rationale-box">
-                <div style="font-weight: 700; color: #e2e8f0; margin-bottom: 4px;">📋 Action Plan:</div>
-                <div>${c.actionPlan || c.rationale}</div>
-                ${c.urduSummary ? `<div class="urdu-summary-box">💡 ${c.urduSummary}</div>` : ''}
+                <div style="font-weight: 700; color: #e2e8f0; margin-bottom: 4px;">${currentAppLang === 'ur' ? '📋 لائحہ عمل و خلاصہ (Action Plan):' : '📋 Action Plan:'}</div>
+                <div>${currentAppLang === 'ur' && c.urduSummary ? `<div class="urdu-summary-box" style="font-size:0.84rem; margin-bottom:6px;">${c.urduSummary}</div>` : (c.actionPlan || c.rationale)}</div>
+                ${currentAppLang !== 'ur' && c.urduSummary ? `<div class="urdu-summary-box">💡 ${c.urduSummary}</div>` : ''}
             </div>
 
             <!-- Bottom Actions -->
@@ -9899,6 +9929,261 @@ const multibaggerTab = (() => {
         runSearch
     };
 })();
+
+// ═════════════════════════════════════════════════════════════════
+// 🔔 GLOBAL TOAST NOTIFICATION UTILITY
+// ═════════════════════════════════════════════════════════════════
+
+function showToast(msg, type = 'info') {
+    let toast = document.getElementById("app-toast");
+    if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "app-toast";
+        toast.style.cssText = "position:fixed; bottom:24px; right:24px; background:#1e293b; color:#f8fafc; border:1px solid #6366f1; border-radius:10px; padding:12px 20px; font-size:0.85rem; font-weight:600; box-shadow:0 10px 25px rgba(0,0,0,0.6); z-index:99999; transition:opacity 0.3s ease; opacity:0; pointer-events:none;";
+        document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.style.opacity = "1";
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => {
+        toast.style.opacity = "0";
+    }, 3200);
+}
+
+// ═════════════════════════════════════════════════════════════════
+// 🌐 PHASE 3: BILINGUAL URDU SUPPORT
+// ═════════════════════════════════════════════════════════════════
+
+let currentAppLang = 'en';
+
+function toggleAppLanguage() {
+    currentAppLang = currentAppLang === 'en' ? 'ur' : 'en';
+    const btnText = document.getElementById("lang-toggle-text");
+    if (btnText) {
+        btnText.textContent = currentAppLang === 'ur' ? '🌐 English' : '🌐 اردو';
+    }
+
+    if (typeof filterAndRenderWeeklyCandidates === 'function') {
+        filterAndRenderWeeklyCandidates();
+    }
+
+    showToast(currentAppLang === 'ur' ? 'زبان اردو میں تبدیل ہو گئی ہے (Urdu Mode Active)' : 'Language switched to English', 'info');
+}
+
+// ═════════════════════════════════════════════════════════════════
+// 💼 PHASE 3: LIVE PORTFOLIO & P&L TRACKER
+// ═════════════════════════════════════════════════════════════════
+
+async function loadPortfolioData() {
+    const refreshBtn = document.getElementById("btn-refresh-portfolio");
+    if (refreshBtn) refreshBtn.classList.add("loading");
+
+    try {
+        const res = await fetch("/api/portfolio/summary");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        // Update KPIs
+        const totalEqEl = document.getElementById("pf-total-equity");
+        const totalRetEl = document.getElementById("pf-total-return");
+        const cashEl = document.getElementById("pf-cash");
+        const cashRatioEl = document.getElementById("pf-cash-ratio");
+        const unrealizedEl = document.getElementById("pf-unrealized-pnl");
+        const unrealizedPctEl = document.getElementById("pf-unrealized-pct");
+        const realizedEl = document.getElementById("pf-realized-pnl");
+        const closedCountEl = document.getElementById("pf-closed-count");
+        const winRateEl = document.getElementById("pf-win-rate");
+        const profitFactorEl = document.getElementById("pf-profit-factor");
+        const openBadgeEl = document.getElementById("pf-open-count-badge");
+
+        if (totalEqEl) totalEqEl.textContent = `₨${(data.total_equity || 0).toLocaleString('en-PK', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+        if (totalRetEl) {
+            const ret = data.total_return_pct || 0;
+            totalRetEl.textContent = `${ret >= 0 ? '+' : ''}${ret.toFixed(2)}% Return`;
+            totalRetEl.style.color = ret >= 0 ? '#10b981' : '#ef4444';
+        }
+        if (cashEl) cashEl.textContent = `₨${(data.cash || 0).toLocaleString('en-PK', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+        if (cashRatioEl) {
+            const ratio = Math.round(((data.cash || 0) / Math.max(data.total_equity || 1, 1)) * 100);
+            cashRatioEl.textContent = `${ratio}% Liquid`;
+        }
+        if (unrealizedEl) {
+            const upnl = data.unrealized_pnl || 0;
+            unrealizedEl.textContent = `${upnl >= 0 ? '+' : ''}₨${upnl.toLocaleString('en-PK', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            unrealizedEl.style.color = upnl >= 0 ? '#10b981' : '#ef4444';
+        }
+        if (unrealizedPctEl) {
+            const upct = data.unrealized_pnl_pct || 0;
+            unrealizedPctEl.textContent = `${upct >= 0 ? '+' : ''}${upct.toFixed(2)}% Open P&L`;
+            unrealizedPctEl.style.color = upct >= 0 ? '#10b981' : '#ef4444';
+        }
+        if (realizedEl) {
+            const rpnl = data.realized_pnl || 0;
+            realizedEl.textContent = `${rpnl >= 0 ? '+' : ''}₨${rpnl.toLocaleString('en-PK', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            realizedEl.style.color = rpnl >= 0 ? '#10b981' : '#ef4444';
+        }
+        if (closedCountEl) closedCountEl.textContent = `${data.closed_trades_count || 0} Closed Trades (${data.wins_count || 0}W / ${data.losses_count || 0}L)`;
+        if (winRateEl) winRateEl.textContent = `${data.win_rate_pct || 0}%`;
+        if (profitFactorEl) profitFactorEl.textContent = `Profit Factor: ${data.profit_factor || 1.0}x`;
+        if (openBadgeEl) openBadgeEl.textContent = `${(data.open_positions || []).length}`;
+
+        // Render Open Positions Table
+        const positionsBody = document.getElementById("pf-open-positions-body");
+        if (positionsBody) {
+            const posList = data.open_positions || [];
+            if (posList.length === 0) {
+                positionsBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:32px; color:var(--text-tertiary);">No open positions currently active. Execute orders via Paper Simulator or Weekly Scan.</td></tr>`;
+            } else {
+                positionsBody.innerHTML = posList.map(p => {
+                    const pnlSign = p.unrealized_pnl >= 0 ? '+' : '';
+                    return `
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                        <td style="padding:10px;">
+                            <strong style="color:#f8fafc; cursor:pointer;" onclick="showDetail('${p.symbol}')">${p.symbol}</strong>
+                            <div style="font-size:0.72rem; color:var(--text-tertiary);">${p.sector}</div>
+                        </td>
+                        <td style="padding:10px; font-weight:700;">${p.shares.toLocaleString()}</td>
+                        <td style="padding:10px;">₨${p.entry_price.toFixed(2)}</td>
+                        <td style="padding:10px; font-weight:700; color:#38bdf8;">₨${p.current_price.toFixed(2)}</td>
+                        <td style="padding:10px;">₨${p.market_value.toLocaleString('en-PK', {minimumFractionDigits:2})}</td>
+                        <td style="padding:10px; font-weight:800; color:${p.unrealized_pnl >= 0 ? '#10b981' : '#ef4444'};">
+                            ${pnlSign}₨${p.unrealized_pnl.toLocaleString('en-PK', {minimumFractionDigits:2})}
+                            <div style="font-size:0.72rem;">(${pnlSign}${p.unrealized_pnl_pct.toFixed(2)}%)</div>
+                        </td>
+                        <td style="padding:10px; color:#34d399;">₨${p.take_profit_1 ? p.take_profit_1.toFixed(2) : '-'}</td>
+                        <td style="padding:10px; color:#f87171;">₨${p.stop_loss ? p.stop_loss.toFixed(2) : '-'}</td>
+                    </tr>
+                    `;
+                }).join("");
+            }
+        }
+
+        // Render Sector Exposure
+        const sectorBox = document.getElementById("pf-sector-breakdown");
+        if (sectorBox) {
+            const sectors = data.sector_exposure || [];
+            if (sectors.length === 0) {
+                sectorBox.innerHTML = `<div style="color:var(--text-tertiary); font-size:0.82rem; text-align:center; padding:16px;">100% Cash / No Sector Exposure</div>`;
+            } else {
+                sectorBox.innerHTML = sectors.map(s => `
+                    <div style="margin-bottom:8px;">
+                        <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:3px;">
+                            <span style="color:#cbd5e1; font-weight:600;">${s.sector}</span>
+                            <span style="color:#818cf8; font-weight:700;">${s.weight_pct}% (₨${s.value.toLocaleString()})</span>
+                        </div>
+                        <div style="height:6px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden;">
+                            <div style="width:${Math.min(s.weight_pct, 100)}%; height:100%; background:linear-gradient(90deg, #6366f1, #8b5cf6); border-radius:3px;"></div>
+                        </div>
+                    </div>
+                `).join("");
+            }
+        }
+
+        // Render Closed Trades Ledger
+        const closedBody = document.getElementById("pf-closed-trades-body");
+        if (closedBody) {
+            const closedList = data.closed_trades || [];
+            if (closedList.length === 0) {
+                closedBody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:32px; color:var(--text-tertiary);">No closed trades yet recorded in the ledger.</td></tr>`;
+            } else {
+                closedBody.innerHTML = closedList.map(t => {
+                    const pnl = parseFloat(t.realized_pnl || 0);
+                    const isWin = pnl > 0;
+                    const pnlSign = pnl >= 0 ? '+' : '';
+                    const retPct = t.return_pct != null ? t.return_pct : (((t.exit_price - t.entry_price) / t.entry_price) * 100);
+                    const outcomeBadge = isWin
+                        ? `<span style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); padding:2px 6px; border-radius:4px; font-weight:700; font-size:0.7rem;">WIN</span>`
+                        : `<span style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:2px 6px; border-radius:4px; font-weight:700; font-size:0.7rem;">LOSS</span>`;
+
+                    return `
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                        <td style="padding:10px;"><strong style="color:#f8fafc; cursor:pointer;" onclick="showDetail('${t.symbol}')">${t.symbol}</strong></td>
+                        <td style="padding:10px; color:var(--text-tertiary);">${t.strategy || 'Swing'}</td>
+                        <td style="padding:10px; font-weight:600;">${(t.shares || 0).toLocaleString()}</td>
+                        <td style="padding:10px;">₨${parseFloat(t.entry_price || 0).toFixed(2)}</td>
+                        <td style="padding:10px;">₨${parseFloat(t.exit_price || 0).toFixed(2)}</td>
+                        <td style="padding:10px; font-weight:800; color:${isWin ? '#10b981' : '#ef4444'};">${pnlSign}₨${pnl.toLocaleString('en-PK', {minimumFractionDigits:2})}</td>
+                        <td style="padding:10px; font-weight:700; color:${isWin ? '#10b981' : '#ef4444'};">${pnlSign}${retPct.toFixed(2)}%</td>
+                        <td style="padding:10px;">${outcomeBadge}</td>
+                        <td style="padding:10px; color:var(--text-tertiary); font-size:0.75rem;">${(t.exit_time || '').slice(0, 16)}</td>
+                    </tr>
+                    `;
+                }).join("");
+            }
+        }
+    } catch (err) {
+        console.error("Failed to load portfolio summary:", err);
+    } finally {
+        if (refreshBtn) refreshBtn.classList.remove("loading");
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════
+// 📅 PHASE 3: CORPORATE EARNINGS CALENDAR
+// ═════════════════════════════════════════════════════════════════
+
+let rawEarningsCalendar = [];
+
+async function loadEarningsCalendar() {
+    const refreshBtn = document.getElementById("btn-refresh-earnings");
+    if (refreshBtn) refreshBtn.classList.add("loading");
+
+    try {
+        const res = await fetch("/api/earnings/calendar");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        rawEarningsCalendar = data.upcoming_meetings || [];
+
+        const totalCountEl = document.getElementById("ec-total-count");
+        const weekCountEl = document.getElementById("ec-this-week-count");
+        if (totalCountEl) totalCountEl.textContent = data.total_meetings || rawEarningsCalendar.length;
+        if (weekCountEl) weekCountEl.textContent = data.upcoming_this_week || 0;
+
+        renderEarningsTable(rawEarningsCalendar);
+    } catch (err) {
+        console.error("Failed to load earnings calendar:", err);
+    } finally {
+        if (refreshBtn) refreshBtn.classList.remove("loading");
+    }
+}
+
+function renderEarningsTable(meetings) {
+    const body = document.getElementById("ec-meetings-body");
+    if (!body) return;
+
+    if (meetings.length === 0) {
+        body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:32px; color:var(--text-tertiary);">No upcoming board meetings scheduled currently.</td></tr>`;
+        return;
+    }
+
+    body.innerHTML = meetings.map(m => `
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+            <td style="padding:10px; font-weight:700; color:#38bdf8;">${m.date}</td>
+            <td style="padding:10px;"><strong style="color:#f8fafc; cursor:pointer;" onclick="showDetail('${m.symbol}')">${m.symbol}</strong></td>
+            <td style="padding:10px; color:#cbd5e1;">${m.company_name || m.symbol}</td>
+            <td style="padding:10px; color:var(--text-tertiary);">${m.sector || '-'}</td>
+            <td style="padding:10px; font-weight:600; color:#a5b4fc;">${m.period_ended || '-'}</td>
+            <td style="padding:10px; color:#e2e8f0; font-size:0.8rem; max-width:300px;">${m.agenda || 'Consideration of Financial Accounts'}</td>
+            <td style="padding:10px;">
+                <button class="btn btn-ghost btn-sm" onclick="showDetail('${m.symbol}')" style="font-size:0.72rem; padding:3px 8px;">View Detail</button>
+            </td>
+        </tr>
+    `).join("");
+}
+
+function filterEarningsTable() {
+    const query = (document.getElementById("ec-search-input")?.value || "").toLowerCase().trim();
+    if (!query) {
+        renderEarningsTable(rawEarningsCalendar);
+        return;
+    }
+    const filtered = rawEarningsCalendar.filter(m => 
+        (m.symbol && m.symbol.toLowerCase().includes(query)) ||
+        (m.company_name && m.company_name.toLowerCase().includes(query)) ||
+        (m.sector && m.sector.toLowerCase().includes(query))
+    );
+    renderEarningsTable(filtered);
+}
 
 
 

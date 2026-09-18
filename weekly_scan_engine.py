@@ -725,6 +725,44 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
 
 
 
+    # ── P2-B: Apply SBP Monetary Policy Macro Multiplier ─────────────────────
+    # Easing cycles benefit leveraged cyclical sectors (Cement, Autos, Steel);
+    # Hiking cycles favor Banking NIMs.
+    macro_mult = 1.0
+    macro_rationale = ""
+    try:
+        import psx_macro_context as _macro
+        macro_mult = _macro.get_sector_macro_multiplier(sector)
+        macro_rationale = _macro.get_sector_macro_rationale(sector)
+        if macro_mult != 1.0:
+            old_conv = conviction_pct
+            conviction_pct = int(conviction_pct * macro_mult)
+            conviction_pct = max(20, min(98, conviction_pct))
+            tag = "📈 SBP_EASING_BOOST" if macro_mult > 1.0 else "📉 SBP_RATE_DRAG"
+            print(f"[WeeklyScan] {symbol} ({sector}): {tag} {old_conv}→{conviction_pct} ({macro_mult:.2f}x)")
+    except Exception:
+        pass
+    # ── End P2-B ─────────────────────────────────────────────────────────────
+
+    # ── P2-A & P2-C: Shariah Compliance & Corporate Action Check ─────────────
+    is_shariah = False
+    try:
+        import psx_shariah as _shariah
+        is_shariah = _shariah.is_shariah_compliant(symbol)
+    except Exception:
+        pass
+
+    near_ex_div = False
+    ex_div_info = None
+    try:
+        import psx_corporate_actions as _ca
+        near_ex_div, ex_div_info = _ca.is_near_ex_date(symbol, window_days=5)
+        if near_ex_div and ex_div_info:
+            print(f"[WeeklyScan] ⚠️ EX-DATE WARNING: {symbol} has {ex_div_info.get('action_type')} ex-date on {ex_div_info.get('ex_date')}")
+    except Exception:
+        pass
+    # ── End P2-A & P2-C ───────────────────────────────────────────────────────
+
     # Rationale Generator
     trigger_names = ", ".join(t["type"].replace("_", " ") for t in triggers)
     vol_text = f"confirmed by {max_vol_ratio:.1f}x 20-day volume" if volume_confirmed else "with moderate volume participation"
@@ -734,6 +772,8 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
         f"Defined risk parameters place Entry at Rs {entry:.2f}, Stop Loss at Rs {stop:.2f} ({stop_basis.replace('_', ' ')}), "
         f"TP1 at Rs {tp1:.2f} (+{reward_pct_tp1}%), and TP2 at Rs {tp2:.2f} (+{reward_pct_tp2}%) offering a {rr:.1f}x Reward-to-Risk ratio."
     )
+    if macro_rationale:
+        rationale += f" Macro Context: {macro_rationale}"
 
     action_plan = f"Buy in zone ₨{entry_zone_min:.2f}–₨{entry_zone_max:.2f}. Stop Loss: ₨{stop:.2f} (-{risk_pct}%). TP1: ₨{tp1:.2f} (+{reward_pct_tp1}%), TP2: ₨{tp2:.2f} (+{reward_pct_tp2}%)."
     urdu_summary = f"{symbol} میں {direction} سوئنگ ٹریڈ سیٹ اپ ({grade} گریڈ)۔ داخلہ زون: ₨{entry_zone_min:.2f}-₨{entry_zone_max:.2f}۔ متوقع ہدف: ₨{tp1:.2f} (+{reward_pct_tp1}%)، سٹاپ لاس: ₨{stop:.2f} (-{risk_pct}%)۔ رسک ٹو ریوارڈ: {rr:.1f}x۔"
@@ -745,6 +785,13 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
         "grade": grade,
         "status": "ACTIVE",
         "conviction": conviction_pct,
+        "shariahCompliant": is_shariah,
+        "nearExDividend": near_ex_div,
+        "corporateAction": ex_div_info,
+        "macro": {
+            "multiplier": macro_mult,
+            "rationale": macro_rationale
+        },
         "trend": {
             "stockTrendDirection": stock_trend_dir,
             "stockAboveEma20": stock_above_ema20,
@@ -1437,10 +1484,21 @@ def audit_and_evaluate_predictions(stocks_dict=None):
                         target_reached_at = now_iso
                 # Check stop loss hit
                 elif (lowest_p <= stop_p or live_price <= stop_p) and not target_reached:
-                    outcome = "STOPPED_OUT"
-                    stop_hit = 1
-                    if not stopped_out_at:
-                        stopped_out_at = now_iso
+                    # ── P2-C: Check if drop matches Ex-Dividend adjustment ───
+                    is_ex_div, ex_div_note = False, ""
+                    try:
+                        import psx_corporate_actions as _ca
+                        is_ex_div, ex_div_note = _ca.check_ex_date_stop_adjustment(sym, entry_p, current_return_pct)
+                    except Exception:
+                        pass
+                    if is_ex_div:
+                        outcome = "EX_DIV_ADJUSTED"
+                        stop_hit = 0
+                    else:
+                        outcome = "STOPPED_OUT"
+                        stop_hit = 1
+                        if not stopped_out_at:
+                            stopped_out_at = now_iso
                 else:
                     if outcome not in ["SUCCESSFUL", "STOPPED_OUT"]:
                         if days_elapsed >= 7:

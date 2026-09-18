@@ -105,6 +105,9 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                     <span>Export</span>
                 </button>
+                <button class="btn btn-ghost" id="btn-lang-toggle" onclick="toggleAppLanguage()" title="Switch Language / زبان تبدیل کریں" style="font-weight:700; color:#38bdf8; border:1px solid rgba(56,189,248,0.3); padding:5px 10px; border-radius:8px;">
+                    <span id="lang-toggle-text">🌐 اردو</span>
+                </button>
 
                 <!-- User Account Status Badge & Dropdown -->
                 <div class="account-badge-container" id="account-badge-container" style="display:inline-block; position:relative;">
@@ -233,6 +236,15 @@
                         <button class="view-tab nav-item" data-view="simulator" id="tab-simulator" title="Paper Simulator">
                             <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg></span>
                             <span class="nav-item-label">Paper Simulator</span>
+                        </button>
+                        <button class="view-tab nav-item" data-view="portfolio" id="tab-portfolio" title="Live Portfolio &amp; P&amp;L Tracker">
+                            <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>
+                            <span class="nav-item-label">Portfolio &amp; P&amp;L</span>
+                            <span class="badge-tab-new" style="background: linear-gradient(135deg, #6366f1, #8b5cf6);">TRACKER</span>
+                        </button>
+                        <button class="view-tab nav-item" data-view="earnings" id="tab-earnings" title="Corporate Earnings Calendar">
+                            <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+                            <span class="nav-item-label">Earnings Calendar</span>
                         </button>
                     </div>
                 </div>
@@ -665,6 +677,13 @@
                     </div>
 
                     <div class="weekly-filter-group">
+                        <label>Islamic:</label>
+                        <button class="pill-btn" id="btn-weekly-shariah" onclick="toggleWeeklyShariahFilter(this)" style="display:flex; align-items:center; gap:4px; border-color:rgba(16,185,129,0.3); color:#34d399;">
+                            <span>🌙</span> <span>Shariah Only</span>
+                        </button>
+                    </div>
+
+                    <div class="weekly-filter-group">
                         <label>Sort By:</label>
                         <select id="weekly-sort-filter" class="filter-select weekly-select" onchange="filterAndRenderWeeklyCandidates()">
                             <option value="conviction">⭐ AI Conviction Score</option>
@@ -997,6 +1016,126 @@
             </div>
         </section>
 
+        <!-- Phase 3: Portfolio & Live P&L Tracker -->
+        <section class="portfolio-view" id="view-portfolio" style="display:none; padding: 20px 0;">
+            <div class="weekly-header" style="margin-bottom: 20px;">
+                <div class="weekly-title-area">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:1.5rem;">💼</span>
+                        <h2 style="font-size:1.4rem; font-weight:800; color:#f8fafc; margin:0;">Live Portfolio &amp; Trade Performance Tracker</h2>
+                        <span class="badge" style="background:#4338ca; color:#c7d2fe; font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:12px;">PHASE 3</span>
+                    </div>
+                    <p style="color:var(--text-secondary); font-size:0.85rem; margin:4px 0 0 0;">Mark-to-market live valuations, real-time unrealized gains, closed trade ledger, sector allocation risk, and historical win-rate analytics.</p>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn btn-primary btn-sm" onclick="loadPortfolioData()" id="btn-refresh-portfolio">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+                        <span>Refresh Portfolio</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Portfolio Metric KPI Cards -->
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom: 24px;">
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:var(--text-tertiary); font-weight:700; margin-bottom:4px;">Total Equity</div>
+                    <div id="pf-total-equity" style="font-size:1.35rem; font-weight:800; color:#f8fafc;">₨0.00</div>
+                    <div id="pf-total-return" style="font-size:0.75rem; color:#10b981; margin-top:2px;">+0.00% Return</div>
+                </div>
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:var(--text-tertiary); font-weight:700; margin-bottom:4px;">Cash Balance</div>
+                    <div id="pf-cash" style="font-size:1.35rem; font-weight:800; color:#38bdf8;">₨0.00</div>
+                    <div id="pf-cash-ratio" style="font-size:0.75rem; color:var(--text-tertiary); margin-top:2px;">0% Liquid</div>
+                </div>
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:var(--text-tertiary); font-weight:700; margin-bottom:4px;">Unrealized P&amp;L</div>
+                    <div id="pf-unrealized-pnl" style="font-size:1.35rem; font-weight:800; color:#10b981;">₨0.00</div>
+                    <div id="pf-unrealized-pct" style="font-size:0.75rem; color:var(--text-tertiary); margin-top:2px;">0.0% Open P&amp;L</div>
+                </div>
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:var(--text-tertiary); font-weight:700; margin-bottom:4px;">Realized P&amp;L</div>
+                    <div id="pf-realized-pnl" style="font-size:1.35rem; font-weight:800; color:#f8fafc;">₨0.00</div>
+                    <div id="pf-closed-count" style="font-size:0.75rem; color:var(--text-tertiary); margin-top:2px;">0 Closed Trades</div>
+                </div>
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:var(--text-tertiary); font-weight:700; margin-bottom:4px;">Win Rate</div>
+                    <div id="pf-win-rate" style="font-size:1.35rem; font-weight:800; color:#a855f7;">0.0%</div>
+                    <div id="pf-profit-factor" style="font-size:0.75rem; color:var(--text-tertiary); margin-top:2px;">Profit Factor: 1.0x</div>
+                </div>
+            </div>
+
+            <!-- Open Positions & Sector Exposure Grid -->
+            <div style="display:grid; grid-template-columns: 2fr 1fr; gap:16px; margin-bottom: 24px;">
+                <!-- Open Positions Table -->
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:18px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                        <h3 style="font-size:1rem; font-weight:700; color:#f8fafc; margin:0; display:flex; align-items:center; gap:8px;">
+                            <span>📈</span> <span>Active Open Positions</span>
+                            <span id="pf-open-count-badge" class="badge" style="background:rgba(99,102,241,0.2); color:#818cf8; font-size:0.72rem; padding:1px 6px;">0</span>
+                        </h3>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="stock-table" style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                            <thead>
+                                <tr style="border-bottom:1px solid var(--border-color); color:var(--text-tertiary); text-align:left;">
+                                    <th style="padding:8px 10px;">Symbol</th>
+                                    <th style="padding:8px 10px;">Shares</th>
+                                    <th style="padding:8px 10px;">Avg Entry</th>
+                                    <th style="padding:8px 10px;">Current</th>
+                                    <th style="padding:8px 10px;">Market Val</th>
+                                    <th style="padding:8px 10px;">Unrealized</th>
+                                    <th style="padding:8px 10px;">Target (TP1)</th>
+                                    <th style="padding:8px 10px;">Stop Loss</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pf-open-positions-body">
+                                <tr><td colspan="8" style="text-align:center; padding:24px; color:var(--text-tertiary);">Loading portfolio positions...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Sector Exposure -->
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:18px;">
+                    <h3 style="font-size:1rem; font-weight:700; color:#f8fafc; margin:0 0 14px 0; display:flex; align-items:center; gap:8px;">
+                        <span>🥧</span> <span>Sector Exposure</span>
+                    </h3>
+                    <div id="pf-sector-breakdown" style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="color:var(--text-tertiary); font-size:0.82rem; text-align:center; padding:16px;">Calculating sector weights...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Closed Trade Performance Ledger -->
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:18px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                    <h3 style="font-size:1rem; font-weight:700; color:#f8fafc; margin:0; display:flex; align-items:center; gap:8px;">
+                        <span>📜</span> <span>Closed Trade Performance Ledger</span>
+                    </h3>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="stock-table" style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border-color); color:var(--text-tertiary); text-align:left;">
+                                <th style="padding:8px 10px;">Symbol</th>
+                                <th style="padding:8px 10px;">Strategy</th>
+                                <th style="padding:8px 10px;">Shares</th>
+                                <th style="padding:8px 10px;">Entry</th>
+                                <th style="padding:8px 10px;">Exit</th>
+                                <th style="padding:8px 10px;">Realized P&amp;L</th>
+                                <th style="padding:8px 10px;">Return</th>
+                                <th style="padding:8px 10px;">Outcome</th>
+                                <th style="padding:8px 10px;">Exit Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pf-closed-trades-body">
+                            <tr><td colspan="9" style="text-align:center; padding:24px; color:var(--text-tertiary);">No closed trades yet.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
         <!-- 3. Dividend & Corporate Actions Tracker View Section -->
         <section class="corporate-view" id="view-corporate" style="display:none;">
             <div class="corp-header">
@@ -1114,6 +1253,78 @@
                         </thead>
                         <tbody id="corp-calendar-body">
                             <tr><td colspan="9" style="text-align:center; padding:32px; color:var(--text-tertiary);">Loading PSX dividend calendar...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Phase 3: Earnings & Board Meeting Calendar -->
+        <section class="earnings-view" id="view-earnings" style="display:none; padding: 20px 0;">
+            <div class="weekly-header" style="margin-bottom: 20px;">
+                <div class="weekly-title-area">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:1.5rem;">📅</span>
+                        <h2 style="font-size:1.4rem; font-weight:800; color:#f8fafc; margin:0;">Corporate Earnings &amp; Board Meeting Calendar</h2>
+                        <span class="badge" style="background:#059669; color:#a7f3d0; font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:12px;">LIVE RADAR</span>
+                    </div>
+                    <p style="color:var(--text-secondary); font-size:0.85rem; margin:4px 0 0 0;">Track scheduled PSX Board Meetings, quarterly financial results releases, interim dividends, and annual accounts to stay ahead of volatility.</p>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn btn-primary btn-sm" onclick="loadEarningsCalendar()" id="btn-refresh-earnings">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+                        <span>Refresh Calendar</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Earnings Metrics KPI Banner -->
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom: 24px;">
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:var(--text-tertiary); font-weight:700; margin-bottom:4px;">Scheduled Meetings</div>
+                    <div id="ec-total-count" style="font-size:1.35rem; font-weight:800; color:#f8fafc;">0</div>
+                    <div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:2px;">Across all sectors</div>
+                </div>
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:var(--text-tertiary); font-weight:700; margin-bottom:4px;">Upcoming This Week</div>
+                    <div id="ec-this-week-count" style="font-size:1.35rem; font-weight:800; color:#f59e0b;">0</div>
+                    <div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:2px;">Immediate catalyst dates</div>
+                </div>
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:var(--text-tertiary); font-weight:700; margin-bottom:4px;">Meeting Types</div>
+                    <div id="ec-type-ratio" style="font-size:1.35rem; font-weight:800; color:#38bdf8;">Quarterly / Annual</div>
+                    <div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:2px;">Financial period reviews</div>
+                </div>
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:var(--text-tertiary); font-weight:700; margin-bottom:4px;">Earnings Catalyst Signal</div>
+                    <div id="ec-catalyst-status" style="font-size:1.35rem; font-weight:800; color:#10b981;">MONITORED</div>
+                    <div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:2px;">Pre-earnings positioning</div>
+                </div>
+            </div>
+
+            <!-- Scheduled Meetings Table -->
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:18px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+                    <h3 style="font-size:1rem; font-weight:700; color:#f8fafc; margin:0; display:flex; align-items:center; gap:8px;">
+                        <span>📋</span> <span>Official PSX Scheduled Board Meetings</span>
+                    </h3>
+                    <input type="text" id="ec-search-input" placeholder="Search symbol or company..." oninput="filterEarningsTable()" style="background:var(--bg-secondary); border:1px solid var(--border-color); color:#f8fafc; padding:6px 12px; border-radius:8px; font-size:0.8rem; width:220px;">
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="stock-table" style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border-color); color:var(--text-tertiary); text-align:left;">
+                                <th style="padding:8px 10px;">Meeting Date</th>
+                                <th style="padding:8px 10px;">Symbol</th>
+                                <th style="padding:8px 10px;">Company Name</th>
+                                <th style="padding:8px 10px;">Sector</th>
+                                <th style="padding:8px 10px;">Period Ended</th>
+                                <th style="padding:8px 10px;">Meeting Agenda</th>
+                                <th style="padding:8px 10px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ec-meetings-body">
+                            <tr><td colspan="7" style="text-align:center; padding:24px; color:var(--text-tertiary);">Loading scheduled meetings...</td></tr>
                         </tbody>
                     </table>
                 </div>

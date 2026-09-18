@@ -430,9 +430,28 @@ def evaluate_stock_valuation(input_data: Dict[str, Any]) -> Dict[str, Any]:
         if debt_equity is not None and sec_de > 0 and debt_equity > (2.0 * sec_de):
             reasons_to_downgrade.append(f"debt-to-equity ({debt_equity:.2f}) is more than double sector average")
 
+        # ── P2-D: Piotroski F-Score Value Trap Gate ─────────────────────────
+        piotroski_res = None
+        try:
+            import psx_piotroski as _pio
+            piotroski_res = _pio.calculate_piotroski_fscore(ticker)
+            if piotroski_res and piotroski_res.get("f_score", 0) <= 3:
+                reasons_to_downgrade.append(f"value trap warning: weak Piotroski F-Score ({piotroski_res['f_score']}/9)")
+        except Exception:
+            pass
+        # ── End P2-D ─────────────────────────────────────────────────────────
+
         if reasons_to_downgrade:
             verdict = "undervalued_caution"
             flags.extend(reasons_to_downgrade)
+
+    # If not evaluated in branch above, still compute piotroski for detail view
+    if 'piotroski_res' not in locals() or piotroski_res is None:
+        try:
+            import psx_piotroski as _pio
+            piotroski_res = _pio.calculate_piotroski_fscore(ticker)
+        except Exception:
+            piotroski_res = None
 
     return {
         "ticker": ticker,
@@ -440,6 +459,7 @@ def evaluate_stock_valuation(input_data: Dict[str, Any]) -> Dict[str, Any]:
         "sector": stock.get("sector", "Other"),
         "price": price,
         "verdict": verdict,
+        "piotroski": piotroski_res,
         "relative_score": relative_score,
         "relative_metrics": {
             "pe": pe,
