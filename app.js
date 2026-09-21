@@ -2464,25 +2464,36 @@ function generatePrediction(days, symbol) {
 // ─── Live Trading Module ───
 let currentLiveSymbol = "UNITY";
 let liveTradingTimer = null;
+let liveTradingSSE = null;
+let liveTradingCountdownInterval = null;
+let liveTradingSecondsRemaining = 120;
+let liveTradingIsOpen = false;
 
 function searchLiveTrading() {
     const input = document.getElementById("live-search-input");
     if (!input) return;
     const symbol = input.value.trim().toUpperCase();
     if (symbol) {
-        fetchLiveTradingAnalysis(symbol);
+        fetchLiveTradingAnalysis(symbol, false, true);
     }
 }
 
-function fetchLiveTradingAnalysis(symbol) {
+function forceLiveRefresh() {
+    if (!currentLiveSymbol) return;
+    const timerText = document.getElementById("live-refresh-timer-text");
+    if (timerText) timerText.textContent = "Refreshing...";
+    fetchLiveTradingAnalysis(currentLiveSymbol, false, true);
+}
+
+function fetchLiveTradingAnalysis(symbol, isSilent = false, force = false) {
     if (!symbol) return;
     currentLiveSymbol = symbol.toUpperCase();
     const deviceId = getDeviceId();
 
-    // Show loading
+    // Show loading indicator only on initial or manual explicit search
     const loading = document.getElementById("live-trading-loading");
     const container = document.getElementById("live-trading-content");
-    if (loading) loading.style.display = "flex";
+    if (!isSilent && loading) loading.style.display = "flex";
 
     // Highlight active quick chip if matches
     document.querySelectorAll(".quick-chip").forEach(chip => {
@@ -2490,7 +2501,8 @@ function fetchLiveTradingAnalysis(symbol) {
         else chip.classList.remove("active");
     });
 
-    fetch(`/api/live-trading?symbol=${currentLiveSymbol}&deviceId=${deviceId}`)
+    const url = `/api/live-trading?symbol=${currentLiveSymbol}&deviceId=${deviceId}${force ? '&force=1' : ''}`;
+    fetch(url)
         .then(r => {
             if (r.status === 402) {
                 initTrialSystem();
@@ -2503,48 +2515,115 @@ function fetchLiveTradingAnalysis(symbol) {
             if (res.success && res.data) {
                 renderLiveTrading(res.data);
                 setupLiveAutoRefresh(res.data.marketStatus?.is_open);
+                initLiveTradingSSE(currentLiveSymbol);
             } else {
-                if (container) {
+                if (container && !isSilent) {
                     container.innerHTML = `<div class="upper-lock-empty">
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                         </svg>
                         <p>${res.error || 'Symbol not found'}</p>
                         <p style="font-size:0.85rem; color:var(--text-tertiary);">Check PSX symbol spelling (e.g. UNITY, TRG, OGDC, LUCK, HBL)</p>
-                        <button class="btn btn-primary btn-sm" onclick="fetchLiveTradingAnalysis('${currentLiveSymbol}')" style="margin-top:12px;">🔄 Retry Analysis</button>
+                        <button class="btn btn-primary btn-sm" onclick="fetchLiveTradingAnalysis('${currentLiveSymbol}', false, true)" style="margin-top:12px;">🔄 Retry Analysis</button>
                     </div>`;
                 }
             }
         })
         .catch(err => {
             if (loading) loading.style.display = "none";
-            if (err.message !== "3-Day Free Trial Expired. Upgrade to Pro." && container) {
+            if (err.message !== "3-Day Free Trial Expired. Upgrade to Pro." && container && !isSilent) {
                 container.innerHTML = `<div class="upper-lock-empty">
                     <p>${err.message}</p>
-                    <button class="btn btn-primary btn-sm" onclick="fetchLiveTradingAnalysis('${currentLiveSymbol}')" style="margin-top:12px;">🔄 Retry</button>
+                    <button class="btn btn-primary btn-sm" onclick="fetchLiveTradingAnalysis('${currentLiveSymbol}', false, true)" style="margin-top:12px;">🔄 Retry</button>
                 </div>`;
             }
         });
 }
 
-
 function setupLiveAutoRefresh(isOpen) {
+    liveTradingIsOpen = !!isOpen;
     if (liveTradingTimer) clearInterval(liveTradingTimer);
-    // Refresh every 10s if market OPEN, every 60s if CLOSED
-    const intervalMs = isOpen ? 10000 : 60000;
-    liveTradingTimer = setInterval(() => {
-        const deviceId = getDeviceId();
-        if (currentView === "live-trading" && currentLiveSymbol) {
-            fetch(`/api/live-trading?symbol=${currentLiveSymbol}&deviceId=${deviceId}`)
-                .then(r => r.json())
-                .then(res => {
-                    if (res.success && res.data && currentView === "live-trading") {
-                        renderLiveTrading(res.data);
-                    }
-                })
-                .catch(() => {});
+    if (liveTradingCountdownInterval) clearInterval(liveTradingCountdownInterval);
+
+    // Stage 9.3 & User specification: Refresh every 2 minutes (120s) during trade hours, 5 minutes (300s) when closed
+    const totalSeconds = liveTradingIsOpen ? 120 : 300;
+    liveTradingSecondsRemaining = totalSeconds;
+    updateRefreshTimerBadge(liveTradingSecondsRemaining);
+
+    // 1-second countdown ticker
+    liveTradingCountdownInterval = setInterval(() => {
+        if (currentView !== "live-trading") return;
+        liveTradingSecondsRemaining--;
+        if (liveTradingSecondsRemaining <= 0) {
+            liveTradingSecondsRemaining = totalSeconds;
+            if (currentLiveSymbol) {
+                fetchLiveTradingAnalysis(currentLiveSymbol, true, false);
+            }
         }
-    }, intervalMs);
+        updateRefreshTimerBadge(liveTradingSecondsRemaining);
+    }, 1000);
+}
+
+function updateRefreshTimerBadge(sec) {
+    const el = document.getElementById("live-refresh-timer-text");
+    if (!el) return;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    const formatted = `${m}:${s < 10 ? '0' : ''}${s}`;
+    el.textContent = liveTradingIsOpen ? `Auto: ${formatted}` : `Closed (${formatted})`;
+}
+
+function initLiveTradingSSE(symbol) {
+    if (typeof EventSource === "undefined") return;
+    if (liveTradingSSE) {
+        try { liveTradingSSE.close(); } catch(e) {}
+        liveTradingSSE = null;
+    }
+    try {
+        liveTradingSSE = new EventSource(`/api/live-trading/stream?symbol=${encodeURIComponent(symbol)}`);
+        liveTradingSSE.addEventListener("tick", (e) => {
+            try {
+                const tick = JSON.parse(e.data || "{}");
+                if (tick.symbol === currentLiveSymbol && currentView === "live-trading") {
+                    updateLiveTickInHero(tick);
+                }
+            } catch(err) {
+                console.debug("[SSE Tick] parse error:", err);
+            }
+        });
+        liveTradingSSE.onerror = () => {
+            // Non-fatal, auto-reconnect or polling fallback
+            try { liveTradingSSE.close(); } catch(e) {}
+            liveTradingSSE = null;
+        };
+    } catch(err) {
+        console.debug("[SSE] Init skipped:", err);
+    }
+}
+
+function updateLiveTickInHero(tick) {
+    const priceEl = document.querySelector(".live-price-big");
+    const changeEl = document.querySelector(".live-price-change");
+    if (priceEl && tick.price !== undefined && tick.price !== null) {
+        const oldPrice = parseFloat(priceEl.textContent.replace(/[^0-9.]/g, '')) || 0;
+        const newPrice = parseFloat(tick.price);
+        priceEl.textContent = `₨${newPrice.toFixed(2)}`;
+        if (newPrice > oldPrice) {
+            priceEl.style.transition = "color 0.3s";
+            priceEl.style.color = "#34d399";
+            setTimeout(() => { priceEl.style.color = ""; }, 800);
+        } else if (newPrice < oldPrice) {
+            priceEl.style.transition = "color 0.3s";
+            priceEl.style.color = "#f87171";
+            setTimeout(() => { priceEl.style.color = ""; }, 800);
+        }
+    }
+    if (changeEl && tick.change !== undefined && tick.changePercent !== undefined) {
+        const c = parseFloat(tick.change || 0);
+        const cp = parseFloat(tick.changePercent || 0);
+        changeEl.className = `live-price-change ${c >= 0 ? 'positive' : 'negative'}`;
+        changeEl.textContent = `${c >= 0 ? '+' : ''}${c.toFixed(2)} (${cp >= 0 ? '+' : ''}${cp.toFixed(2)}%)`;
+    }
 }
 
 // ── Technical Indicator Calculation Engine (MACD, RSI Wilder, Divergence, Bollinger) ──

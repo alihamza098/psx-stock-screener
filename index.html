@@ -856,6 +856,13 @@
                     <span class="freshness-dot"></span>
                     <span id="live-freshness-text">Feed: Checking...</span>
                 </div>
+                <div class="live-refresh-timer-badge" id="live-refresh-timer-badge" title="Auto-refresh countdown (Refreshes every 2 minutes during trading hours)">
+                    <span class="timer-dot"></span>
+                    <span id="live-refresh-timer-text">Auto: 2:00</span>
+                    <button class="live-refresh-icon-btn" id="btn-live-manual-refresh" title="Force Refresh Live Quote (Bypass Cache)" onclick="forceLiveRefresh()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                    </button>
+                </div>
             </div>
 
             <!-- Stale Data Warning Banner -->
@@ -2853,7 +2860,7 @@
     </div>
 
     <script src="lightweight-charts.standalone.production.js"></script>
-    <script src="app.js?v=3.5"></script>
+    <script src="app.js?v=3.6"></script>
     <!-- Real-Time SSE Intraday Alert Toasts Container -->
     <div id="sse-toast-container" class="sse-toast-container"></div>
 

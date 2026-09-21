@@ -77,10 +77,12 @@ def load_file_cache(filepath):
 
 
 def save_file_cache(filepath, data, timestamp):
-    """Save data to a JSON file cache."""
+    """Save data to a JSON file cache atomically to prevent corrupted reads."""
     try:
-        with open(filepath, "w") as f:
+        tmp_path = filepath.with_suffix(f".tmp_{os.getpid()}_{int(time.time()*1000)}")
+        with open(tmp_path, "w") as f:
             json.dump({"data": data, "timestamp": timestamp}, f)
+        os.replace(tmp_path, filepath)
         print(f"[PSX] Saved file cache to {filepath.name}")
     except Exception as e:
         print(f"[PSX] Could not save file cache {filepath.name}: {e}")
@@ -987,8 +989,10 @@ def _start_continuous_poller():
 
 
 def fetch_stock_data(force=False):
-    """Return live stock data immediately from memory cache without blocking."""
-    if force:
+    """Return live stock data immediately from memory cache without blocking, auto-refreshing in background if stale."""
+    now = time.time()
+    cache_age = now - stock_cache.get("timestamp", 0)
+    if force or cache_age > 60:
         _trigger_background_refresh()
 
     if stock_cache.get("data"):
@@ -1000,7 +1004,7 @@ def fetch_stock_data(force=False):
                 snap = json.load(f)
                 if snap.get("data"):
                     stock_cache["data"] = snap["data"]
-                    stock_cache["timestamp"] = time.time()
+                    stock_cache["timestamp"] = snap.get("timestamp", now)
                     return snap["data"], False
         except Exception:
             pass
@@ -1052,7 +1056,7 @@ def fetch_company_data(symbol):
     print(f"[PSX] Fetching company data for {symbol}...")
     html = ""
     try:
-        html = fetch_url(f"https://dps.psx.com.pk/company/{symbol}", timeout=10, retries=2)
+        html = fetch_url(f"https://dps.psx.com.pk/company/{symbol}", timeout=4, retries=1)
     except Exception as e:
         print(f"[PSX] Warning: Could not fetch company page for {symbol}: {e}")
         if c_file.exists():
@@ -2554,116 +2558,148 @@ def compute_projected_volume(live_volume, market_status=None):
 
 
 _COMPLETED_VOLUME_CACHE = {}
+_LIVE_ANALYSIS_CACHE = {}  # symbol -> (timestamp, analysis_dict)
+_LIVE_ANALYSIS_LOCKS = {}
+_FANOUT_MUTEX = threading.Lock()
+
+def _get_symbol_fanout_lock(symbol: str) -> threading.Lock:
+    with _FANOUT_MUTEX:
+        if symbol not in _LIVE_ANALYSIS_LOCKS:
+            _LIVE_ANALYSIS_LOCKS[symbol] = threading.Lock()
+        return _LIVE_ANALYSIS_LOCKS[symbol]
 
 
-def fetch_live_stock_analysis(symbol):
-    """Fetch live data, history, and company profile for single-stock live trading analysis concurrently."""
-    symbol = symbol.upper()
-    stocks, _ = fetch_stock_data()
-    stock_info = next((s for s in stocks if s.get("symbol") == symbol), None)
-    if not stock_info:
-        # Case-insensitive or partial match
-        stock_info = next((s for s in stocks if (s.get("symbol") or "").upper() == symbol or symbol in (s.get("name") or "").upper()), None)
-    
-    history = []
-    company_data = {}
-
-    # Run history & company data fetches concurrently with ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        f_hist = executor.submit(fetch_stock_history, symbol)
-        f_comp = executor.submit(fetch_company_data, symbol)
-        try:
-            history = f_hist.result(timeout=14) or []
-        except Exception as e:
-            print(f"[PSX Live] History fetch error for {symbol}: {e}")
-            history = []
-        try:
-            company_data = f_comp.result(timeout=14) or {}
-        except Exception as e:
-            print(f"[PSX Live] Company data fetch error for {symbol}: {e}")
-            company_data = {}
-
-    market_status = get_psx_market_status()
-    cache_ts = stock_cache.get("timestamp", 0)
+def fetch_live_stock_analysis(symbol, force=False):
+    """Fetch live data, history, and company profile for single-stock live trading analysis with 9.2 fan-out caching."""
+    symbol = symbol.upper().strip()
     now_epoch = time.time()
-    freshness_sec = max(0, int(now_epoch - cache_ts)) if cache_ts > 0 else 0
-    today_pkt_date = time.strftime("%Y-%m-%d", time.localtime(now_epoch + 5 * 3600))
-    today_volume = stock_info.get("volume", 0) if stock_info else 0
 
-    # Separate completed daily sessions (exclude today if present in history)
-    completed_history = [b for b in history if b.get("date") != today_pkt_date]
+    # Stage 9.2: Server-side fan-out cache check (10s TTL)
+    if not force:
+        cached = _LIVE_ANALYSIS_CACHE.get(symbol)
+        if cached and (now_epoch - cached[0] < 10.0):
+            cached_res = dict(cached[1])
+            if isinstance(cached_res.get("stockInfo"), dict):
+                inject_live_price(cached_res["stockInfo"], symbol_key="symbol", price_keys=["price", "current_price"])
+            return cached_res
 
-    # Check cache for completed volume stats
-    cached_entry = _COMPLETED_VOLUME_CACHE.get(symbol)
-    if cached_entry and cached_entry[0] == today_pkt_date and cached_entry[1]:
-        base_stats = cached_entry[1]
-        stats = {
-            "windows": {},
-            "trend_label": base_stats["trend_label"],
-            "trend_change_pct": base_stats["trend_change_pct"],
-            "recent_bars": base_stats["recent_bars"],
-            "avg_21d_volume": base_stats["avg_21d_volume"],
-            "bars_count": base_stats["bars_count"]
+    sym_lock = _get_symbol_fanout_lock(symbol)
+    with sym_lock:
+        if not force:
+            cached = _LIVE_ANALYSIS_CACHE.get(symbol)
+            if cached and (time.time() - cached[0] < 10.0):
+                cached_res = dict(cached[1])
+                if isinstance(cached_res.get("stockInfo"), dict):
+                    inject_live_price(cached_res["stockInfo"], symbol_key="symbol", price_keys=["price", "current_price"])
+                return cached_res
+
+        stocks, _ = fetch_stock_data(force=force)
+        stock_info = next((s for s in stocks if s.get("symbol") == symbol), None)
+        if not stock_info:
+            # Case-insensitive or partial match
+            stock_info = next((s for s in stocks if (s.get("symbol") or "").upper() == symbol or symbol in (s.get("name") or "").upper()), None)
+        
+        history = []
+        company_data = {}
+
+        # Run history & company data fetches concurrently with ThreadPoolExecutor (short 5s timeout)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            f_hist = executor.submit(fetch_stock_history, symbol)
+            f_comp = executor.submit(fetch_company_data, symbol)
+            try:
+                history = f_hist.result(timeout=5) or []
+            except Exception as e:
+                print(f"[PSX Live] History fetch error for {symbol}: {e}")
+                history = []
+            try:
+                company_data = f_comp.result(timeout=5) or {}
+            except Exception as e:
+                print(f"[PSX Live] Company data fetch error for {symbol}: {e}")
+                company_data = {}
+
+        market_status = get_psx_market_status()
+        cache_ts = stock_cache.get("timestamp", 0)
+        freshness_sec = max(0, int(now_epoch - cache_ts)) if cache_ts > 0 else 0
+        today_pkt_date = time.strftime("%Y-%m-%d", time.localtime(now_epoch + 5 * 3600))
+        today_volume = stock_info.get("volume", 0) if stock_info else 0
+
+        # Separate completed daily sessions (exclude today if present in history)
+        completed_history = [b for b in history if b.get("date") != today_pkt_date]
+
+        # Check cache for completed volume stats
+        cached_entry = _COMPLETED_VOLUME_CACHE.get(symbol)
+        if cached_entry and cached_entry[0] == today_pkt_date and cached_entry[1]:
+            base_stats = cached_entry[1]
+            stats = {
+                "windows": {},
+                "trend_label": base_stats["trend_label"],
+                "trend_change_pct": base_stats["trend_change_pct"],
+                "recent_bars": base_stats["recent_bars"],
+                "avg_21d_volume": base_stats["avg_21d_volume"],
+                "bars_count": base_stats["bars_count"]
+            }
+            for w_k, w_v in base_stats["windows"].items():
+                w_copy = dict(w_v)
+                if w_copy.get("status") == "ok" and w_copy.get("avg_daily_volume"):
+                    w_copy["today_ratio"] = round(today_volume / w_copy["avg_daily_volume"], 2)
+                stats["windows"][w_k] = w_copy
+        else:
+            stats = compute_volume_stats(completed_history, today_volume)
+            _COMPLETED_VOLUME_CACHE[symbol] = (today_pkt_date, stats)
+
+        projected_vol = compute_projected_volume(today_volume, market_status)
+        volume_history = {
+            "windows": stats["windows"],
+            "trend_label": stats["trend_label"],
+            "trend_change_pct": stats["trend_change_pct"],
+            "recent_bars": stats["recent_bars"],
+            "avg_21d_volume": stats["avg_21d_volume"],
+            "projected": projected_vol,
+            "today_volume": today_volume
         }
-        for w_k, w_v in base_stats["windows"].items():
-            w_copy = dict(w_v)
-            if w_copy.get("status") == "ok" and w_copy.get("avg_daily_volume"):
-                w_copy["today_ratio"] = round(today_volume / w_copy["avg_daily_volume"], 2)
-            stats["windows"][w_k] = w_copy
-    else:
-        stats = compute_volume_stats(completed_history, today_volume)
-        _COMPLETED_VOLUME_CACHE[symbol] = (today_pkt_date, stats)
 
-    projected_vol = compute_projected_volume(today_volume, market_status)
-    volume_history = {
-        "windows": stats["windows"],
-        "trend_label": stats["trend_label"],
-        "trend_change_pct": stats["trend_change_pct"],
-        "recent_bars": stats["recent_bars"],
-        "avg_21d_volume": stats["avg_21d_volume"],
-        "projected": projected_vol,
-        "today_volume": today_volume
-    }
+        # Stage 5: PSX-Specific Intelligence
+        psx_intel = None
+        try:
+            from scoring_engine import evaluate_psx_intelligence
+            idx_data, _ = fetch_index_data()
+            corp_data = get_corporate_actions_and_dividends()
+            div_cal = corp_data.get("dividendCalendar", []) if corp_data else []
+            psx_intel = evaluate_psx_intelligence(
+                stock=stock_info or {},
+                company_data=company_data,
+                all_stocks=stocks,
+                index_data=idx_data,
+                dividend_calendar=div_cal
+            )
+        except Exception as e:
+            print(f"[PSX Live] Error evaluating PSX intelligence for {symbol}: {e}")
 
-    # Stage 5: PSX-Specific Intelligence
-    psx_intel = None
-    try:
-        from scoring_engine import evaluate_psx_intelligence
-        idx_data, _ = fetch_index_data()
-        corp_data = get_corporate_actions_and_dividends()
-        div_cal = corp_data.get("dividendCalendar", []) if corp_data else []
-        psx_intel = evaluate_psx_intelligence(
-            stock=stock_info or {},
-            company_data=company_data,
-            all_stocks=stocks,
-            index_data=idx_data,
-            dividend_calendar=div_cal
-        )
-    except Exception as e:
-        print(f"[PSX Live] Error evaluating PSX intelligence for {symbol}: {e}")
+        # Stage 7: Real Order Book / Market Depth (Stage 7.1 inspection & fallback)
+        order_book = None
+        try:
+            from order_book_engine import analyze_order_book
+            change_val = float(stock_info.get("change", 0.0)) if stock_info else 0.0
+            order_book = analyze_order_book(symbol, real_depth=None, price_change_pct=change_val)
+        except Exception as e:
+            print(f"[PSX Live] Error evaluating Order Book for {symbol}: {e}")
 
-    # Stage 7: Real Order Book / Market Depth (Stage 7.1 inspection & fallback)
-    order_book = None
-    try:
-        from order_book_engine import analyze_order_book
-        change_val = float(stock_info.get("change", 0.0)) if stock_info else 0.0
-        order_book = analyze_order_book(symbol, real_depth=None, price_change_pct=change_val)
-    except Exception as e:
-        print(f"[PSX Live] Error evaluating Order Book for {symbol}: {e}")
+        analysis_result = {
+            "symbol": symbol,
+            "stockInfo": stock_info,
+            "history": history,
+            "companyData": company_data,
+            "marketStatus": market_status,
+            "volumeHistory": volume_history,
+            "psxIntelligence": psx_intel,
+            "orderBook": order_book,
+            "dataFreshnessSec": freshness_sec,
+            "lastTickTimestamp": cache_ts,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_epoch + 5*3600))
+        }
 
-    return {
-        "symbol": symbol,
-        "stockInfo": stock_info,
-        "history": history,
-        "companyData": company_data,
-        "marketStatus": market_status,
-        "volumeHistory": volume_history,
-        "psxIntelligence": psx_intel,
-        "orderBook": order_book,
-        "dataFreshnessSec": freshness_sec,
-        "lastTickTimestamp": cache_ts,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_epoch + 5*3600))
-    }
+        _LIVE_ANALYSIS_CACHE[symbol] = (time.time(), analysis_result)
+        return analysis_result
 
 
 PAYOUTS_CACHE_FILE = Path(__file__).parent / "cache" / "payouts_cache.json"
@@ -4384,11 +4420,22 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._handle_trading_portfolio()
         elif parsed_path.path == "/api/trading/monitor-positions":
             self._handle_trading_monitor_positions()
+        elif parsed_path.path in ("/api/live-trading/stream", "/api/live/stream"):
+            query = parse_qs(parsed_path.query)
+            symbol = query.get("symbol", ["OGDC"])[0]
+            self._handle_live_trading_stream(symbol)
+            return
+        elif parsed_path.path in ("/api/live-trading/company", "/api/live/company"):
+            query = parse_qs(parsed_path.query)
+            if not self._check_auth(query): return
+            symbol = query.get("symbol", ["OGDC"])[0]
+            self._handle_live_company_data(symbol)
         elif parsed_path.path == "/api/live-trading":
             query = parse_qs(parsed_path.query)
             if not self._check_auth(query): return
             symbol = query.get("symbol", [""])[0]
-            self._handle_live_trading(symbol)
+            force = query.get("force", ["0"])[0] in ["1", "true"]
+            self._handle_live_trading(symbol, force=force)
         elif parsed_path.path == "/api/signal-stats":
             self._handle_signal_stats()
         elif parsed_path.path in ("/api/live-trading/backtest", "/api/live/backtest"):
@@ -6049,14 +6096,13 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             print(f"[PSX] Error in position analysis handler: {e}")
             self._send_json({"success": False, "error": str(e)}, 500)
 
-    def _handle_live_trading(self, symbol):
-
+    def _handle_live_trading(self, symbol, force=False):
         if not symbol:
             self._send_json({"success": False, "error": "Missing symbol parameter"}, 400)
             return
         try:
-            analysis = fetch_live_stock_analysis(symbol)
-            if not analysis["stockInfo"]:
+            analysis = fetch_live_stock_analysis(symbol, force=force)
+            if not analysis or not analysis.get("stockInfo"):
                 self._send_json({"success": False, "error": f"Symbol '{symbol.upper()}' not found"}, 404)
             else:
                 if isinstance(analysis.get("stockInfo"), dict):
@@ -6065,6 +6111,113 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             print(f"[PSX] Error in live trading analysis handler: {e}")
             self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_live_company_data(self, symbol):
+        if not symbol:
+            self._send_json({"success": False, "error": "Missing symbol parameter"}, 400)
+            return
+        try:
+            comp = fetch_company_data(symbol)
+            self._send_json({"success": True, "symbol": symbol.upper(), "data": comp})
+        except Exception as e:
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_live_trading_stream(self, symbol):
+        """
+        Stage 9.3: Server-Sent Events (SSE) stream for real-time live trading price ticks:
+        - Instant price, change %, volume push whenever central price bus updates
+        - 15s heartbeat keep-alive
+        - 10s client polling fallback compatibility
+        """
+        if not symbol:
+            symbol = "OGDC"
+        symbol = symbol.upper().strip()
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+        import time, json, datetime
+        NL = chr(10)
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S PKT")
+        init_payload = json.dumps({
+            "status": "connected",
+            "symbol": symbol,
+            "server_time": now_str,
+            "stream": "psx_live_trading_stream"
+        })
+        try:
+            self.wfile.write(("event: connected" + NL + "data: " + init_payload + NL + NL).encode("utf-8"))
+            self.wfile.flush()
+        except Exception:
+            return
+
+        last_ping = time.time()
+        last_price = None
+        last_volume = None
+
+        # Send initial tick
+        stock = get_live_stock_info(symbol)
+        if stock:
+            last_price = stock.get("price")
+            last_volume = stock.get("volume")
+            m_status = get_psx_market_status()
+            tick_data = json.dumps({
+                "symbol": symbol,
+                "price": last_price,
+                "change": stock.get("change", 0.0),
+                "changePercent": stock.get("changePercent", 0.0),
+                "volume": last_volume,
+                "marketStatus": m_status,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S PKT")
+            })
+            try:
+                self.wfile.write(("event: tick" + NL + "data: " + tick_data + NL + NL).encode("utf-8"))
+                self.wfile.flush()
+            except Exception:
+                return
+
+        while True:
+            try:
+                time.sleep(2.0)
+                now = time.time()
+                # 15s Heartbeat ping
+                if now - last_ping >= 15.0:
+                    last_ping = now
+                    try:
+                        self.wfile.write(("event: ping" + NL + "data: {}" + NL + NL).encode("utf-8"))
+                        self.wfile.flush()
+                    except Exception:
+                        break
+
+                # Check if price or volume changed in central price bus
+                cur_stock = get_live_stock_info(symbol)
+                if cur_stock:
+                    cur_p = cur_stock.get("price")
+                    cur_v = cur_stock.get("volume")
+                    if cur_p != last_price or cur_v != last_volume:
+                        last_price = cur_p
+                        last_volume = cur_v
+                        m_status = get_psx_market_status()
+                        tick_data = json.dumps({
+                            "symbol": symbol,
+                            "price": cur_p,
+                            "change": cur_stock.get("change", 0.0),
+                            "changePercent": cur_stock.get("changePercent", 0.0),
+                            "volume": cur_v,
+                            "marketStatus": m_status,
+                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S PKT")
+                        })
+                        self.wfile.write(("event: tick" + NL + "data: " + tick_data + NL + NL).encode("utf-8"))
+                        self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                break
+            except Exception:
+                break
 
     def _handle_signal_stats(self):
         try:

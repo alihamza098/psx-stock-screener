@@ -167,5 +167,15 @@
       "bot_token": "",
       "chat_id": ""
     }
+  },
+  "performance_architecture": {
+    "company_data_cache_seconds": 1800,
+    "history_cache_seconds": 1800,
+    "live_analysis_cache_seconds": 10,
+    "client_refresh_interval_trading_hours_seconds": 120,
+    "client_refresh_interval_closed_seconds": 300,
+    "sse_heartbeat_seconds": 15,
+    "background_poll_trading_seconds": 20,
+    "background_poll_closed_seconds": 60
   }
 }
