@@ -13,6 +13,17 @@ let watchlist = new Set(JSON.parse(localStorage.getItem("psx_watchlist") || "[]"
 let isLoading = false;
 let autoRefreshTimer = null;
 
+// ─── Utility: Safe HTML Escaping ───
+function escapeHtml(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 // ─── Score Calculation (adapted for live PSX data) ───
 function calculateScore(stock) {
     let score = 0;

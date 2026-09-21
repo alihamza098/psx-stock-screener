@@ -1,4 +1,4 @@
-const CACHE_NAME = 'psx-screener-v16';
+const CACHE_NAME = 'psx-screener-v17';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
