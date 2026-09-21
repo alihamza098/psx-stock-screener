@@ -1,7 +1,21 @@
-const CACHE_NAME = 'psx-screener-v15';
+const CACHE_NAME = 'psx-screener-v16';
+const PRECACHE_URLS = [
+  '/',
+  '/index.html',
+  '/styles.css',
+  '/app.js',
+  '/lightweight-charts.standalone.production.js',
+  '/manifest.json'
+];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(PRECACHE_URLS).catch((err) => {
+        console.warn('[SW] Precache skipped for some URLs:', err);
+      });
+    }).then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -19,21 +33,23 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Let all API calls and dynamic requests bypass service worker completely
+  // Let all API calls and SSE streams bypass service worker completely
   if (event.request.url.includes('/api/')) {
     return;
   }
   
-  // Network-first strategy for HTML, JS, CSS
+  // Stale-while-revalidate for static shell assets
   event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
           const clone = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return networkResponse;
-      })
-      .catch(() => caches.match(event.request))
+      }).catch(() => cachedResponse);
+
+      return cachedResponse || fetchPromise;
+    })
   );
 });

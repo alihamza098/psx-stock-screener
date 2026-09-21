@@ -9,6 +9,13 @@ cache/*-wal
 cache/*-shm
 cache/*.log
 cache/stocks_cache.json
+cache/history/*.json
+!cache/history/OGDC.json
+!cache/history/UNITY.json
+cache/companies/*.json
+!cache/companies/OGDC.json
+!cache/companies/UNITY.json
 *.log
 server.log
+
 

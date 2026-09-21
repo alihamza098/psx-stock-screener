@@ -4003,6 +4003,1131 @@ body {
     box-shadow: 0 0 8px currentColor;
 }
 
+/* Feed Freshness Badge */
+.live-freshness-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-full);
+    font-size: 0.825rem;
+    font-weight: 600;
+    border: 1px solid var(--border-subtle);
+    background: rgba(255, 255, 255, 0.03);
+    transition: all 0.2s ease;
+}
+
+.live-freshness-badge.freshness-green {
+    border-color: rgba(34, 197, 94, 0.4);
+    background: rgba(34, 197, 94, 0.1);
+    color: #4ade80;
+}
+
+.live-freshness-badge.freshness-amber {
+    border-color: rgba(245, 158, 11, 0.4);
+    background: rgba(245, 158, 11, 0.1);
+    color: #fbbf24;
+}
+
+.live-freshness-badge.freshness-red {
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.1);
+    color: #f87171;
+}
+
+.live-freshness-badge.freshness-neutral {
+    border-color: rgba(148, 163, 184, 0.3);
+    background: rgba(148, 163, 184, 0.08);
+    color: #94a3b8;
+}
+
+.freshness-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 8px currentColor;
+}
+
+/* Stale Data Warning Banner */
+.live-stale-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    margin-bottom: var(--space-md);
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #fca5a5;
+    font-size: 0.85rem;
+    font-weight: 600;
+    animation: fadeIn 0.3s ease;
+}
+
+/* ==========================================================================
+   STAGE 1: TRADED VOLUME HISTORY STYLING
+   ========================================================================== */
+.volume-history-card {
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 18px;
+    margin: 16px 0;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.vol-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.vol-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.vol-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.vol-trend-badge {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    letter-spacing: 0.02em;
+}
+
+.vol-trend-badge.trend-rising {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    color: #4ade80;
+}
+
+.vol-trend-badge.trend-falling {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #f87171;
+}
+
+.vol-trend-badge.trend-flat {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #fbbf24;
+}
+
+.vol-trend-badge.trend-neutral {
+    background: rgba(148, 163, 184, 0.1);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    color: #94a3b8;
+}
+
+.vol-proj-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    color: #38bdf8;
+}
+
+/* Volume Table */
+.vol-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 18px;
+}
+
+.vol-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    color: #cbd5e1;
+}
+
+.vol-table th {
+    background: rgba(30, 41, 59, 0.7);
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 700;
+    color: #94a3b8;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.vol-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.vol-table tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+/* Multiples Badges */
+.ratio-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.ratio-pill.ratio-high {
+    background: rgba(34, 197, 94, 0.2);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.ratio-pill.ratio-low {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.ratio-pill.ratio-normal {
+    background: rgba(148, 163, 184, 0.15);
+    color: #cbd5e1;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+/* Native Canvas Chart Wrap */
+.vol-chart-wrap {
+    position: relative;
+    width: 100%;
+    background: #090d16;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.vol-chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-bottom: 8px;
+}
+
+.vol-canvas {
+    width: 100%;
+    height: 190px;
+    display: block;
+    cursor: crosshair;
+}
+
+.vol-canvas-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(15, 23, 42, 0.96);
+    border: 1px solid #38bdf8;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    color: #f8fafc;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+    display: none;
+    z-index: 20;
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    .vol-table th:nth-child(5),
+    .vol-table td:nth-child(5),
+    .vol-table th:nth-child(6),
+    .vol-table td:nth-child(6) {
+        display: none;
+    }
+    .vol-canvas {
+        height: 150px;
+    }
+}
+
+/* ==========================================================================
+   STAGE 2: SCORING ENGINE V2 STYLING (REGIME, LIQUIDITY, ALIGNMENT)
+   ========================================================================== */
+.live-regime-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.live-regime-badge.regime-trending {
+    background: rgba(14, 165, 233, 0.15);
+    border: 1px solid rgba(14, 165, 233, 0.4);
+    color: #38bdf8;
+}
+
+.live-regime-badge.regime-ranging {
+    background: rgba(168, 85, 247, 0.15);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    color: #c084fc;
+}
+
+.live-liquidity-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(245, 158, 11, 0.18);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: #fbbf24;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.order-flow-sub-label {
+    font-size: 0.72rem;
+    color: #64748b;
+    font-weight: 400;
+    margin-left: 8px;
+}
+
+.rec-alignment-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(239, 68, 68, 0.3);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+
+.align-bullish-fill {
+    height: 100%;
+    background: #22c55e;
+    transition: width 0.3s ease;
+}
+
+.engine-version-pill {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    color: #818cf8;
+    cursor: help;
+}
+
+/* ==========================================================================
+   STAGE 3: SMARTER TRADE BRACKETS & POSITION SIZING
+   ========================================================================== */
+.live-bracket-alert {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.live-bracket-alert.circuit-alert {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+}
+
+.live-bracket-alert.rr-alert {
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: #fde68a;
+}
+
+.tc-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.tc-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.tc-badge.vol-high {
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #f87171;
+}
+
+.tc-badge.vol-normal {
+    background: rgba(14, 165, 233, 0.2);
+    border: 1px solid rgba(14, 165, 233, 0.4);
+    color: #38bdf8;
+}
+
+.tc-badge.vol-low {
+    background: rgba(34, 197, 94, 0.2);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    color: #4ade80;
+}
+
+.tc-badge.rr-badge {
+    background: rgba(168, 85, 247, 0.2);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    color: #c084fc;
+}
+
+.tc-badge.stop-badge {
+    background: rgba(244, 63, 94, 0.2);
+    border: 1px solid rgba(244, 63, 94, 0.4);
+    color: #fb7185;
+}
+
+.pivot-tag {
+    display: inline-block;
+    font-size: 0.68rem;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: #fbbf24;
+    margin-left: 4px;
+}
+
+.position-sizing-card {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(30, 41, 59, 0.6) 100%);
+}
+
+.pos-formula-pill {
+    font-size: 0.72rem;
+    font-family: var(--font-mono, monospace);
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pos-calc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-top: 12px;
+}
+
+.pos-input-group label {
+    display: block;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-weight: 600;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.pos-input-wrapper {
+    display: flex;
+    align-items: center;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    padding: 4px 10px;
+    transition: border-color 0.2s;
+}
+
+.pos-input-wrapper:focus-within {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.pos-affix {
+    color: #64748b;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.pos-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #f8fafc;
+    font-size: 1rem;
+    font-weight: 700;
+    font-family: var(--font-mono, monospace);
+    padding: 4px 8px;
+}
+
+.pos-stat-box {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.pos-stat-box.highlight {
+    background: rgba(14, 165, 233, 0.1);
+    border: 1px solid rgba(14, 165, 233, 0.35);
+}
+
+.pos-stat-box .ps-label {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 4px;
+}
+
+.pos-stat-box .ps-value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    font-family: var(--font-mono, monospace);
+    color: #f8fafc;
+}
+
+.pos-stat-box .ps-sub {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 4px;
+}
+
+/* Stage 4: Multi-Timeframe Confluence (MTF) Strip */
+.live-mtf-strip {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(30, 41, 59, 0.7) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-lg, 12px);
+    padding: 14px 18px;
+    margin-bottom: var(--space-xl, 20px);
+    box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1));
+}
+
+.mtf-strip-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.mtf-strip-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+.mtf-summary-badge {
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-family: var(--font-mono, monospace);
+    padding: 4px 10px;
+    border-radius: var(--radius-full, 9999px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: #94a3b8;
+    transition: all 0.2s ease;
+}
+
+.mtf-summary-bullish {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.4);
+    color: #4ade80;
+}
+
+.mtf-summary-bearish {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #f87171;
+}
+
+.mtf-summary-neutral {
+    background: rgba(251, 191, 36, 0.15);
+    border-color: rgba(251, 191, 36, 0.4);
+    color: #fbbf24;
+}
+
+.mtf-summary-counter {
+    background: rgba(244, 63, 94, 0.2);
+    border-color: rgba(244, 63, 94, 0.5);
+    color: #fb7185;
+    animation: pulseMtf 2s infinite ease-in-out;
+}
+
+@keyframes pulseMtf {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.75; }
+}
+
+.mtf-chips-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+
+@media (max-width: 768px) {
+    .mtf-chips-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.mtf-chip {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+    position: relative;
+}
+
+.mtf-chip:hover {
+    background: rgba(30, 41, 59, 0.8);
+    border-color: rgba(56, 189, 248, 0.4);
+    transform: translateY(-1px);
+}
+
+.mtf-chip-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.mtf-tf-name {
+    font-size: 0.9rem;
+    font-weight: 800;
+    font-family: var(--font-mono, monospace);
+    color: #f8fafc;
+}
+
+.mtf-tf-role {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+}
+
+.mtf-chip-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mtf-arrow {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.mtf-state {
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.mtf-details {
+    font-size: 0.68rem;
+    color: #64748b;
+    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Direction Variants */
+.mtf-chip.mtf-dir-up {
+    border-color: rgba(34, 197, 94, 0.3);
+    background: rgba(34, 197, 94, 0.06);
+}
+.mtf-chip.mtf-dir-up .mtf-arrow {
+    color: #22c55e;
+}
+.mtf-chip.mtf-dir-up .mtf-state {
+    color: #4ade80;
+}
+
+.mtf-chip.mtf-dir-down {
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.06);
+}
+.mtf-chip.mtf-dir-down .mtf-arrow {
+    color: #ef4444;
+}
+.mtf-chip.mtf-dir-down .mtf-state {
+    color: #f87171;
+}
+
+.mtf-chip.mtf-dir-neutral {
+    border-color: rgba(251, 191, 36, 0.25);
+    background: rgba(251, 191, 36, 0.05);
+}
+.mtf-chip.mtf-dir-neutral .mtf-arrow {
+    color: #fbbf24;
+}
+.mtf-chip.mtf-dir-neutral .mtf-state {
+    color: #fbbf24;
+}
+
+.mtf-chip.mtf-dir-na {
+    border-color: rgba(148, 163, 184, 0.15);
+    opacity: 0.75;
+}
+.mtf-chip.mtf-dir-na .mtf-arrow {
+    color: #64748b;
+}
+.mtf-chip.mtf-dir-na .mtf-state {
+    color: #94a3b8;
+}
+
+/* ==========================================================================
+   STAGE 5: PSX-SPECIFIC INTELLIGENCE (Event Risk, Ex-Div, Index, Sector)
+   ========================================================================== */
+
+/* Badges in Symbol Row */
+.live-sector-alpha-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    transition: all 0.2s ease;
+}
+
+.live-sector-alpha-badge.alpha-pos {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: #34d399;
+}
+
+.live-sector-alpha-badge.alpha-neg {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #f87171;
+}
+
+.live-sector-alpha-badge.alpha-neu {
+    background: rgba(148, 163, 184, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    color: #cbd5e1;
+}
+
+.live-ex-div-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: #fbbf24;
+}
+
+/* Stage 5 Alert Banners */
+.live-bracket-alert.event-risk-alert {
+    background: rgba(217, 70, 239, 0.12);
+    border: 1px solid rgba(217, 70, 239, 0.45);
+    color: #f0abfc;
+}
+
+.live-bracket-alert.index-headwind-alert {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+}
+
+/* ==========================================================================
+   STAGE 6: SIGNAL TRACK RECORD & CALIBRATION STUDIO
+   ========================================================================== */
+
+.btn-outline-cyan {
+    background: rgba(6, 182, 212, 0.1);
+    border: 1px solid rgba(6, 182, 212, 0.4);
+    color: #06b6d4;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-outline-cyan:hover {
+    background: rgba(6, 182, 212, 0.2);
+    border-color: #06b6d4;
+    transform: translateY(-1px);
+}
+
+.track-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+    .track-stat-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.track-stat-box {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+.track-stat-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 4px;
+}
+
+.track-stat-num {
+    font-size: 1.25rem;
+    font-weight: 800;
+    font-family: var(--font-mono, monospace);
+    color: #f8fafc;
+}
+
+.wilson-ci-badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-left: 6px;
+}
+
+.sample-warning-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 4px;
+    padding: 1px 6px;
+}
+
+.track-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.track-record-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    text-align: left;
+}
+
+.track-record-table th {
+    background: rgba(15, 23, 42, 0.85);
+    padding: 10px 12px;
+    font-weight: 700;
+    color: #94a3b8;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.track-record-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    color: #e2e8f0;
+}
+
+.track-record-table tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.backtest-studio-wrap {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.backtest-comp-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+    .backtest-comp-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.backtest-card {
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.backtest-verdict-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-bottom: 14px;
+}
+
+.backtest-verdict-banner.verdict-positive {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: #34d399;
+}
+
+.backtest-verdict-banner.verdict-neutral {
+    background: rgba(251, 191, 36, 0.15);
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    color: #fbbf24;
+}
+
+/* ========================================================================
+   Stage 8: Workflow Features (Paper Trading, Scanner, Symbol History)
+   ======================================================================== */
+
+/* 8.1 Hero Paper Trade Button */
+.btn-paper-hero {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.btn-paper-hero.paper-buy-mode {
+    background: linear-gradient(135deg, #059669, #10b981);
+    color: #ffffff;
+}
+
+.btn-paper-hero.paper-buy-mode:hover {
+    background: linear-gradient(135deg, #047857, #059669);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+}
+
+.btn-paper-hero.paper-sell-mode {
+    background: linear-gradient(135deg, #dc2626, #ef4444);
+    color: #ffffff;
+}
+
+.btn-paper-hero.paper-sell-mode:hover {
+    background: linear-gradient(135deg, #b91c1c, #dc2626);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+}
+
+/* 8.1 Paper Trade Confirmation Modal */
+.paper-trade-modal-box {
+    max-width: 520px;
+    width: 90%;
+    background: #0f172a;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+}
+
+.paper-param-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-md);
+    padding: 14px;
+}
+
+.paper-param-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.paper-param-item .pp-label {
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.paper-param-item .pp-val {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+
+.paper-shares-input {
+    width: 100%;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(34, 211, 238, 0.4);
+    border-radius: var(--radius-sm);
+    color: #38bdf8;
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    font-weight: 700;
+    padding: 6px 10px;
+    box-sizing: border-box;
+}
+
+.paper-shares-input:focus {
+    outline: none;
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+/* 8.2 Live Market Scanner */
+.live-scanner-card {
+    margin-top: 24px;
+    border: 1px solid rgba(6, 182, 212, 0.25);
+}
+
+.scanner-tab-toggles {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.scanner-toggle-btn {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    padding: 6px 14px;
+    border-radius: var(--radius-full);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.scanner-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+.scanner-toggle-btn.active {
+    background: rgba(6, 182, 212, 0.18);
+    border-color: #06b6d4;
+    color: #22d3ee;
+}
+
+.scanner-table tbody tr {
+    transition: background 0.15s ease;
+}
+
+.scanner-table tbody tr:hover {
+    background: rgba(6, 182, 212, 0.08) !important;
+}
+
+.scanner-score-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+}
+
+.scanner-score-pill.score-high {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.scanner-score-pill.score-med {
+    background: rgba(251, 191, 36, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.35);
+}
+
+.scanner-score-pill.score-low {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.regime-tag {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.05);
+    color: #cbd5e1;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* 8.4 Outcome Pills for Symbol History */
+.outcome-pill.outcome-positive {
+    background: rgba(16, 185, 129, 0.18);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.outcome-pill.outcome-negative {
+    background: rgba(239, 68, 68, 0.18);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.outcome-pill.outcome-neutral {
+    background: rgba(148, 163, 184, 0.18);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+
+
 /* Quick Chips */
 .live-quick-chips {
     display: flex;
@@ -10919,5 +12044,401 @@ body {
     padding: 3px 8px;
     border-radius: 6px;
     display: inline-block;
+}
+
+
+/* ==========================================================================
+   INSTITUTIONAL ENHANCEMENTS: TRADINGVIEW CHARTS, SSE TOASTS & MOBILE PWA
+   ========================================================================== */
+
+/* ─── 1. TradingView Lightweight Charts Styling ─── */
+.stock-chart-section {
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 16px;
+    margin: 16px 0;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.stock-chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.stock-chart-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.stock-chart-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.chart-tf-group {
+    display: inline-flex;
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+}
+
+.chart-tf-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.chart-tf-btn:hover {
+    color: #f8fafc;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.chart-tf-btn.active {
+    color: #fff;
+    background: #6366f1;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+
+.chart-overlay-toggles {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.chart-toggle-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.chart-toggle-badge.vwap {
+    background: rgba(6, 182, 212, 0.15);
+    color: #22d3ee;
+    border-color: rgba(6, 182, 212, 0.3);
+}
+
+.chart-toggle-badge.bands {
+    background: rgba(225, 29, 72, 0.15);
+    color: #f43f5e;
+    border-color: rgba(225, 29, 72, 0.3);
+}
+
+.chart-canvas-wrap {
+    width: 100%;
+    height: 380px;
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #090d16;
+}
+
+.chart-crosshair-legend {
+    position: absolute;
+    top: 10px;
+    left: 12px;
+    z-index: 10;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: #cbd5e1;
+    pointer-events: none;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(4px);
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ─── 2. Real-Time SSE Indicator & Toast Notifications ─── */
+.sse-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #34d399;
+}
+
+.sse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: sse-pulse 2s infinite ease-in-out;
+}
+
+@keyframes sse-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+.sse-toast-container {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 100000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+    max-width: 380px;
+    width: calc(100vw - 48px);
+}
+
+.sse-toast {
+    pointer-events: auto;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(99, 102, 241, 0.4);
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 15px rgba(99, 102, 241, 0.2);
+    animation: toast-slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    transition: all 0.3s ease;
+}
+
+@keyframes toast-slide-in {
+    from { opacity: 0; transform: translateY(-16px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.sse-toast-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.sse-toast-title {
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sse-toast-time {
+    font-size: 0.7rem;
+    color: #64748b;
+}
+
+.sse-toast-body {
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    line-height: 1.4;
+}
+
+/* ─── 3. Mobile Viewport Optimization & Bottom Dock (<= 768px) ─── */
+.mobile-bottom-nav {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    body {
+        padding-bottom: 74px !important;
+    }
+
+    .mobile-bottom-nav {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 64px;
+        background: rgba(15, 23, 42, 0.96);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        z-index: 99999;
+        justify-content: space-around;
+        align-items: center;
+        padding: 0 8px;
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .mobile-nav-btn {
+        flex: 1;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        font-size: 0.7rem;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 6px 0;
+        transition: color 0.15s ease;
+        -webkit-tap-highlight-color: transparent;
+        min-height: 48px;
+    }
+
+    .mobile-nav-btn svg {
+        transition: transform 0.15s ease;
+    }
+
+    .mobile-nav-btn.active {
+        color: #60a5fa;
+    }
+
+    .mobile-nav-btn.active svg {
+        stroke: #60a5fa;
+        transform: translateY(-2px);
+    }
+
+    /* Sticky symbol column on mobile tables */
+    .stock-table th:first-child,
+    .stock-table td:first-child {
+        position: sticky;
+        left: 0;
+        background: #0f172a;
+        z-index: 2;
+        box-shadow: 2px 0 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .chart-canvas-wrap {
+        height: 280px;
+    }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Stage 7: Real Order Book & Market Depth Styles
+   ───────────────────────────────────────────────────────────── */
+.dps-l2-status-pill {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.dps-depth-notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 6px;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    line-height: 1.4;
+}
+
+.dps-depth-notice svg {
+    flex-shrink: 0;
+    color: #38bdf8;
+}
+
+.l2-depth-ladder-wrap {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.l2-depth-ladder {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.l2-depth-col {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 10px;
+}
+
+.l2-col-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+    color: #cbd5e1;
+}
+
+.bids-col .l2-col-title {
+    color: #4ade80;
+}
+
+.asks-col .l2-col-title {
+    color: #f87171;
+}
+
+.l2-level-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.8rem;
+    margin-bottom: 4px;
+}
+
+.l2-level-row.bid {
+    background: rgba(74, 222, 128, 0.08);
+    color: #4ade80;
+}
+
+.l2-level-row.ask {
+    background: rgba(248, 113, 113, 0.08);
+    color: #f87171;
+}
+
+.spoof-alert-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: 6px;
+    font-size: 0.78rem;
+    color: #fca5a5;
 }
 

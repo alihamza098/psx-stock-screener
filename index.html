@@ -852,6 +852,16 @@
                     <span class="live-badge-dot"></span>
                     <span id="live-market-status-text">PSX Status: Checking...</span>
                 </div>
+                <div class="live-freshness-badge freshness-neutral" id="live-freshness-badge" title="Data freshness from PSX DPS feed">
+                    <span class="freshness-dot"></span>
+                    <span id="live-freshness-text">Feed: Checking...</span>
+                </div>
+            </div>
+
+            <!-- Stale Data Warning Banner -->
+            <div class="live-stale-banner" id="live-stale-banner" style="display:none;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span id="live-stale-message">Market open but quote data is stale (&gt;120s old). High conviction signals downgraded to standard BUY/SELL.</span>
             </div>
 
             <!-- Quick Stock Selector Chips -->
@@ -1062,6 +1072,21 @@
                     <div id="pf-win-rate" style="font-size:1.35rem; font-weight:800; color:#a855f7;">0.0%</div>
                     <div id="pf-profit-factor" style="font-size:0.75rem; color:var(--text-tertiary); margin-top:2px;">Profit Factor: 1.0x</div>
                 </div>
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:var(--text-tertiary); font-weight:700; margin-bottom:4px;">Max Drawdown (MDD)</div>
+                    <div id="pf-max-drawdown" style="font-size:1.35rem; font-weight:800; color:#f43f5e;">0.0%</div>
+                    <div id="pf-max-drawdown-pkr" style="font-size:0.75rem; color:var(--text-tertiary); margin-top:2px;">Peak-to-Trough: ₨0.00</div>
+                </div>
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:var(--text-tertiary); font-weight:700; margin-bottom:4px;">Sharpe Ratio</div>
+                    <div id="pf-sharpe-ratio" style="font-size:1.35rem; font-weight:800; color:#06b6d4;">0.00</div>
+                    <div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:2px;">Risk Base: SBP 17.5%</div>
+                </div>
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+                    <div style="font-size:0.72rem; text-transform:uppercase; color:var(--text-tertiary); font-weight:700; margin-bottom:4px;">Payoff Ratio</div>
+                    <div id="pf-payoff-ratio" style="font-size:1.35rem; font-weight:800; color:#10b981;">0.00x</div>
+                    <div id="pf-win-loss-ratio" style="font-size:0.75rem; color:var(--text-tertiary); margin-top:2px;">Win/Loss: 0.00x</div>
+                </div>
             </div>
 
             <!-- Open Positions & Sector Exposure Grid -->
@@ -1130,6 +1155,41 @@
                         </thead>
                         <tbody id="pf-closed-trades-body">
                             <tr><td colspan="9" style="text-align:center; padding:24px; color:var(--text-tertiary);">No closed trades yet.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Automated Trade Journal & Execution Ledger Section -->
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:18px; margin-top:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+                    <div>
+                        <h3 style="font-size:1.05rem; font-weight:800; color:#f8fafc; margin:0; display:flex; align-items:center; gap:8px;">
+                            <span>📖</span> <span>Automated Trade Journal &amp; Execution Analytics</span>
+                            <span id="pf-journal-count-badge" class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; font-size:0.72rem; padding:1px 8px; border-radius:10px;">0 Logged Trades</span>
+                        </h3>
+                        <p style="font-size:0.78rem; color:var(--text-tertiary); margin:4px 0 0 0;">Institutional trade retrospective: R-multiples, execution efficiency, hold times, and rule validation.</p>
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="stock-table" style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border-color); color:var(--text-tertiary); text-align:left;">
+                                <th style="padding:8px 10px;">Trade ID</th>
+                                <th style="padding:8px 10px;">Symbol</th>
+                                <th style="padding:8px 10px;">Shares</th>
+                                <th style="padding:8px 10px;">Entry Price</th>
+                                <th style="padding:8px 10px;">Exit Price</th>
+                                <th style="padding:8px 10px;">Realized P&amp;L</th>
+                                <th style="padding:8px 10px;">Return %</th>
+                                <th style="padding:8px 10px;">R-Multiple</th>
+                                <th style="padding:8px 10px;">Status</th>
+                                <th style="padding:8px 10px;">Exit Reason / Strategy</th>
+                                <th style="padding:8px 10px;">Exit Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pf-trade-journal-body">
+                            <tr><td colspan="11" style="text-align:center; padding:24px; color:var(--text-tertiary);">No journaled trades yet.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -2792,6 +2852,29 @@
         </div>
     </div>
 
+    <script src="lightweight-charts.standalone.production.js"></script>
     <script src="app.js?v=3.4"></script>
+    <!-- Real-Time SSE Intraday Alert Toasts Container -->
+    <div id="sse-toast-container" class="sse-toast-container"></div>
+
+    <!-- Mobile Bottom Navigation Dock (<= 768px) -->
+    <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+        <button class="mobile-nav-btn active" data-view="table" onclick="switchView('table')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+            <span>Screener</span>
+        </button>
+        <button class="mobile-nav-btn" data-view="multibagger" onclick="switchView('multibagger')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            <span>Multibagger</span>
+        </button>
+        <button class="mobile-nav-btn" data-view="portfolio" onclick="switchView('portfolio')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            <span>Portfolio</span>
+        </button>
+        <button class="mobile-nav-btn" data-view="intelligence" onclick="switchView('intelligence')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span>Alerts</span>
+        </button>
+    </nav>
 </body>
 </html>

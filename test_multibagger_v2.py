@@ -116,6 +116,28 @@ class TestMultibaggerV2(unittest.TestCase):
         self.assertIn('historical_twin', thesis)
         self.assertIn('risk_shield', thesis)
 
+    def test_archetype_benchmark_library_expansion(self):
+        from multibagger.analogs import ARCHETYPE_LIBRARY
+        self.assertGreaterEqual(len(ARCHETYPE_LIBRARY), 30, 'Benchmark library must contain at least 30 historical runners')
+        tickers = [a['ticker'] for a in ARCHETYPE_LIBRARY]
+        self.assertEqual(len(tickers), len(set(tickers)), 'All tickers in archetype library must be unique')
+        for a in ARCHETYPE_LIBRARY:
+            self.assertIn('ticker', a)
+            self.assertIn('company_name', a)
+            self.assertIn('sector', a)
+            self.assertIn('price', a)
+            self.assertGreater(a['price'], 0)
+            self.assertIn('float_shares', a)
+            self.assertGreater(a['float_shares'], 0)
+            self.assertIn('peak_multiple', a)
+            self.assertGreaterEqual(a['peak_multiple'], 3.0)
+            self.assertIn('run_start_date', a)
+            self.assertIn('run_peak_date', a)
+            self.assertIn('tags', a)
+            self.assertGreaterEqual(len(a['tags']), 1)
+            self.assertIn('notes', a)
+            self.assertGreater(len(a['notes']), 10)
+
 
 if __name__ == '__main__':
     unittest.main()

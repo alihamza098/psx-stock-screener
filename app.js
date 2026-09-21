@@ -780,6 +780,39 @@ async function showDetail(symbol) {
             </div>
         </div>
 
+        <!-- TradingView Lightweight Interactive Candlestick Chart -->
+        <div class="stock-chart-section">
+            <div class="stock-chart-header">
+                <div class="stock-chart-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+                    <span>Multi-Timeframe Candlestick &amp; Volume Analysis</span>
+                </div>
+                <div class="stock-chart-controls">
+                    <div class="chart-tf-group" id="chart-tf-group">
+                        <button class="chart-tf-btn" data-tf="15M" onclick="switchStockChartTimeframe('${stock.symbol}', '15M')">15M</button>
+                        <button class="chart-tf-btn" data-tf="1H" onclick="switchStockChartTimeframe('${stock.symbol}', '1H')">1H</button>
+                        <button class="chart-tf-btn" data-tf="4H" onclick="switchStockChartTimeframe('${stock.symbol}', '4H')">4H</button>
+                        <button class="chart-tf-btn active" data-tf="1D" onclick="switchStockChartTimeframe('${stock.symbol}', '1D')">1D</button>
+                        <button class="chart-tf-btn" data-tf="1W" onclick="switchStockChartTimeframe('${stock.symbol}', '1W')">1W</button>
+                    </div>
+                    <div class="chart-overlay-toggles">
+                        <span class="chart-toggle-badge vwap" title="Volume-Weighted Average Price">VWAP</span>
+                        <span class="chart-toggle-badge bands" title="PSX Upper &amp; Lower Circuit Breaker Limits (+/- 7.5%)">Circuit (±7.5%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-canvas-wrap" id="stock-chart-container">
+                <div class="chart-crosshair-legend" id="chart-legend">
+                    <span>O: <strong id="leg-open">-</strong></span>
+                    <span>H: <strong id="leg-high">-</strong></span>
+                    <span>L: <strong id="leg-low">-</strong></span>
+                    <span>C: <strong id="leg-close">-</strong></span>
+                    <span>VWAP: <strong id="leg-vwap" style="color:#06b6d4">-</strong></span>
+                </div>
+                <div id="stock-chart-render-target" style="width:100%; height:100%;"></div>
+            </div>
+        </div>
+
         <div class="detail-section">
             <div class="detail-score-section">
                 <div class="detail-score-header">
@@ -837,6 +870,11 @@ async function showDetail(symbol) {
     `;
 
     document.getElementById("detail-modal").style.display = "flex";
+
+    // Render TradingView Lightweight Chart
+    setTimeout(() => {
+        renderTradingViewChart(stock.symbol, '1D');
+    }, 60);
 
     // Fetch live company data
     try {
@@ -1216,6 +1254,15 @@ function switchView(view) {
     if (searchContainer) searchContainer.style.display = isScreenerView ? "flex" : "none";
     if (screenerToggle) screenerToggle.style.display = isScreenerView ? "flex" : "none";
 
+    // Sync mobile bottom navigation dock
+    document.querySelectorAll('.mobile-nav-btn').forEach(b => {
+        if (b.getAttribute('data-view') === view) {
+            b.classList.add('active');
+        } else {
+            b.classList.remove('active');
+        }
+    });
+
     // Check if this tab is marked COMING SOON / OFFLINE
     if (appTabStatuses[view] && appTabStatuses[view].status === "OFFLINE") {
         const targetViewEl = document.getElementById(`view-${view}`);
@@ -1390,6 +1437,10 @@ function initEventListeners() {
     // Detail modal close
     document.getElementById("btn-close-detail").addEventListener("click", () => {
         document.getElementById("detail-modal").style.display = "none";
+        if (currentTradingViewChart) {
+            try { currentTradingViewChart.remove(); } catch (e) {}
+            currentTradingViewChart = null;
+        }
     });
 
     // Modal overlay click to close
@@ -2824,6 +2875,309 @@ function calcSupportResistance(price, history) {
     return { pivot, r1, r2, s1, s2 };
 }
 
+function calcTechnicalEMA(closes, period = 20) {
+    if (!closes || closes.length === 0) return 0;
+    const arr = closes.slice().reverse();
+    if (arr.length < period) return arr[arr.length - 1];
+    const k = 2 / (period + 1);
+    let ema = arr.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    for (let i = period; i < arr.length; i++) {
+        ema = arr[i] * k + ema * (1 - k);
+    }
+    return ema;
+}
+
+function calcTechnicalADX(history, period = 14) {
+    if (!history || history.length < period + 1) return { adx: 20.0, plusDI: 20.0, minusDI: 20.0 };
+    const bars = history.slice().reverse();
+    const tr = [];
+    const plusDM = [];
+    const minusDM = [];
+
+    for (let i = 1; i < bars.length; i++) {
+        const h = bars[i].high !== undefined ? bars[i].high : bars[i].close * 1.01;
+        const l = bars[i].low !== undefined ? bars[i].low : bars[i].close * 0.99;
+        const prevH = bars[i - 1].high !== undefined ? bars[i - 1].high : bars[i - 1].close * 1.01;
+        const prevL = bars[i - 1].low !== undefined ? bars[i - 1].low : bars[i - 1].close * 0.99;
+        const prevC = bars[i - 1].close;
+
+        tr.push(Math.max(h - l, Math.abs(h - prevC), Math.abs(l - prevC)));
+        const upMove = h - prevH;
+        const downMove = prevL - l;
+        plusDM.push((upMove > downMove && upMove > 0) ? upMove : 0);
+        minusDM.push((downMove > upMove && downMove > 0) ? downMove : 0);
+    }
+
+    if (tr.length < period) return { adx: 20.0, plusDI: 20.0, minusDI: 20.0 };
+
+    let smoothTR = tr.slice(0, period).reduce((a, b) => a + b, 0);
+    let smoothPlusDM = plusDM.slice(0, period).reduce((a, b) => a + b, 0);
+    let smoothMinusDM = minusDM.slice(0, period).reduce((a, b) => a + b, 0);
+
+    const dxList = [];
+    const getDX = (pDM, mDM, sTR) => {
+        if (sTR === 0) return 0;
+        const pDI = (pDM / sTR) * 100;
+        const mDI = (mDM / sTR) * 100;
+        const sumDI = pDI + mDI;
+        return sumDI > 0 ? (Math.abs(pDI - mDI) / sumDI) * 100 : 0;
+    };
+
+    dxList.push(getDX(smoothPlusDM, smoothMinusDM, smoothTR));
+
+    for (let i = period; i < tr.length; i++) {
+        smoothTR = smoothTR - (smoothTR / period) + tr[i];
+        smoothPlusDM = smoothPlusDM - (smoothPlusDM / period) + plusDM[i];
+        smoothMinusDM = smoothMinusDM - (smoothMinusDM / period) + minusDM[i];
+        dxList.push(getDX(smoothPlusDM, smoothMinusDM, smoothTR));
+    }
+
+    if (dxList.length < period) return { adx: dxList[dxList.length - 1] || 20.0, plusDI: 20.0, minusDI: 20.0 };
+
+    let adx = dxList.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    for (let i = period; i < dxList.length; i++) {
+        adx = ((adx * (period - 1)) + dxList[i]) / period;
+    }
+
+    const curPDI = smoothTR > 0 ? (smoothPlusDM / smoothTR) * 100 : 20.0;
+    const curMDI = smoothTR > 0 ? (smoothMinusDM / smoothTR) * 100 : 20.0;
+    return {
+        adx: Math.round(adx * 10) / 10,
+        plusDI: Math.round(curPDI * 10) / 10,
+        minusDI: Math.round(curMDI * 10) / 10
+    };
+}
+
+// ─── Stage 3: Technical ATR, Position Sizing, and Trade Brackets ───
+
+function calcTechnicalATR(history, period = 14) {
+    if (!history || history.length < 2) {
+        const lastPrice = history && history.length ? (history[0].close || 100.0) : 100.0;
+        return lastPrice * 0.025;
+    }
+    const bars = history.slice().reverse();
+    const tr = [bars[0].high !== undefined ? (bars[0].high - bars[0].low) : (bars[0].close * 0.02)];
+    for (let i = 1; i < bars.length; i++) {
+        const h = bars[i].high !== undefined ? bars[i].high : bars[i].close * 1.01;
+        const l = bars[i].low !== undefined ? bars[i].low : bars[i].close * 0.99;
+        const prevC = bars[i - 1].close;
+        tr.push(Math.max(h - l, Math.abs(h - prevC), Math.abs(l - prevC)));
+    }
+    if (tr.length < period) {
+        const avgTR = tr.reduce((a, b) => a + b, 0) / tr.length;
+        return avgTR > 0 ? avgTR : bars[bars.length - 1].close * 0.025;
+    }
+    let atr = tr.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    for (let i = period; i < tr.length; i++) {
+        atr = (atr * (period - 1) + tr[i]) / period;
+    }
+    return Math.round(atr * 100) / 100;
+}
+
+function calculatePositionSize(capital, riskPct, entry, stop) {
+    try {
+        const cap = parseFloat(capital) || 0;
+        const rp = parseFloat(riskPct) || 0;
+        const ent = parseFloat(entry) || 0;
+        const stp = parseFloat(stop) || 0;
+
+        if (cap <= 0 || rp <= 0 || ent <= 0) {
+            return { shares: 0, pkrAtRisk: 0, totalOutlay: 0, riskAmount: 0, perShareRisk: 0 };
+        }
+
+        const riskAmount = cap * (rp / 100.0);
+        const perShareRisk = Math.abs(ent - stp);
+
+        if (perShareRisk <= 0.0001) {
+            return { shares: 0, pkrAtRisk: 0, totalOutlay: 0, riskAmount: Math.round(riskAmount), perShareRisk: 0 };
+        }
+
+        const shares = Math.floor(riskAmount / perShareRisk);
+        const pkrAtRisk = Math.round(shares * perShareRisk * 100) / 100;
+        const totalOutlay = Math.round(shares * ent * 100) / 100;
+
+        return {
+            shares,
+            pkrAtRisk,
+            totalOutlay,
+            riskAmount: Math.round(riskAmount * 100) / 100,
+            perShareRisk: Math.round(perShareRisk * 100) / 100
+        };
+    } catch (e) {
+        console.error("Error in calculatePositionSize:", e);
+        return { shares: 0, pkrAtRisk: 0, totalOutlay: 0, riskAmount: 0, perShareRisk: 0 };
+    }
+}
+
+function computeTradeBrackets(entry, recommendation, regime, atr, pivots, stock, config) {
+    const isBuy = recommendation.includes("BUY");
+    const isSell = recommendation.includes("SELL");
+
+    // Regime-tuned multipliers (Trending: wider 1.5 / 3.0, Range-Bound: tighter 1.2 / 2.0)
+    const kStop = regime === "Trending" ? 1.5 : 1.2;
+    const kTarget = regime === "Trending" ? 3.0 : 2.0;
+
+    const safeATR = atr > 0 ? atr : entry * 0.025;
+
+    // 1. Base ATR brackets
+    let rawStop, rawTarget;
+    if (isBuy) {
+        rawStop = entry - (kStop * safeATR);
+        rawTarget = entry + (kTarget * safeATR);
+    } else if (isSell) {
+        rawStop = entry + (kStop * safeATR);
+        rawTarget = entry - (kTarget * safeATR);
+    } else { // HOLD
+        rawStop = entry - (1.0 * safeATR);
+        rawTarget = entry + (1.5 * safeATR);
+    }
+
+    // 2. PSX Circuit limits awareness (Requirement 3.2)
+    const circuitPct = (stock && stock.circuit_limit_pct) ? Number(stock.circuit_limit_pct) : 7.5;
+    const circuitAssumed = !stock || stock.circuit_limit_pct === undefined;
+
+    let refPrice = entry;
+    if (stock && stock.ldcp) {
+        refPrice = Number(stock.ldcp);
+    } else if (stock && stock.change !== undefined && stock.change !== null) {
+        const chg = Number(stock.change);
+        refPrice = (1 + chg / 100) !== 0 ? entry / (1 + chg / 100) : entry;
+    }
+
+    const bandSpread = Math.max(1.00, refPrice * (circuitPct / 100.0));
+    const circuitUpper = Math.round((refPrice + bandSpread) * 100) / 100;
+    const circuitLower = Math.round(Math.max(0.01, refPrice - bandSpread) * 100) / 100;
+
+    const isNearUpper = entry >= (circuitUpper * 0.99);
+    const isNearLower = entry <= (circuitLower * 1.01);
+    const isNearCircuit = isNearUpper || isNearLower;
+    const circuitWarning = isNearCircuit ? "Near circuit: exit liquidity risk" : null;
+
+    // Clamp to circuit limits
+    let clampedTarget = rawTarget;
+    let clampedStop = rawStop;
+    if (isBuy) {
+        clampedTarget = Math.min(rawTarget, circuitUpper);
+        clampedStop = Math.max(rawStop, circuitLower);
+    } else if (isSell) {
+        clampedTarget = Math.max(rawTarget, circuitLower);
+        clampedStop = Math.min(rawStop, circuitUpper);
+    } else {
+        clampedTarget = Math.min(rawTarget, circuitUpper);
+        clampedStop = Math.max(rawStop, circuitLower);
+    }
+
+    // 3. Pivot Anchoring (Requirement 3.3)
+    let target = clampedTarget;
+    let stop = clampedStop;
+    let pivotAnchoredTarget = false;
+    let pivotAnchoredStop = false;
+
+    if (pivots) {
+        const { r1, r2, s1, s2 } = pivots;
+        if (isBuy) {
+            if (r1 && entry < r1 && target > r1) {
+                target = Math.round(r1 * 0.995 * 100) / 100;
+                pivotAnchoredTarget = true;
+            } else if (r2 && entry < r2 && target > r2) {
+                target = Math.round(r2 * 0.995 * 100) / 100;
+                pivotAnchoredTarget = true;
+            }
+            if (s1 && entry > s1 && stop < s1) {
+                stop = Math.round(s1 * 1.005 * 100) / 100;
+                pivotAnchoredStop = true;
+            } else if (s2 && entry > s2 && stop < s2) {
+                stop = Math.round(s2 * 1.005 * 100) / 100;
+                pivotAnchoredStop = true;
+            }
+        } else if (isSell) {
+            if (s1 && entry > s1 && target < s1) {
+                target = Math.round(s1 * 1.005 * 100) / 100;
+                pivotAnchoredTarget = true;
+            } else if (s2 && entry > s2 && target < s2) {
+                target = Math.round(s2 * 1.005 * 100) / 100;
+                pivotAnchoredTarget = true;
+            }
+            if (r1 && entry < r1 && stop > r1) {
+                stop = Math.round(r1 * 0.995 * 100) / 100;
+                pivotAnchoredStop = true;
+            }
+        }
+    }
+
+    // Non-crossing safety guarantee
+    if (isBuy) {
+        if (target <= entry) target = Math.round((entry + Math.max(0.10, safeATR * 0.5)) * 100) / 100;
+        if (stop >= entry) stop = Math.round((entry - Math.max(0.10, safeATR * 0.5)) * 100) / 100;
+    } else if (isSell) {
+        if (target >= entry) target = Math.round((entry - Math.max(0.10, safeATR * 0.5)) * 100) / 100;
+        if (stop <= entry) stop = Math.round((entry + Math.max(0.10, safeATR * 0.5)) * 100) / 100;
+    }
+
+    // 4. Risk / Reward Calculation (Requirement 3.4)
+    let grossRisk = 0.01;
+    let grossReward = 0.0;
+    if (isBuy) {
+        grossRisk = Math.max(0.01, entry - stop);
+        grossReward = Math.max(0.0, target - entry);
+    } else if (isSell) {
+        grossRisk = Math.max(0.01, stop - entry);
+        grossReward = Math.max(0.0, entry - target);
+    } else {
+        grossRisk = Math.max(0.01, entry - stop);
+        grossReward = Math.max(0.0, target - entry);
+    }
+
+    const grossRR = Math.round((grossReward / grossRisk) * 100) / 100;
+
+    // Transaction costs round-trip friction (~0.35%)
+    const frictionPct = 0.0035;
+    const friction = entry * frictionPct;
+    const netReward = Math.max(0.0, grossReward - friction);
+    const netRisk = grossRisk + friction;
+    const netRR = Math.round((netReward / Math.max(0.01, netRisk)) * 100) / 100;
+
+    const isPoorRR = grossRR < 1.5;
+    let adjustedRec = recommendation;
+    if (isPoorRR && recommendation !== "HOLD") {
+        if (recommendation === "STRONG BUY") adjustedRec = "BUY";
+        else if (recommendation === "BUY") adjustedRec = "HOLD";
+        else if (recommendation === "STRONG SELL") adjustedRec = "SELL";
+        else if (recommendation === "SELL") adjustedRec = "HOLD";
+    }
+
+    // 5. Volatility Level (Requirement 3.6)
+    const atrPct = entry > 0 ? (safeATR / entry) * 100 : 0;
+    let volatilityLevel = "Normal";
+    if (atrPct >= 4.0) volatilityLevel = "High";
+    else if (atrPct < 2.5) volatilityLevel = "Low";
+
+    return {
+        entry: Math.round(entry * 100) / 100,
+        target: Math.round(target * 100) / 100,
+        stop: Math.round(stop * 100) / 100,
+        kStop,
+        kTarget,
+        atr: Math.round(safeATR * 100) / 100,
+        atrPct: Math.round(atrPct * 100) / 100,
+        volatilityLevel,
+        circuitUpper,
+        circuitLower,
+        circuitPct,
+        circuitAssumed,
+        isNearCircuit,
+        circuitWarning,
+        pivotAnchoredTarget,
+        pivotAnchoredStop,
+        grossRR,
+        netRR,
+        isPoorRR,
+        originalRecommendation: recommendation,
+        adjustedRecommendation: adjustedRec,
+        frictionPct: 0.35
+    };
+}
+
 // ─── High-Performance Multi-Panel Interactive Technical Chart Studio ───
 
 function initInteractiveTechnicalChart(containerId, symbol, initialTf = "4H") {
@@ -3627,21 +3981,20 @@ function saveChartSettings(containerId) {
     }
 }
 
-function generateLiveRecommendation(stock, history, marketStatus) {
+// ─── Stage 2: Scoring Engine v1 (Preserved for comparison) ───
+function generateLiveRecommendationV1(stock, history, marketStatus) {
     const price = stock.price || 0;
     const change = stock.change || 0;
     const volume = stock.volume || 0;
     const avgVol = stock.avgVolume || stock.volume || 1;
     const closes = history.length ? history.map(d => d.close) : [price];
 
-    // Compute technical indicators
     const rsi = calcTechnicalRSI(closes);
     const macd = calcTechnicalMACD(closes);
     const bb = calcTechnicalBollingerBands(closes);
     const vwap = calcTechnicalVWAP(price, volume, history);
     const sr = calcSupportResistance(price, history);
 
-    // Order flow buy/sell ratio (simulated intraday depth balance from price change + volume)
     let buyRatio = 50;
     if (change > 3) buyRatio = 72;
     else if (change > 1) buyRatio = 62;
@@ -3651,11 +4004,9 @@ function generateLiveRecommendation(stock, history, marketStatus) {
     else if (change < 0) buyRatio = 46;
     const sellRatio = 100 - buyRatio;
 
-    // Technical scoring (0 - 100)
     let score = 50;
     const factors = [];
 
-    // Factor 1: Momentum & Change %
     if (change >= 3) {
         score += 15;
         factors.push({ icon: "📈", text: `Strong intraday bullish momentum (+${change.toFixed(2)}%)`, weight: "High" });
@@ -3670,7 +4021,6 @@ function generateLiveRecommendation(stock, history, marketStatus) {
         factors.push({ icon: "🔽", text: `Negative price movement (${change.toFixed(2)}%)`, weight: "Med" });
     }
 
-    // Factor 2: VWAP Crossover
     if (price > vwap) {
         score += 10;
         factors.push({ icon: "⚡", text: `Trading ABOVE Volume Weighted Avg Price (₨${vwap.toFixed(2)})`, weight: "High" });
@@ -3679,7 +4029,6 @@ function generateLiveRecommendation(stock, history, marketStatus) {
         factors.push({ icon: "⚠️", text: `Trading BELOW Volume Weighted Avg Price (₨${vwap.toFixed(2)})`, weight: "High" });
     }
 
-    // Factor 3: RSI (14)
     if (rsi < 30) {
         score += 15;
         factors.push({ icon: "🟢", text: `RSI Oversold (${rsi.toFixed(1)}) — Potential Reversal Bounce`, weight: "High" });
@@ -3693,7 +4042,6 @@ function generateLiveRecommendation(stock, history, marketStatus) {
         factors.push({ icon: "➡️", text: `RSI Neutral (${rsi.toFixed(1)})`, weight: "Low" });
     }
 
-    // Factor 4: MACD Histogram
     if (macd.histogram > 0) {
         score += 8;
         factors.push({ icon: "📊", text: "MACD Histogram Positive (Bullish Momentum)", weight: "Med" });
@@ -3702,7 +4050,6 @@ function generateLiveRecommendation(stock, history, marketStatus) {
         factors.push({ icon: "📊", text: "MACD Histogram Negative (Bearish Trend)", weight: "Med" });
     }
 
-    // Factor 5: Order Flow Ratio
     if (buyRatio >= 60) {
         score += 10;
         factors.push({ icon: "🛒", text: `Buy Order Flow Dominance (${buyRatio}% Buyers)`, weight: "High" });
@@ -3711,17 +4058,14 @@ function generateLiveRecommendation(stock, history, marketStatus) {
         factors.push({ icon: "🏷️", text: `Sell Order Flow Dominance (${sellRatio}% Sellers)`, weight: "High" });
     }
 
-    // Factor 6: Volume Spike
     const volRatio = volume / Math.max(1, avgVol);
     if (volRatio > 1.5) {
         score += (change >= 0 ? 10 : -10);
         factors.push({ icon: "🔥", text: `High Volume Spike (${formatVolume(volume)} vs 30D avg)`, weight: "High" });
     }
 
-    // Cap score 0 - 100
     score = Math.max(5, Math.min(95, score));
 
-    // Signal Recommendation Determination
     let recommendation = "HOLD";
     let signalClass = "signal-hold";
     let signalColor = "#fbbf24";
@@ -3744,18 +4088,13 @@ function generateLiveRecommendation(stock, history, marketStatus) {
         signalColor = "#f87171";
     }
 
-    // Risk level
     let riskLevel = "Medium";
     if (rsi > 75 || rsi < 25 || Math.abs(change) > 5) riskLevel = "High";
     else if (score >= 50 && score <= 65 && Math.abs(change) < 2) riskLevel = "Low";
 
-    // Target, Entry, Stop Loss
     const suggestedEntry = price;
     const targetMultiplier = score >= 60 ? 1.045 : score <= 40 ? 0.955 : 1.025;
     const stopMultiplier = score >= 60 ? 0.975 : score <= 40 ? 1.025 : 0.98;
-
-    const targetPrice = price * targetMultiplier;
-    const stopLoss = price * stopMultiplier;
 
     return {
         recommendation,
@@ -3764,8 +4103,8 @@ function generateLiveRecommendation(stock, history, marketStatus) {
         confidence: score,
         riskLevel,
         suggestedEntry,
-        targetPrice,
-        stopLoss,
+        targetPrice: price * targetMultiplier,
+        stopLoss: price * stopMultiplier,
         rsi,
         macd,
         bb,
@@ -3775,6 +4114,980 @@ function generateLiveRecommendation(stock, history, marketStatus) {
         sellRatio,
         factors
     };
+}
+
+// ─── Stage 4: Multi-Timeframe Confluence (MTF) Engine & Cache ───
+const _mtfCache = {}; // { [symbol]: { timestamp: number, tfMap: object, confluence: object } }
+
+function calcEMAFromChronologicalSeries(closes, period) {
+    if (!closes || closes.length === 0) return 0;
+    const n = closes.length;
+    if (n < period) {
+        return closes.reduce((a, b) => a + b, 0) / n;
+    }
+    const k = 2 / (period + 1);
+    let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    for (let i = period; i < n; i++) {
+        ema = closes[i] * k + ema * (1 - k);
+    }
+    return ema;
+}
+
+function analyzeTimeframeCandles(candles) {
+    if (!candles || candles.length < 5) {
+        return {
+            direction: "n/a",
+            status: "insufficient_data",
+            details: "Insufficient candle data (<5 bars)",
+            ema_trend: "neutral",
+            macd_trend: "neutral"
+        };
+    }
+
+    const closes = candles.map(c => Number(c.close || 0));
+    const n = closes.length;
+    const lastPrice = closes[n - 1];
+
+    // EMA Alignment
+    const ema20 = calcEMAFromChronologicalSeries(closes, Math.min(20, n));
+    const ema50 = n >= 50 ? calcEMAFromChronologicalSeries(closes, 50) : (closes.reduce((a, b) => a + b, 0) / n);
+
+    let emaScore = 0.0;
+    let emaTrend = "neutral";
+    if (lastPrice > ema20 && ema20 >= ema50) {
+        emaScore = 1.0;
+        emaTrend = "bullish";
+    } else if (lastPrice < ema20 && ema20 <= ema50) {
+        emaScore = -1.0;
+        emaTrend = "bearish";
+    } else if (lastPrice > ema20) {
+        emaScore = 0.5;
+        emaTrend = "mild_bullish";
+    } else if (lastPrice < ema20) {
+        emaScore = -0.5;
+        emaTrend = "mild_bearish";
+    }
+
+    // MACD State
+    let macdScore = 0.0;
+    let macdTrend = "neutral";
+    if (n >= 26) {
+        const macdData = computeMACDSeries(closes, 12, 26, 9);
+        const hist = (macdData.histogram && macdData.histogram[n - 1] !== null) ? macdData.histogram[n - 1] : 0.0;
+        const line = (macdData.macdLine && macdData.macdLine[n - 1] !== null) ? macdData.macdLine[n - 1] : 0.0;
+        const sig = (macdData.signalLine && macdData.signalLine[n - 1] !== null) ? macdData.signalLine[n - 1] : 0.0;
+
+        if (line > 0 && hist >= -0.001) {
+            macdScore = 1.0;
+            macdTrend = "bullish";
+        } else if (line < 0 && hist <= 0.001) {
+            macdScore = -1.0;
+            macdTrend = "bearish";
+        } else if (line > sig) {
+            macdScore = 0.5;
+            macdTrend = "mild_bullish";
+        } else if (line < sig) {
+            macdScore = -0.5;
+            macdTrend = "mild_bearish";
+        }
+    }
+
+    const total = emaScore + macdScore;
+    let direction = "neutral";
+    let details = "Neutral / Mixed momentum";
+    if (total >= 1.0) {
+        direction = "up";
+        details = "Bullish alignment (Price > EMA, MACD expanding)";
+    } else if (total <= -1.0) {
+        direction = "down";
+        details = "Bearish alignment (Price < EMA, MACD declining)";
+    }
+
+    return {
+        direction,
+        status: "ok",
+        details,
+        last_price: Number(lastPrice.toFixed(2)),
+        ema20: Number(ema20.toFixed(2)),
+        ema50: Number(ema50.toFixed(2)),
+        ema_trend: emaTrend,
+        macd_trend: macdTrend
+    };
+}
+
+function evaluateMultiTimeframeConfluence(tfMap, currentRec) {
+    const d1d = tfMap["1D"]?.direction || "n/a";
+    const d4h = tfMap["4H"]?.direction || "n/a";
+    const d1h = tfMap["1H"]?.direction || "n/a";
+    const d15m = tfMap["15M"]?.direction || "n/a";
+
+    let adjustedRec = currentRec;
+    let downgradeReason = null;
+    let counterTrend = false;
+    let counterTrendTag = null;
+
+    // Rule B: Counter-trend check (15M vs 4H)
+    if (d4h === "down" && (currentRec === "STRONG BUY" || currentRec === "BUY")) {
+        adjustedRec = "HOLD";
+        counterTrend = true;
+        counterTrendTag = "Counter-trend (4H Bearish Bias)";
+    } else if (d4h === "up" && (currentRec === "STRONG SELL" || currentRec === "SELL")) {
+        adjustedRec = "HOLD";
+        counterTrend = true;
+        counterTrendTag = "Counter-trend (4H Bullish Bias)";
+    }
+
+    // Rule A: Higher timeframes agreement for STRONG BUY / STRONG SELL
+    if (!counterTrend) {
+        if (currentRec === "STRONG BUY" && !(d1d === "up" && d4h === "up")) {
+            adjustedRec = "BUY";
+            downgradeReason = "Higher timeframes (1D / 4H) not fully aligned bullish — Downgraded to BUY";
+        } else if (currentRec === "STRONG SELL" && !(d1d === "down" && d4h === "down")) {
+            adjustedRec = "SELL";
+            downgradeReason = "Higher timeframes (1D / 4H) not fully aligned bearish — Downgraded to SELL";
+        }
+    }
+
+    // Count alignments
+    let bullishCount = 0;
+    let bearishCount = 0;
+    let neutralCount = 0;
+    Object.values(tfMap).forEach(res => {
+        if (res.direction === "up") bullishCount++;
+        else if (res.direction === "down") bearishCount++;
+        else neutralCount++;
+    });
+
+    let summaryText = "";
+    if (counterTrend) {
+        summaryText = counterTrendTag;
+    } else if (bullishCount >= 3) {
+        summaryText = `${bullishCount}/4 Timeframes Bullish`;
+    } else if (bearishCount >= 3) {
+        summaryText = `${bearishCount}/4 Timeframes Bearish`;
+    } else if (d1d === "down" && d4h === "down") {
+        summaryText = "Mixed — Higher TF Bearish";
+    } else if (d1d === "up" && d4h === "up") {
+        summaryText = "Mixed — Higher TF Bullish";
+    } else {
+        summaryText = "Mixed Timeframe Alignment";
+    }
+
+    return {
+        timeframes: tfMap,
+        original_recommendation: currentRec,
+        adjusted_recommendation: adjustedRec,
+        downgrade_reason: downgradeReason,
+        counter_trend: counterTrend,
+        counter_trend_tag: counterTrendTag,
+        bullish_count: bullishCount,
+        bearish_count: bearishCount,
+        neutral_count: neutralCount,
+        alignment_summary: summaryText
+    };
+}
+
+function fetchMultiTimeframeConfluence(symbol, currentRec, callback) {
+    const sym = (symbol || "").toUpperCase();
+    if (!sym) return;
+
+    const now = Date.now();
+    const cached = _mtfCache[sym];
+    if (cached && (now - cached.timestamp < 60000) && cached.tfMap) {
+        const conf = evaluateMultiTimeframeConfluence(cached.tfMap, currentRec);
+        cached.confluence = conf;
+        if (typeof callback === "function") callback(cached.tfMap, conf);
+        return;
+    }
+
+    const tfs = ["15M", "1H", "4H", "1D"];
+    const promises = tfs.map(tf =>
+        fetch(`/api/chart-data?symbol=${encodeURIComponent(sym)}&timeframe=${tf}&limit=70`)
+            .then(r => r.json())
+            .then(res => ({ tf, ok: res.success, candles: res.candles || [] }))
+            .catch(() => ({ tf, ok: false, candles: [] }))
+    );
+
+    Promise.allSettled(promises).then(settledResults => {
+        const tfMap = {};
+        tfs.forEach((tf, i) => {
+            const res = settledResults[i];
+            if (res && res.status === "fulfilled" && res.value && res.value.ok && res.value.candles && res.value.candles.length >= 5) {
+                tfMap[tf] = analyzeTimeframeCandles(res.value.candles);
+            } else {
+                tfMap[tf] = {
+                    direction: "n/a",
+                    status: "insufficient_data",
+                    details: "Data unavailable",
+                    ema_trend: "neutral",
+                    macd_trend: "neutral"
+                };
+            }
+        });
+
+        const conf = evaluateMultiTimeframeConfluence(tfMap, currentRec);
+        _mtfCache[sym] = {
+            timestamp: Date.now(),
+            tfMap: tfMap,
+            confluence: conf
+        };
+
+        if (typeof callback === "function") {
+            callback(tfMap, conf);
+        }
+    });
+}
+
+function updateMtfStripDOM(symbol, tfMap, confluence) {
+    if (!tfMap || !confluence) return;
+    const summaryBadge = document.getElementById("mtf-summary-badge");
+    if (summaryBadge) {
+        summaryBadge.textContent = confluence.alignment_summary || "Aligned";
+        summaryBadge.className = "mtf-summary-badge";
+        if (confluence.counter_trend) {
+            summaryBadge.classList.add("mtf-summary-counter");
+        } else if (confluence.bullish_count >= 3) {
+            summaryBadge.classList.add("mtf-summary-bullish");
+        } else if (confluence.bearish_count >= 3) {
+            summaryBadge.classList.add("mtf-summary-bearish");
+        } else {
+            summaryBadge.classList.add("mtf-summary-neutral");
+        }
+    }
+
+    const tfs = ["15M", "1H", "4H", "1D"];
+    tfs.forEach(tf => {
+        const chip = document.getElementById(`mtf-chip-${tf}`);
+        const arrow = document.getElementById(`mtf-arrow-${tf}`);
+        const state = document.getElementById(`mtf-state-${tf}`);
+        const details = document.getElementById(`mtf-details-${tf}`);
+        const data = tfMap[tf] || { direction: "n/a", details: "Unavailable" };
+
+        if (chip) {
+            chip.className = `mtf-chip mtf-dir-${data.direction}`;
+            chip.title = `${tf} (${data.direction.toUpperCase()}): ${data.details || ''} — Click to view chart`;
+        }
+        if (arrow) {
+            if (data.direction === "up") arrow.textContent = "▲";
+            else if (data.direction === "down") arrow.textContent = "▼";
+            else if (data.direction === "neutral") arrow.textContent = "▬";
+            else arrow.textContent = "—";
+        }
+        if (state) {
+            if (data.direction === "up") state.textContent = "Bullish";
+            else if (data.direction === "down") state.textContent = "Bearish";
+            else if (data.direction === "neutral") state.textContent = "Neutral";
+            else state.textContent = "n/a";
+        }
+        if (details) {
+            details.textContent = data.details || "";
+        }
+    });
+
+    // If confluence adjusted the recommendation (counter-trend cap or higher-tf downgrade), update recommendation box
+    if (confluence.adjusted_recommendation && confluence.adjusted_recommendation !== confluence.original_recommendation) {
+        const recValue = document.querySelector(".rec-value");
+        const recBox = document.querySelector(".live-recommendation-box");
+        if (recValue && recBox) {
+            recValue.textContent = confluence.adjusted_recommendation;
+            if (confluence.adjusted_recommendation === "HOLD") {
+                recBox.className = "live-recommendation-box signal-hold";
+                recValue.style.color = "#fbbf24";
+            } else if (confluence.adjusted_recommendation === "BUY") {
+                recBox.className = "live-recommendation-box signal-buy";
+                recValue.style.color = "#4ade80";
+            } else if (confluence.adjusted_recommendation === "SELL") {
+                recBox.className = "live-recommendation-box signal-sell";
+                recValue.style.color = "#f87171";
+            }
+        }
+    }
+}
+
+// ─── Stage 2: Scoring Engine v2 (Institutional Grade) ───
+function generateLiveRecommendationV2(stock, history, marketStatus, volumeHistory, confluence, psxIntelligence) {
+    const price = stock.price || 0;
+    const change = stock.change || 0;
+    const volume = stock.volume || 0;
+    const closes = history.length ? history.map(d => d.close) : [price];
+
+    // Indicator calculations
+    const rsi = calcTechnicalRSI(closes);
+    const macd = calcTechnicalMACD(closes);
+    const bb = calcTechnicalBollingerBands(closes);
+    const vwap = calcTechnicalVWAP(price, volume, history);
+    const sr = calcSupportResistance(price, history);
+    const ema20 = calcTechnicalEMA(closes, 20);
+    const ema50 = calcTechnicalEMA(closes, 50);
+    const adxRes = calcTechnicalADX(history, 14);
+
+    // Multi-session volume baselines (Stage 1 integration)
+    let avg21d = stock.avgVolume || stock.volume || 25000;
+    let avg5d = avg21d;
+    if (volumeHistory && volumeHistory.windows) {
+        if (volumeHistory.windows["1M"] && volumeHistory.windows["1M"].status === "ok") {
+            avg21d = volumeHistory.windows["1M"].avg_daily_volume || avg21d;
+        }
+        if (volumeHistory.windows["1W"] && volumeHistory.windows["1W"].status === "ok") {
+            avg5d = volumeHistory.windows["1W"].avg_daily_volume || avg5d;
+        }
+    }
+
+    const effectiveVol = (volumeHistory && volumeHistory.projected && volumeHistory.projected.is_estimate && volumeHistory.projected.projected_volume)
+        ? volumeHistory.projected.projected_volume
+        : volume;
+    const volRatio = avg21d > 0 ? (effectiveVol / avg21d) : 1.0;
+
+    // Regime Detection (ADX14 + EMA20/EMA50 slope)
+    const spreadPct = ema50 > 0 ? ((ema20 - ema50) / ema50) * 100 : 0;
+    let regime = "Ranging";
+    let trendDirection = "Neutral";
+    if (adxRes.adx >= 25.0 && Math.abs(spreadPct) >= 0.75) {
+        regime = "Trending";
+        trendDirection = ema20 >= ema50 ? "Bullish" : "Bearish";
+    }
+
+    let score = 50;
+    const factors = [];
+
+    // Factor 1: Unified Flow Group (Momentum + Pressure + Volume Spike) — Capped at [-20, +20]
+    // Stage 5.2 Ex-Dividend Adjustment: Neutralize negative price drop on ex-date
+    const isExDivActive = Boolean(psxIntelligence?.ex_dividend?.is_ex_date && psxIntelligence?.ex_dividend?.neutralize_negative_momentum && change < 0);
+
+    let momPts = 0;
+    if (isExDivActive) {
+        momPts = 0;
+    } else if (change >= 3.0) momPts = 12;
+    else if (change >= 1.0) momPts = 7;
+    else if (change >= 0.2) momPts = 3;
+    else if (change <= -3.0) momPts = -12;
+    else if (change <= -1.0) momPts = -7;
+    else if (change <= -0.2) momPts = -3;
+
+    let buyRatio = 50;
+    if (change > 3) buyRatio = 72;
+    else if (change > 1) buyRatio = 62;
+    else if (change > 0) buyRatio = 54;
+    else if (change < -3) buyRatio = 28;
+    else if (change < -1) buyRatio = 38;
+    else if (change < 0) buyRatio = 46;
+    const sellRatio = 100 - buyRatio;
+
+    let pressPts = 0;
+    if (!isExDivActive) {
+        if (buyRatio >= 65) pressPts = 8;
+        else if (buyRatio >= 55) pressPts = 4;
+        else if (buyRatio <= 35) pressPts = -8;
+        else if (buyRatio <= 45) pressPts = -4;
+    }
+
+    let spikePts = 0;
+    if (!isExDivActive) {
+        if (volRatio >= 1.5) spikePts = change >= 0 ? 8 : -8;
+        else if (volRatio >= 1.2) spikePts = change >= 0 ? 4 : -4;
+    }
+
+    const rawFlow = momPts + pressPts + spikePts;
+    const cappedFlow = Math.max(-20, Math.min(20, rawFlow));
+    score += cappedFlow;
+
+    if (isExDivActive) {
+        factors.push({
+            icon: "💰",
+            name: "Ex-Dividend Adjustment",
+            text: `Ex-dividend session (${psxIntelligence.ex_dividend.dividend_raw || 'Payout'}) — Negative price drop neutralized (not treated as bearish momentum)`,
+            weight: "Med",
+            points: 0,
+            direction: "NEUTRAL"
+        });
+    }
+
+    const flowDir = cappedFlow > 0 ? "BULLISH" : (cappedFlow < 0 ? "BEARISH" : "NEUTRAL");
+    factors.push({
+        icon: "🌊",
+        name: "Order Flow & Momentum",
+        text: `Unified Flow & Pressure (${rawFlow >= 0 ? '+' : ''}${rawFlow} pts raw, capped at ${cappedFlow >= 0 ? '+' : ''}${cappedFlow})`,
+        weight: "High",
+        points: cappedFlow,
+        direction: flowDir
+    });
+
+    // Factor 2: Moving Average Alignment & Trend
+    let maPts = 0;
+    let maDir = "NEUTRAL";
+    if (regime === "Trending") {
+        if (price > ema20 && ema20 > ema50) {
+            maPts = 12;
+            maDir = "BULLISH";
+            factors.push({
+                icon: "📈",
+                name: "Moving Average Alignment",
+                text: "Strong Bullish MA Alignment (Price > EMA20 > EMA50)",
+                weight: "High",
+                points: maPts,
+                direction: maDir
+            });
+        } else if (price < ema20 && ema20 < ema50) {
+            maPts = -12;
+            maDir = "BEARISH";
+            factors.push({
+                icon: "📉",
+                name: "Moving Average Alignment",
+                text: "Strong Bearish MA Alignment (Price < EMA20 < EMA50)",
+                weight: "High",
+                points: maPts,
+                direction: maDir
+            });
+        } else {
+            factors.push({
+                icon: "➡️",
+                name: "Moving Average Alignment",
+                text: "Moving Averages Mixed in Trend",
+                weight: "Low",
+                points: 0,
+                direction: "NEUTRAL"
+            });
+        }
+    } else {
+        if (price > ema20) {
+            maPts = 4;
+            maDir = "BULLISH";
+            factors.push({
+                icon: "🔼",
+                name: "EMA 20",
+                text: `Price trading above short-term EMA 20 (₨${ema20.toFixed(2)})`,
+                weight: "Low",
+                points: maPts,
+                direction: maDir
+            });
+        } else {
+            maPts = -4;
+            maDir = "BEARISH";
+            factors.push({
+                icon: "🔽",
+                name: "EMA 20",
+                text: `Price trading below short-term EMA 20 (₨${ema20.toFixed(2)})`,
+                weight: "Low",
+                points: maPts,
+                direction: maDir
+            });
+        }
+    }
+    score += maPts;
+
+    // Factor 3: VWAP Support / Resistance
+    const vwapDir = price >= vwap ? "BULLISH" : "BEARISH";
+    const vwapPts = regime === "Trending" ? (price >= vwap ? 10 : -10) : (price >= vwap ? 6 : -6);
+    score += vwapPts;
+    factors.push({
+        icon: "⚡",
+        name: "VWAP Crossover",
+        text: `Price ${price >= vwap ? 'holding ABOVE' : 'trading BELOW'} VWAP (₨${vwap.toFixed(2)})`,
+        weight: regime === "Trending" ? "High" : "Med",
+        points: vwapPts,
+        direction: vwapDir
+    });
+
+    // Factor 4: RSI Indicator (Regime Adaptive)
+    let rsiPts = 0;
+    let rsiDir = "NEUTRAL";
+    if (regime === "Trending") {
+        if (trendDirection === "Bullish") {
+            if (rsi >= 70 && rsi < 85) {
+                rsiPts = 6;
+                rsiDir = "BULLISH";
+                factors.push({
+                    icon: "🔥",
+                    name: "RSI Trend Momentum",
+                    text: `RSI in Powerful Bullish Continuation Band (${rsi.toFixed(1)}) — Not an early exit`,
+                    weight: "Med",
+                    points: rsiPts,
+                    direction: rsiDir
+                });
+            } else if (rsi >= 85) {
+                rsiPts = -8;
+                rsiDir = "BEARISH";
+                factors.push({
+                    icon: "🔴",
+                    name: "RSI Exhaustion",
+                    text: `RSI Parabolic Blow-off (>85) at ${rsi.toFixed(1)} — Pullback risk`,
+                    weight: "Med",
+                    points: rsiPts,
+                    direction: rsiDir
+                });
+            } else if (rsi >= 50 && rsi < 70) {
+                rsiPts = 8;
+                rsiDir = "BULLISH";
+                factors.push({
+                    icon: "✅",
+                    name: "RSI Bullish Zone",
+                    text: `RSI in Healthy Bullish Trend Zone (${rsi.toFixed(1)})`,
+                    weight: "Med",
+                    points: rsiPts,
+                    direction: rsiDir
+                });
+            } else {
+                rsiPts = -6;
+                rsiDir = "BEARISH";
+                factors.push({
+                    icon: "⚠️",
+                    name: "RSI Trend Decay",
+                    text: `RSI Weakening below 50 (${rsi.toFixed(1)}) in Uptrend`,
+                    weight: "Low",
+                    points: rsiPts,
+                    direction: rsiDir
+                });
+            }
+        } else {
+            if (rsi <= 30 && rsi > 18) {
+                rsiPts = -6;
+                rsiDir = "BEARISH";
+                factors.push({
+                    icon: "📉",
+                    name: "RSI Bearish Trend",
+                    text: `RSI Depressed (${rsi.toFixed(1)}) — Trend continuation downwards`,
+                    weight: "Med",
+                    points: rsiPts,
+                    direction: rsiDir
+                });
+            } else if (rsi <= 18) {
+                rsiPts = 8;
+                rsiDir = "BULLISH";
+                factors.push({
+                    icon: "🟢",
+                    name: "RSI Capitulation",
+                    text: `RSI Extreme Capitulation (${rsi.toFixed(1)}) — Rebound expected`,
+                    weight: "High",
+                    points: rsiPts,
+                    direction: rsiDir
+                });
+            } else {
+                rsiPts = -4;
+                rsiDir = "BEARISH";
+                factors.push({
+                    icon: "➡️",
+                    name: "RSI Neutral Bearish",
+                    text: `RSI Neutral in Downtrend (${rsi.toFixed(1)})`,
+                    weight: "Low",
+                    points: rsiPts,
+                    direction: rsiDir
+                });
+            }
+        }
+    } else {
+        if (rsi < 30) {
+            rsiPts = 15;
+            rsiDir = "BULLISH";
+            factors.push({
+                icon: "🟢",
+                name: "RSI Mean Reversion",
+                text: `RSI Oversold in Ranging Market (${rsi.toFixed(1)}) — High-Probability Mean Reversion Long`,
+                weight: "High",
+                points: rsiPts,
+                direction: rsiDir
+            });
+        } else if (rsi > 70) {
+            rsiPts = -15;
+            rsiDir = "BEARISH";
+            factors.push({
+                icon: "🔴",
+                name: "RSI Mean Reversion",
+                text: `RSI Overbought at Range Ceiling (${rsi.toFixed(1)}) — Pullback to range mean`,
+                weight: "High",
+                points: rsiPts,
+                direction: rsiDir
+            });
+        } else if (rsi >= 45 && rsi <= 55) {
+            factors.push({
+                icon: "⚖️",
+                name: "RSI Equilibrium",
+                text: `RSI Equilibrium at Centerline (${rsi.toFixed(1)})`,
+                weight: "Low",
+                points: 0,
+                direction: "NEUTRAL"
+            });
+        } else {
+            rsiPts = rsi < 45 ? 4 : -4;
+            rsiDir = rsi < 45 ? "BULLISH" : "BEARISH";
+            factors.push({
+                icon: "➡️",
+                name: "RSI Oscillator",
+                text: `RSI Oscillating (${rsi.toFixed(1)})`,
+                weight: "Low",
+                points: rsiPts,
+                direction: rsiDir
+            });
+        }
+    }
+    score += rsiPts;
+
+    // Factor 5: MACD Histogram
+    const macdDir = macd.histogram > 0 ? "BULLISH" : "BEARISH";
+    const macdPts = regime === "Trending" ? (macd.histogram > 0 ? 10 : -10) : (macd.histogram > 0 ? 6 : -6);
+    score += macdPts;
+    factors.push({
+        icon: "📊",
+        name: "MACD Histogram",
+        text: `MACD Histogram ${macd.histogram >= 0 ? '+' : ''}${macd.histogram.toFixed(2)} (${macd.histogram >= 0 ? 'Bullish' : 'Bearish'} Momentum)`,
+        weight: regime === "Trending" ? "High" : "Med",
+        points: macdPts,
+        direction: macdDir
+    });
+
+    // Factor 6: Bollinger %B
+    let bbPts = 0;
+    let bbDir = "NEUTRAL";
+    if (regime === "Ranging") {
+        if (bb.percentB <= 15) {
+            bbPts = 10;
+            bbDir = "BULLISH";
+            factors.push({
+                icon: "🎯",
+                name: "Bollinger Bands",
+                text: `Price at Lower Bollinger Band (%B ${bb.percentB.toFixed(0)}%) — Range Floor Support`,
+                weight: "High",
+                points: bbPts,
+                direction: bbDir
+            });
+        } else if (bb.percentB >= 85) {
+            bbPts = -10;
+            bbDir = "BEARISH";
+            factors.push({
+                icon: "🎯",
+                name: "Bollinger Bands",
+                text: `Price at Upper Bollinger Band (%B ${bb.percentB.toFixed(0)}%) — Range Ceiling Resistance`,
+                weight: "High",
+                points: bbPts,
+                direction: bbDir
+            });
+        } else {
+            factors.push({
+                icon: "🎯",
+                name: "Bollinger Bands",
+                text: `Bollinger %B Mid-band (${bb.percentB.toFixed(0)}%)`,
+                weight: "Low",
+                points: 0,
+                direction: "NEUTRAL"
+            });
+        }
+    } else {
+        if (bb.percentB >= 80 && trendDirection === "Bullish") {
+            bbPts = 6;
+            bbDir = "BULLISH";
+            factors.push({
+                icon: "🚀",
+                name: "Bollinger Band Walk",
+                text: `Price Expanding Along Upper Band (%B ${bb.percentB.toFixed(0)}%)`,
+                weight: "Med",
+                points: bbPts,
+                direction: bbDir
+            });
+        } else if (bb.percentB <= 20 && trendDirection === "Bearish") {
+            bbPts = -6;
+            bbDir = "BEARISH";
+            factors.push({
+                icon: "⚠️",
+                name: "Bollinger Band Walk",
+                text: `Price Expanding Along Lower Band (%B ${bb.percentB.toFixed(0)}%)`,
+                weight: "Med",
+                points: bbPts,
+                direction: bbDir
+            });
+        }
+    }
+    score += bbPts;
+
+    // Volume Narrative Tags (Confidence Modifiers, NOT raw points)
+    const volumeTags = [];
+    if (avg21d > 0 && avg5d < 0.50 * avg21d) {
+        volumeTags.push("Volume drying up");
+        factors.push({
+            icon: "🏜️",
+            name: "Volume Tag",
+            text: "Volume drying up (5-day avg < 50% of 21-day average)",
+            weight: "Low",
+            points: 0,
+            direction: "BEARISH"
+        });
+    }
+
+    if (change > 0.5 && volRatio < 0.70) {
+        volumeTags.push("Weak participation");
+        factors.push({
+            icon: "⚠️",
+            name: "Volume Tag",
+            text: "Weak participation (Price gain on thin volume divergence)",
+            weight: "Med",
+            points: 0,
+            direction: "BEARISH"
+        });
+    } else if (change > 0.5 && volRatio >= 1.25) {
+        volumeTags.push("Volume confirmation");
+        factors.push({
+            icon: "🔥",
+            name: "Volume Tag",
+            text: "Volume confirmation (Price breakout backed by expanding volume)",
+            weight: "Med",
+            points: 0,
+            direction: "BULLISH"
+        });
+    }
+
+    // Factor 7: Sector Context (Stage 5.4 Alpha vs Beta)
+    const secInfo = psxIntelligence ? psxIntelligence.sector_context : null;
+    if (secInfo && secInfo.peer_count > 0) {
+        const rel = parseFloat(secInfo.relative_strength || 0);
+        let secPts = 0;
+        let secDir = "NEUTRAL";
+        if (rel >= 1.0) {
+            secPts = 4;
+            secDir = "BULLISH";
+        } else if (rel <= -1.0) {
+            secPts = -4;
+            secDir = "BEARISH";
+        }
+        score += secPts;
+        factors.push({
+            icon: "🏢",
+            name: "Sector Context",
+            text: secInfo.tag || `Sector Relative Strength: ${rel >= 0 ? '+' : ''}${rel.toFixed(2)}%`,
+            weight: Math.abs(rel) >= 1.0 ? "Med" : "Low",
+            points: secPts,
+            direction: secDir
+        });
+    }
+
+    // Clamp score [5, 95]
+    const finalScore = Math.max(5, Math.min(95, Math.round(score)));
+
+    // Factor Alignment
+    const bullishCount = factors.filter(f => f.direction === "BULLISH").length;
+    const bearishCount = factors.filter(f => f.direction === "BEARISH").length;
+    const totalActive = bullishCount + bearishCount;
+
+    // Recommendation Determination
+    let recommendation = "HOLD";
+    let signalClass = "signal-hold";
+    let signalColor = "#fbbf24";
+
+    if (finalScore >= 75) {
+        recommendation = "STRONG BUY";
+        signalClass = "signal-strong-buy";
+        signalColor = "#22c55e";
+    } else if (finalScore >= 60) {
+        recommendation = "BUY";
+        signalClass = "signal-buy";
+        signalColor = "#4ade80";
+    } else if (finalScore <= 30) {
+        recommendation = "STRONG SELL";
+        signalClass = "signal-strong-sell";
+        signalColor = "#ef4444";
+    } else if (finalScore <= 42) {
+        recommendation = "SELL";
+        signalClass = "signal-sell";
+        signalColor = "#f87171";
+    }
+
+    // Liquidity Gate
+    const minVol = 25000;
+    const minTurnover = 500000;
+    const turnover = avg21d * price;
+    let isLiquid = true;
+
+    if (avg21d < minVol || turnover < minTurnover) {
+        isLiquid = false;
+        recommendation = "HOLD";
+        signalClass = "signal-hold signal-illiquid";
+        signalColor = "#fbbf24";
+        factors.unshift({
+            icon: "⚠️",
+            name: "Liquidity Gate",
+            text: `Low liquidity: 21-day average volume (${Math.round(avg21d).toLocaleString()} shrs) or turnover below threshold — Signal capped at HOLD`,
+            weight: "Critical",
+            points: 0,
+            direction: "NEUTRAL"
+        });
+    }
+
+    // 8. Smarter Trade Brackets (Stage 3: ATR brackets, circuits, pivots, R:R)
+    const atr = calcTechnicalATR(history, 14);
+    const brackets = computeTradeBrackets(price, recommendation, regime, atr, sr, stock);
+
+    // If poor R:R (< 1.5), downgrade recommendation one tier
+    if (brackets.isPoorRR && recommendation !== "HOLD") {
+        recommendation = brackets.adjustedRecommendation;
+        if (recommendation === "BUY") {
+            signalClass = "signal-buy";
+            signalColor = "#4ade80";
+        } else if (recommendation === "HOLD") {
+            signalClass = "signal-hold";
+            signalColor = "#fbbf24";
+        } else if (recommendation === "SELL") {
+            signalClass = "signal-sell";
+            signalColor = "#f87171";
+        }
+        factors.push({
+            icon: "⚠️",
+            name: "Risk/Reward",
+            text: `Poor risk/reward (${brackets.grossRR}:1 < 1.5:1) — Conviction downgraded`,
+            weight: "Med",
+            points: 0,
+            direction: "BEARISH"
+        });
+    }
+
+    if (brackets.circuitWarning) {
+        factors.push({
+            icon: "⚡",
+            name: "Circuit Warning",
+            text: `${brackets.circuitWarning} (Band: ₨${brackets.circuitLower.toFixed(2)} - ₨${brackets.circuitUpper.toFixed(2)})`,
+            weight: "High",
+            points: 0,
+            direction: "BEARISH"
+        });
+    }
+
+    // Risk level classification including ATR volatility (Requirement 3.6)
+    let riskLevel = "Medium";
+    if (brackets.volatilityLevel === "High" || rsi > 75 || rsi < 25 || Math.abs(change) > 5) riskLevel = "High";
+    else if (brackets.volatilityLevel === "Normal" || Math.abs(change) > 2) riskLevel = "Medium";
+    else riskLevel = "Low";
+
+    // 9. PSX-Specific Intelligence Rules (Stage 5)
+    let originalRec = recommendation;
+    if (psxIntelligence) {
+        // Rule 5.1: Event Risk Flag — Suppress STRONG signals
+        const evRisk = psxIntelligence.event_risk;
+        if (evRisk && evRisk.suppress_strong && evRisk.has_risk) {
+            if (recommendation === "STRONG BUY") {
+                recommendation = "BUY";
+                signalClass = "signal-buy";
+                signalColor = "#4ade80";
+            } else if (recommendation === "STRONG SELL") {
+                recommendation = "SELL";
+                signalClass = "signal-sell";
+                signalColor = "#f87171";
+            }
+            factors.unshift({
+                icon: "📅",
+                name: "Event Risk Flag",
+                text: evRisk.warning || "Upcoming Board Meeting / Corporate Event — Strong signal suppressed",
+                weight: "High",
+                points: 0,
+                direction: "NEUTRAL"
+            });
+        }
+
+        // Rule 5.3: Index Filter — Downgrade BUY signals when KSE-100 in strong downtrend
+        const idxFilt = psxIntelligence.index_filter;
+        if (idxFilt && idxFilt.downgrade_buy && idxFilt.is_downtrend) {
+            if (recommendation === "STRONG BUY") {
+                recommendation = "BUY";
+                signalClass = "signal-buy";
+                signalColor = "#4ade80";
+            } else if (recommendation === "BUY") {
+                recommendation = "HOLD";
+                signalClass = "signal-hold";
+                signalColor = "#fbbf24";
+            }
+            factors.unshift({
+                icon: "📉",
+                name: "Index Filter",
+                text: idxFilt.tag || `KSE-100 in Strong Downtrend (${idxFilt.change_pct >= 0 ? '+' : ''}${parseFloat(idxFilt.change_pct || 0).toFixed(2)}%) — BUY signal downgraded one tier`,
+                weight: "High",
+                points: 0,
+                direction: "NEUTRAL"
+            });
+        }
+    }
+
+    // 10. Multi-Timeframe Confluence Evaluation (Stage 4)
+    if (confluence) {
+        if (confluence.counter_trend) {
+            recommendation = "HOLD";
+            signalClass = "signal-hold";
+            signalColor = "#fbbf24";
+            factors.unshift({
+                icon: "⚠️",
+                name: "MTF Confluence",
+                text: `${confluence.counter_trend_tag}: Signal capped at HOLD`,
+                weight: "High",
+                points: 0,
+                direction: "NEUTRAL"
+            });
+        } else if (confluence.downgrade_reason) {
+            if (recommendation === "STRONG BUY") {
+                recommendation = "BUY";
+                signalClass = "signal-buy";
+                signalColor = "#4ade80";
+            } else if (recommendation === "STRONG SELL") {
+                recommendation = "SELL";
+                signalClass = "signal-sell";
+                signalColor = "#f87171";
+            }
+            factors.unshift({
+                icon: "⏱️",
+                name: "MTF Confluence",
+                text: confluence.downgrade_reason,
+                weight: "Med",
+                points: 0,
+                direction: "NEUTRAL"
+            });
+        }
+    }
+
+    const alignedText = `${recommendation.includes("BUY") ? bullishCount : bearishCount} of ${totalActive} aligned`;
+
+    return {
+        engine_version: "v2",
+        original_recommendation: originalRec,
+        recommendation,
+        signalClass,
+        signalColor,
+        confidence: finalScore,
+        regime,
+        trend_direction: trendDirection,
+        is_liquid: isLiquid,
+        volume_tags: volumeTags,
+        aligned_factors_text: alignedText,
+        bullish_factors: bullishCount,
+        bearish_factors: bearishCount,
+        total_active_factors: totalActive,
+        riskLevel,
+        suggestedEntry: brackets.entry,
+        targetPrice: brackets.target,
+        stopLoss: brackets.stop,
+        tradeBrackets: brackets,
+        mtf_confluence: confluence,
+        psx_intelligence: psxIntelligence,
+        atr,
+        rsi,
+        macd,
+        bb,
+        vwap,
+        sr,
+        buyRatio,
+        sellRatio,
+        factors
+    };
+}
+
+// ─── Stage 2 Recommendation Router & Comparison Logger ───
+function generateRecommendation(stock, history, marketStatus, volumeHistory, psxIntelligence) {
+    const cachedMtf = _mtfCache[stock.symbol?.toUpperCase()];
+    const confluence = cachedMtf ? cachedMtf.confluence : null;
+    const v1 = generateLiveRecommendationV1(stock, history, marketStatus);
+    const v2 = generateLiveRecommendationV2(stock, history, marketStatus, volumeHistory, confluence, psxIntelligence);
+
+    // Requirement 2.8: V1 vs V2 Comparison Log
+    console.debug("[Live Engine Comparison]", {
+        symbol: stock.symbol,
+        v1: { score: v1.confidence, recommendation: v1.recommendation },
+        v2: { score: v2.confidence, recommendation: v2.recommendation, regime: v2.regime, factors_aligned: v2.aligned_factors_text, mtf: confluence?.alignment_summary, psx: psxIntelligence }
+    });
+
+    v2.v1_comparison = { score: v1.confidence, recommendation: v1.recommendation };
+    return v2;
 }
 
 function renderLiveTrading(data) {
@@ -3799,12 +5112,150 @@ function renderLiveTrading(data) {
         }
     }
 
+    // Update Freshness Badge & Stale Warning
+    const freshnessSec = data.dataFreshnessSec !== undefined ? Number(data.dataFreshnessSec) : 0;
+    const freshnessBadge = document.getElementById("live-freshness-badge");
+    const freshnessText = document.getElementById("live-freshness-text");
+    const staleBanner = document.getElementById("live-stale-banner");
+
+    if (freshnessBadge && freshnessText) {
+        if (marketStatus.is_open) {
+            if (freshnessSec < 30) {
+                freshnessBadge.className = "live-freshness-badge freshness-green";
+                freshnessText.textContent = `Feed: Live (<30s)`;
+                if (staleBanner) staleBanner.style.display = "none";
+            } else if (freshnessSec <= 120) {
+                freshnessBadge.className = "live-freshness-badge freshness-amber";
+                freshnessText.textContent = `Feed: Delayed (${freshnessSec}s)`;
+                if (staleBanner) staleBanner.style.display = "none";
+            } else {
+                freshnessBadge.className = "live-freshness-badge freshness-red";
+                freshnessText.textContent = `Feed: Stale (${Math.round(freshnessSec / 60)}m)`;
+                if (staleBanner) {
+                    staleBanner.style.display = "flex";
+                    const staleMsg = document.getElementById("live-stale-message");
+                    if (staleMsg) {
+                        staleMsg.textContent = `Market is OPEN but quote is stale (${freshnessSec}s old). Conviction downgraded to standard BUY/SELL.`;
+                    }
+                }
+            }
+        } else {
+            freshnessBadge.className = "live-freshness-badge freshness-neutral";
+            freshnessText.textContent = `Feed: EOD (${marketStatus.reason || 'Closed'})`;
+            if (staleBanner) staleBanner.style.display = "none";
+        }
+    }
+
     // Generate technical analysis & trading signal
-    const rec = generateRecommendation(stock, history, marketStatus);
+    const psxIntel = data.psxIntelligence || null;
+    const rec = generateRecommendation(stock, history, marketStatus, data.volumeHistory, psxIntel);
+    if (data.orderBook) {
+        rec.orderBook = data.orderBook;
+    }
+
+    // Stale Downgrade: if market is open and data is stale (>120s), downgrade STRONG BUY/SELL
+    if (marketStatus.is_open && freshnessSec > 120) {
+        if (rec.recommendation === "STRONG BUY") {
+            rec.recommendation = "BUY";
+            rec.signalClass = "signal-buy";
+            rec.signalColor = "#4ade80";
+            if (rec.factors) {
+                rec.factors.unshift({ icon: "⚠️", text: "Stale feed (>120s): High conviction downgraded from STRONG BUY to BUY", weight: "High" });
+            }
+        } else if (rec.recommendation === "STRONG SELL") {
+            rec.recommendation = "SELL";
+            rec.signalClass = "signal-sell";
+            rec.signalColor = "#f87171";
+            if (rec.factors) {
+                rec.factors.unshift({ icon: "⚠️", text: "Stale feed (>120s): High conviction downgraded from STRONG SELL to SELL", weight: "High" });
+            }
+        }
+    }
 
     const price = stock.price || 0;
     const change = stock.change || 0;
     const isPos = change >= 0;
+
+    const tb = rec.tradeBrackets || {
+        entry: price,
+        target: rec.targetPrice,
+        stop: rec.stopLoss,
+        kStop: 1.5,
+        kTarget: 3.0,
+        atr: rec.atr || (price * 0.025),
+        atrPct: 2.5,
+        volatilityLevel: "Normal",
+        circuitUpper: price * 1.075,
+        circuitLower: price * 0.925,
+        isNearCircuit: false,
+        circuitWarning: null,
+        pivotAnchoredTarget: false,
+        pivotAnchoredStop: false,
+        grossRR: 2.0,
+        netRR: 1.85,
+        isPoorRR: false
+    };
+
+    let savedCapital = 500000;
+    let savedRiskPct = 1.5;
+    try {
+        const storedCap = localStorage.getItem("psx_live_pos_capital");
+        const storedRisk = localStorage.getItem("psx_live_pos_risk_pct");
+        if (storedCap !== null) savedCapital = parseFloat(storedCap) || 500000;
+        if (storedRisk !== null) savedRiskPct = parseFloat(storedRisk) || 1.5;
+    } catch (e) {
+        console.warn("Could not read position sizing from localStorage", e);
+    }
+
+    const initialPos = calculatePositionSize(savedCapital, savedRiskPct, rec.suggestedEntry, rec.stopLoss);
+
+    // Prepare initial MTF state (cached or pending)
+    const symKey = (stock.symbol || "").toUpperCase();
+    const cachedMtf = _mtfCache[symKey];
+    const mtfData = (cachedMtf && cachedMtf.tfMap) ? cachedMtf.tfMap : {};
+    const mtfConf = (cachedMtf && cachedMtf.confluence) ? cachedMtf.confluence : null;
+
+    const mtfRoleMap = {
+        "15M": "Trigger",
+        "1H": "Setup",
+        "4H": "Swing Bias",
+        "1D": "Macro Bias"
+    };
+
+    function getMtfChipProps(tf) {
+        const d = mtfData[tf];
+        if (!d) {
+            return { cls: "mtf-dir-na", arrow: "—", state: "Pending...", details: "Analyzing timeframe...", title: `${tf} (${mtfRoleMap[tf]}): Fetching candle data` };
+        }
+        const dir = d.direction || "n/a";
+        let arrow = "—";
+        let state = "n/a";
+        if (dir === "up") { arrow = "▲"; state = "Bullish"; }
+        else if (dir === "down") { arrow = "▼"; state = "Bearish"; }
+        else if (dir === "neutral") { arrow = "▬"; state = "Neutral"; }
+        return {
+            cls: `mtf-dir-${dir}`,
+            arrow,
+            state,
+            details: d.details || "",
+            title: `${tf} ${mtfRoleMap[tf]} (${dir.toUpperCase()}): ${d.details || ''} — Click to switch chart`
+        };
+    }
+
+    const mtf15M = getMtfChipProps("15M");
+    const mtf1H = getMtfChipProps("1H");
+    const mtf4H = getMtfChipProps("4H");
+    const mtf1D = getMtfChipProps("1D");
+
+    let mtfBadgeCls = "mtf-summary-neutral";
+    let mtfBadgeText = "Analyzing MTF...";
+    if (mtfConf) {
+        mtfBadgeText = mtfConf.alignment_summary || "Aligned";
+        if (mtfConf.counter_trend) mtfBadgeCls = "mtf-summary-counter";
+        else if (mtfConf.bullish_count >= 3) mtfBadgeCls = "mtf-summary-bullish";
+        else if (mtfConf.bearish_count >= 3) mtfBadgeCls = "mtf-summary-bearish";
+        else mtfBadgeCls = "mtf-summary-neutral";
+    }
 
     let html = `
     <!-- Top Hero Section: Stock Quote + Recommendation Badge -->
@@ -3814,6 +5265,18 @@ function renderLiveTrading(data) {
                 <span class="live-symbol">${stock.symbol}</span>
                 <span class="live-sector-badge">${stock.sector}</span>
                 ${stock.isKSE100 ? '<span class="kse100-badge">KSE-100</span>' : ''}
+                ${psxIntel && psxIntel.sector_context && psxIntel.sector_context.peer_count > 0 ? `
+                    <span class="live-sector-alpha-badge ${psxIntel.sector_context.relative_strength >= 1.0 ? 'alpha-pos' : (psxIntel.sector_context.relative_strength <= -1.0 ? 'alpha-neg' : 'alpha-neu')}" title="${psxIntel.sector_context.tag || ''}">
+                        ${psxIntel.sector_context.relative_strength >= 1.0 ? '🚀 +' : (psxIntel.sector_context.relative_strength <= -1.0 ? '🔻 ' : '⚖️ ')}${psxIntel.sector_context.relative_strength >= 0 ? '+' : ''}${parseFloat(psxIntel.sector_context.relative_strength || 0).toFixed(2)}% vs ${stock.sector || 'Sector'}
+                    </span>
+                ` : ''}
+                ${psxIntel && psxIntel.ex_dividend && psxIntel.ex_dividend.is_ex_date ? `
+                    <span class="live-ex-div-badge" title="${psxIntel.ex_dividend.tag || 'Ex-Dividend Session'}">💰 Ex-Div (${psxIntel.ex_dividend.dividend_raw || 'Payout'})</span>
+                ` : ''}
+                <span class="live-regime-badge ${rec.regime === 'Trending' ? 'regime-trending' : 'regime-ranging'}">
+                    ${rec.regime === 'Trending' ? (rec.trend_direction === 'Bullish' ? '🌊 Trending (Bullish)' : '🌊 Trending (Bearish)') : '⚖️ Range-Bound'}
+                </span>
+                ${rec.is_illiquid ? '<span class="live-liquidity-tag">⚠️ Low Liquidity (Capped at HOLD)</span>' : ''}
             </div>
             <div class="live-company-name">${stock.name}</div>
             <div class="live-price-row">
@@ -3827,50 +5290,248 @@ function renderLiveTrading(data) {
 
         <div class="live-hero-right">
             <div class="live-recommendation-box ${rec.signalClass}">
-                <div class="rec-label">Trading Recommendation</div>
+                <div class="rec-label" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Trading Recommendation</span>
+                    <span class="engine-version-pill" title="Deterministic v2 engine: Capped flow, ADX/EMA regime, volume narrative, liquidity gate">Engine: v2</span>
+                </div>
                 <div class="rec-value" style="color: ${rec.signalColor}">${rec.recommendation}</div>
                 <div class="rec-confidence">
-                    <span>Confidence: <strong>${rec.confidence}%</strong></span>
+                    <span>Confidence: <strong>${rec.confidence}%</strong> ${rec.aligned_factors_text ? `<small style="opacity:0.85">(${rec.aligned_factors_text})</small>` : ''}</span>
                     <span>Risk: <strong class="risk-${rec.riskLevel.toLowerCase()}">${rec.riskLevel}</strong></span>
                 </div>
+                ${rec.alignment_ratio !== undefined ? `
+                <div class="rec-alignment-bar" title="Factor Agreement: ${rec.bullish_factors || 0} bullish vs ${rec.bearish_factors || 0} bearish">
+                    <div class="align-bullish-fill" style="width: ${Math.round((rec.alignment_ratio || 0.5) * 100)}%"></div>
+                </div>` : ''}
+            </div>
+
+            <!-- Stage 8.1: Paper Trading Quick-Execute Button -->
+            <button class="btn btn-paper-hero ${rec.recommendation.includes('SELL') ? 'paper-sell-mode' : 'paper-buy-mode'}" 
+                    id="btn-live-paper-hero"
+                    onclick="openLivePaperTradeModal('${escapeHtml(stock.symbol)}', '${escapeHtml(stock.name || stock.symbol)}', '${escapeHtml(stock.sector || '')}', ${price}, ${rec.suggestedEntry}, ${rec.stopLoss}, ${rec.targetPrice}, '${rec.recommendation}', '${rec.riskLevel}')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                <span>${rec.recommendation.includes('SELL') ? 'Execute Paper Sell' : 'Execute Paper Buy'}</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Multi-Timeframe Confluence (MTF) Alignment Strip (Stage 4) -->
+    <div class="live-mtf-strip" id="live-mtf-strip">
+        <div class="mtf-strip-header">
+            <div class="mtf-strip-title-wrap">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <span>Multi-Timeframe Confluence</span>
+                <span style="font-size:0.75rem; font-weight:normal; color:#94a3b8;">(15M Trigger • 1H Setup • 4H Swing Bias • 1D Macro Bias)</span>
+            </div>
+            <span class="mtf-summary-badge ${mtfBadgeCls}" id="mtf-summary-badge">${mtfBadgeText}</span>
+        </div>
+        <div class="mtf-chips-grid">
+            <div class="mtf-chip ${mtf15M.cls}" id="mtf-chip-15M" title="${mtf15M.title}" onclick="switchTechnicalChartTF('live-technical-chart-container', '${stock.symbol}', '15M')">
+                <div class="mtf-chip-top">
+                    <span class="mtf-tf-name">15M</span>
+                    <span class="mtf-tf-role">Trigger</span>
+                </div>
+                <div class="mtf-chip-main">
+                    <span class="mtf-arrow" id="mtf-arrow-15M">${mtf15M.arrow}</span>
+                    <span class="mtf-state" id="mtf-state-15M">${mtf15M.state}</span>
+                </div>
+                <div class="mtf-details" id="mtf-details-15M">${mtf15M.details}</div>
+            </div>
+            <div class="mtf-chip ${mtf1H.cls}" id="mtf-chip-1H" title="${mtf1H.title}" onclick="switchTechnicalChartTF('live-technical-chart-container', '${stock.symbol}', '1H')">
+                <div class="mtf-chip-top">
+                    <span class="mtf-tf-name">1H</span>
+                    <span class="mtf-tf-role">Setup</span>
+                </div>
+                <div class="mtf-chip-main">
+                    <span class="mtf-arrow" id="mtf-arrow-1H">${mtf1H.arrow}</span>
+                    <span class="mtf-state" id="mtf-state-1H">${mtf1H.state}</span>
+                </div>
+                <div class="mtf-details" id="mtf-details-1H">${mtf1H.details}</div>
+            </div>
+            <div class="mtf-chip ${mtf4H.cls}" id="mtf-chip-4H" title="${mtf4H.title}" onclick="switchTechnicalChartTF('live-technical-chart-container', '${stock.symbol}', '4H')">
+                <div class="mtf-chip-top">
+                    <span class="mtf-tf-name">4H</span>
+                    <span class="mtf-tf-role">Swing Bias</span>
+                </div>
+                <div class="mtf-chip-main">
+                    <span class="mtf-arrow" id="mtf-arrow-4H">${mtf4H.arrow}</span>
+                    <span class="mtf-state" id="mtf-state-4H">${mtf4H.state}</span>
+                </div>
+                <div class="mtf-details" id="mtf-details-4H">${mtf4H.details}</div>
+            </div>
+            <div class="mtf-chip ${mtf1D.cls}" id="mtf-chip-1D" title="${mtf1D.title}" onclick="switchTechnicalChartTF('live-technical-chart-container', '${stock.symbol}', '1D')">
+                <div class="mtf-chip-top">
+                    <span class="mtf-tf-name">1D</span>
+                    <span class="mtf-tf-role">Macro Bias</span>
+                </div>
+                <div class="mtf-chip-main">
+                    <span class="mtf-arrow" id="mtf-arrow-1D">${mtf1D.arrow}</span>
+                    <span class="mtf-state" id="mtf-state-1D">${mtf1D.state}</span>
+                </div>
+                <div class="mtf-details" id="mtf-details-1D">${mtf1D.details}</div>
             </div>
         </div>
     </div>
 
-    <!-- Suggested Entry, Target & Stop-Loss Bar -->
+    <!-- Volume History & Multi-Session Liquidity Studio (Stage 1) -->
+    <div class="live-section-card volume-history-card" id="live-volume-history-container"></div>
+
+    <!-- Stage 5 PSX Intelligence Alerts -->
+    ${psxIntel && psxIntel.event_risk && psxIntel.event_risk.has_risk ? `
+    <div class="live-bracket-alert event-risk-alert">
+        <span class="alert-icon">📅</span>
+        <div class="alert-content">
+            <strong>Event Risk Warning:</strong> ${psxIntel.event_risk.warning || `${psxIntel.event_risk.event_title} within 1-2 trading days. Binary event risk present — High conviction suppressed.`}
+        </div>
+    </div>` : ''}
+
+    ${psxIntel && psxIntel.index_filter && psxIntel.index_filter.is_downtrend ? `
+    <div class="live-bracket-alert index-headwind-alert">
+        <span class="alert-icon">📉</span>
+        <div class="alert-content">
+            <strong>Index Headwind:</strong> ${psxIntel.index_filter.tag || `KSE-100 down ${parseFloat(psxIntel.index_filter.change_pct || 0).toFixed(2)}%`}. Broad market selling pressure — Long signals downgraded.
+        </div>
+    </div>` : ''}
+
+    <!-- PSX Circuit / Poor R:R Warning Banners (Stage 3) -->
+    ${tb.circuitWarning ? `
+    <div class="live-bracket-alert circuit-alert">
+        <span class="alert-icon">⚡</span>
+        <div class="alert-content">
+            <strong>Circuit Proximity Warning:</strong> ${tb.circuitWarning} — Quote (₨${price.toFixed(2)}) is within 1% of PSX circuit band (₨${tb.circuitLower.toFixed(2)} – ₨${tb.circuitUpper.toFixed(2)}). Exit/entry liquidity may be restricted.
+        </div>
+    </div>` : ''}
+
+    ${tb.isPoorRR ? `
+    <div class="live-bracket-alert rr-alert">
+        <span class="alert-icon">⚠️</span>
+        <div class="alert-content">
+            <strong>Poor Risk/Reward (${tb.grossRR}:1 < 1.5:1 threshold):</strong> Trade upside is restricted relative to downside volatility. Conviction automatically downgraded.
+        </div>
+    </div>` : ''}
+
+    <!-- Suggested Entry, Target & Stop-Loss Bar (Stage 3 Smarter ATR Brackets) -->
     <div class="live-targets-grid">
         <div class="target-card entry-card">
-            <div class="tc-label">Suggested Entry</div>
+            <div class="tc-header-row">
+                <span class="tc-label">Suggested Entry</span>
+                <span class="tc-badge vol-${tb.volatilityLevel.toLowerCase()}">ATR: ₨${tb.atr.toFixed(2)} (${tb.atrPct}%)</span>
+            </div>
             <div class="tc-value">₨${rec.suggestedEntry.toFixed(2)}</div>
-            <div class="tc-sub">Current Market Price</div>
+            <div class="tc-sub">Current Market Price • ${tb.volatilityLevel} Volatility</div>
         </div>
         <div class="target-card profit-card">
-            <div class="tc-label">Target Price (Take Profit)</div>
+            <div class="tc-header-row">
+                <span class="tc-label">Target Price (${rec.recommendation.includes('SELL') ? 'Cover' : 'Take Profit'})</span>
+                <span class="tc-badge rr-badge">Gross R:R ${tb.grossRR}:1</span>
+            </div>
             <div class="tc-value positive">₨${rec.targetPrice.toFixed(2)}</div>
-            <div class="tc-sub">${((rec.targetPrice - price)/price*100).toFixed(2)}% upside</div>
+            <div class="tc-sub">
+                ${((rec.targetPrice - price)/price*100).toFixed(2)}% • Net R:R: <strong>${tb.netRR}:1</strong> ${tb.pivotAnchoredTarget ? '<span class="pivot-tag" title="Target pulled back inside resistance pivot">🎯 Resistance Anchored</span>' : ''}
+            </div>
         </div>
         <div class="target-card stop-card">
-            <div class="tc-label">Suggested Stop-Loss</div>
+            <div class="tc-header-row">
+                <span class="tc-label">Suggested Stop-Loss</span>
+                <span class="tc-badge stop-badge">${tb.kStop}× ATR</span>
+            </div>
             <div class="tc-value negative">₨${rec.stopLoss.toFixed(2)}</div>
-            <div class="tc-sub">${((rec.stopLoss - price)/price*100).toFixed(2)}% downside limit</div>
+            <div class="tc-sub">
+                ${((rec.stopLoss - price)/price*100).toFixed(2)}% limit ${tb.pivotAnchoredStop ? '<span class="pivot-tag" title="Stop pulled back inside support level">🛡️ Support Anchored</span>' : ''}
+            </div>
         </div>
     </div>
 
-    <!-- Order Flow & Market Depth Section -->
-    <div class="live-section-card">
-        <div class="section-card-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-            Order Flow & Market Depth Balance
+    <!-- Position Sizing & Capital Risk Studio (Stage 3.5) -->
+    <div class="live-section-card position-sizing-card">
+        <div class="section-card-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12V7H5a2 2 0 010-4h14v4"/><path d="M3 5v14a2 2 0 002 2h16v-5"/><path d="M18 12a2 2 0 100 4 2 2 0 000-4z"/></svg>
+                Position Sizing & Capital Risk Studio
+            </div>
+            <span class="pos-formula-pill">Quantity = Risk Amount ÷ |Entry - Stop|</span>
+        </div>
+        <div class="pos-calc-grid">
+            <div class="pos-input-group">
+                <label for="live-pos-capital">Account Trading Capital</label>
+                <div class="pos-input-wrapper">
+                    <span class="pos-affix">₨</span>
+                    <input type="number" id="live-pos-capital" class="pos-input" value="${savedCapital}" min="1000" step="10000" />
+                </div>
+            </div>
+            <div class="pos-input-group">
+                <label for="live-pos-risk-pct">Max Risk Per Trade</label>
+                <div class="pos-input-wrapper">
+                    <input type="number" id="live-pos-risk-pct" class="pos-input" value="${savedRiskPct}" min="0.1" max="15" step="0.5" />
+                    <span class="pos-affix">%</span>
+                </div>
+            </div>
+            <div class="pos-stat-box">
+                <div class="ps-label">Capital at Risk</div>
+                <div class="ps-value negative" id="pos-stat-risk">₨${initialPos.pkrAtRisk.toLocaleString('en-PK', {minimumFractionDigits: 2})}</div>
+                <div class="ps-sub" id="pos-stat-per-share">₨${initialPos.perShareRisk.toFixed(2)} risk / share</div>
+            </div>
+            <div class="pos-stat-box highlight">
+                <div class="ps-label">Recommended Position Size</div>
+                <div class="ps-value positive" id="pos-stat-shares">${initialPos.shares.toLocaleString()} shares</div>
+                <div class="ps-sub" id="pos-stat-outlay">Outlay: ₨${initialPos.totalOutlay.toLocaleString('en-PK', {minimumFractionDigits: 2})}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Flow & Market Depth Section (Stage 7) -->
+    <div class="live-section-card order-flow-card">
+        <div class="section-card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+                <span>${(rec.orderBook && rec.orderBook.label) ? escapeHtml(rec.orderBook.label) : 'Estimated pressure (from price change)'}</span>
+                <span class="order-flow-sub-label">(${rec.orderBook && rec.orderBook.sub_label ? escapeHtml(rec.orderBook.sub_label) : 'Simulated balance from price ticks — DPS public data lacks L2 book depth'})</span>
+            </div>
+            <span class="dps-l2-status-pill">${rec.orderBook && rec.orderBook.is_real_depth ? '🟢 Real L2 Depth' : 'ℹ️ DPS: Level 1 only'}</span>
         </div>
         <div class="order-flow-container">
             <div class="order-flow-labels">
-                <span class="buy-label">Buy Volume (${rec.buyRatio}%)</span>
-                <span class="sell-label">Sell Volume (${rec.sellRatio}%)</span>
+                <span class="buy-label">${rec.orderBook && rec.orderBook.is_real_depth ? 'Bid Depth' : 'Est. Buying Pressure'} (${rec.buyRatio}%)</span>
+                <span class="sell-label">${rec.orderBook && rec.orderBook.is_real_depth ? 'Ask Depth' : 'Est. Selling Pressure'} (${rec.sellRatio}%)</span>
             </div>
             <div class="order-flow-bar-bg">
                 <div class="order-flow-buy-fill" style="width: ${rec.buyRatio}%"></div>
             </div>
         </div>
+        ${rec.orderBook && rec.orderBook.is_real_depth && rec.orderBook.top_bids && rec.orderBook.top_bids.length ? `
+        <div class="l2-depth-ladder-wrap">
+            <div class="l2-depth-ladder">
+                <div class="l2-depth-col bids-col">
+                    <div class="l2-col-title">Top 5 Bids (Buyers)</div>
+                    ${rec.orderBook.top_bids.map(b => `
+                    <div class="l2-level-row bid">
+                        <span class="l2-price">₨${Number(b.price).toFixed(2)}</span>
+                        <span class="l2-vol">${Number(b.volume).toLocaleString()}</span>
+                    </div>`).join('')}
+                </div>
+                <div class="l2-depth-col asks-col">
+                    <div class="l2-col-title">Top 5 Asks (Sellers)</div>
+                    ${rec.orderBook.top_asks.map(a => `
+                    <div class="l2-level-row ask">
+                        <span class="l2-price">₨${Number(a.price).toFixed(2)}</span>
+                        <span class="l2-vol">${Number(a.volume).toLocaleString()}</span>
+                    </div>`).join('')}
+                </div>
+            </div>
+            ${rec.orderBook.spoof_analysis && rec.orderBook.spoof_analysis.spoof_alerts && rec.orderBook.spoof_analysis.spoof_alerts.length ? `
+            <div class="spoof-alert-banner">
+                <span class="spoof-icon">⚠️</span>
+                <span>${escapeHtml(rec.orderBook.spoof_analysis.spoof_alerts[0].message)}</span>
+            </div>` : ''}
+        </div>
+        ` : `
+        <div class="dps-depth-notice">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>PSX Data Portal (DPS) public feed exposes Level-1 quotes only. Level-2 (top-5 bid/ask depth) requires licensed broker terminal (KiTS/FIX feed).</span>
+        </div>
+        `}
     </div>
 
     <!-- Pro Multi-Panel Technical Chart Studio (4H / MACD / RSI Divergence) -->
@@ -3967,21 +5628,1086 @@ function renderLiveTrading(data) {
     </div>
     ` : ''}
 
+    <!-- Stage 6: Signal Track Record & Empirical Performance Studio -->
+    <div class="live-section-card signal-track-record-card" id="live-track-record-card">
+        <div class="section-card-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20v-6M6 20V10M18 20V4"/></svg>
+                <span>Live Signal Track Record & Empirical Performance</span>
+            </div>
+            <button class="btn btn-outline-cyan" onclick="triggerSymbolBacktest('${stock.symbol}')" id="btn-run-backtest">
+                🔬 Run Historical Backtest (v2 Replay)
+            </button>
+        </div>
+        <div id="live-signal-track-record-container">
+            <div class="track-record-loading" style="padding:16px; color:#94a3b8; font-size:0.85rem; text-align:center;">
+                Loading empirical performance ledger from SQLite...
+            </div>
+        </div>
+    </div>
+
+    <!-- Stage 8.4: Symbol Signal History & Post-Mortem Ledger -->
+    <div class="live-section-card symbol-signals-card" id="live-symbol-signals-card">
+        <div class="section-card-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <span>${stock.symbol} Signal History & Outcome Log (Stage 0 Ledger)</span>
+            </div>
+            <span class="history-badge-count" id="symbol-history-badge-count">Last 10 Signals</span>
+        </div>
+        <div id="live-symbol-signal-history-container">
+            <div style="padding:16px; color:#94a3b8; font-size:0.85rem; text-align:center;">
+                Fetching verified signal outcomes for ${stock.symbol}...
+            </div>
+        </div>
+    </div>
+
+    <!-- Stage 8.2: Live Market Opportunities Scanner -->
+    <div class="live-section-card live-scanner-card" id="live-scanner-card">
+        <div class="section-card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <span>Live Market Opportunities Scanner (21D Liquidity Gated)</span>
+            </div>
+            <div class="scanner-tab-toggles">
+                <button class="scanner-toggle-btn active" id="scanner-btn-longs" onclick="switchScannerTab('longs')">Top Longs (10)</button>
+                <button class="scanner-toggle-btn" id="scanner-btn-shorts" onclick="switchScannerTab('shorts')">Top Shorts (10)</button>
+                <button class="btn btn-sm btn-outline-cyan" onclick="refreshLiveScanner(true)" title="Force Refresh Scanner">🔄 Rescan</button>
+            </div>
+        </div>
+        <div id="live-scanner-results-container">
+            <div style="padding:16px; color:#94a3b8; font-size:0.85rem; text-align:center;">
+                Scanning liquid universe with deterministic v2 engine...
+            </div>
+        </div>
+    </div>
+
     <!-- Intraday Risk Disclaimer -->
     <div class="live-disclaimer">
-        ⚠️ <strong>Intraday Risk Disclaimer:</strong> Analysis is AI-generated based on available PSX market data and technical indicators. Intraday trading carries financial risk. This analysis is for research purposes only and should not be considered investment advice.
+        ⚠️ <strong>Notice:</strong> Analysis and indicators are algorithmically generated for educational & research purposes only. <strong>Not financial advice</strong>. Past performance does not guarantee future results.
     </div>
     `;
 
     container.innerHTML = html;
 
+    // Render Traded Volume History & Session Liquidity (Stage 1)
+    renderVolumeHistory(data.volumeHistory, stock.volume);
+
+    // Stage 3.5: Position Sizing Calculator Event Listeners
+    const capitalInput = document.getElementById("live-pos-capital");
+    const riskInput = document.getElementById("live-pos-risk-pct");
+    const statRisk = document.getElementById("pos-stat-risk");
+    const statPerShare = document.getElementById("pos-stat-per-share");
+    const statShares = document.getElementById("pos-stat-shares");
+    const statOutlay = document.getElementById("pos-stat-outlay");
+
+    function updatePositionCalc() {
+        if (!capitalInput || !riskInput) return;
+        const cap = parseFloat(capitalInput.value) || 0;
+        const rPct = parseFloat(riskInput.value) || 0;
+        try {
+            localStorage.setItem("psx_live_pos_capital", cap.toString());
+            localStorage.setItem("psx_live_pos_risk_pct", rPct.toString());
+        } catch (e) {}
+
+        const pos = calculatePositionSize(cap, rPct, rec.suggestedEntry, rec.stopLoss);
+        if (statRisk) statRisk.textContent = `₨${pos.pkrAtRisk.toLocaleString('en-PK', {minimumFractionDigits: 2})}`;
+        if (statPerShare) statPerShare.textContent = `₨${pos.perShareRisk.toFixed(2)} risk / share`;
+        if (statShares) statShares.textContent = `${pos.shares.toLocaleString()} shares`;
+        if (statOutlay) statOutlay.textContent = `Outlay: ₨${pos.totalOutlay.toLocaleString('en-PK', {minimumFractionDigits: 2})}`;
+    }
+
+    if (capitalInput) capitalInput.addEventListener("input", updatePositionCalc);
+    if (riskInput) riskInput.addEventListener("input", updatePositionCalc);
+
     // Initialize Interactive Technical Chart Studio (Default: 4H PSX Session Timeframe)
     initInteractiveTechnicalChart("live-technical-chart-container", stock.symbol, "4H");
+
+    // Stage 4: Multi-Timeframe Confluence Fetch (60s cache, non-blocking)
+    fetchMultiTimeframeConfluence(stock.symbol, rec.original_recommendation || rec.recommendation, (tfMap, conf) => {
+        updateMtfStripDOM(stock.symbol, tfMap, conf);
+    });
+
+    // Stage 6: Load Live Signal Track Record & Outcomes
+    loadLiveSignalTrackRecord(stock.symbol);
+
+    // Stage 8.4: Load symbol specific past signals from SQLite
+    fetchAndRenderSymbolSignals(stock.symbol);
+
+    // Stage 8.2: Load live market opportunities scanner
+    fetchAndRenderLiveScanner();
+
+    // Stage 8.3: Check real-time alerts
+    checkBrowserAlerts(stock, rec);
+
+    // Non-blocking signal logging to SQLite (throttled server-side)
+    try {
+        fetch("/api/log-signal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                symbol: stock.symbol,
+                price: price,
+                score: rec.confidence,
+                recommendation: rec.recommendation,
+                suggestedEntry: rec.suggestedEntry,
+                targetPrice: rec.targetPrice,
+                stopLoss: rec.stopLoss,
+                riskLevel: rec.riskLevel,
+                marketStatus: marketStatus.is_open ? "OPEN" : "CLOSED",
+                data_freshness_sec: freshnessSec,
+                factors: rec.factors
+            })
+        }).catch(err => console.debug("[Live Trading] Signal logging non-fatal:", err));
+    } catch (e) {
+        // ignore background logging error
+    }
 }
 
-// Renamed helper to avoid name clashes
-function generateRecommendation(stock, history, marketStatus) {
-    return generateLiveRecommendation(stock, history, marketStatus);
+// ─── Stage 1: Traded Volume History & Multi-Session Trajectory ───
+function renderVolumeHistory(vh, liveVolume) {
+    const container = document.getElementById("live-volume-history-container");
+    if (!container) return;
+
+    // Loading / Empty / Error State handling
+    if (!vh || !vh.windows) {
+        container.innerHTML = `
+            <div class="vol-header">
+                <div class="vol-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+                    <span>Traded Volume History (Trading Sessions)</span>
+                </div>
+            </div>
+            <div style="padding: 20px; text-align: center; color: #94a3b8; font-size: 0.85rem;">
+                Volume history data currently unavailable for this symbol.
+            </div>
+        `;
+        return;
+    }
+
+    const trend = vh.trend_label || "n/a";
+    let trendClass = "trend-neutral";
+    let trendIcon = "➡️";
+    if (trend === "Rising") { trendClass = "trend-rising"; trendIcon = "📈"; }
+    else if (trend === "Falling") { trendClass = "trend-falling"; trendIcon = "📉"; }
+    else if (trend === "Flat") { trendClass = "trend-flat"; trendIcon = "➡️"; }
+
+    const trendText = vh.trend_change_pct !== null && vh.trend_change_pct !== undefined 
+        ? `${trendIcon} Trend: ${trend} (${vh.trend_change_pct > 0 ? '+' : ''}${vh.trend_change_pct}%)`
+        : `${trendIcon} Trend: ${trend}`;
+
+    let projHtml = "";
+    if (vh.projected && vh.projected.is_estimate && vh.projected.projected_volume) {
+        projHtml = `<span class="vol-proj-badge" title="${vh.projected.label || ''}">🎯 Est. Full-Day: ${formatVolume(vh.projected.projected_volume)} shares (estimate)</span>`;
+    } else {
+        projHtml = `<span class="vol-proj-badge">Today: ${formatVolume(liveVolume || vh.today_volume || 0)} shares</span>`;
+    }
+
+    const windowOrder = ["1D", "2D", "1W", "15D", "1M"];
+    const windowLabels = {
+        "1D": "Last Trading Day (1D)",
+        "2D": "Last 2 Sessions (2D)",
+        "1W": "Last Week (5 Sessions)",
+        "15D": "Last 15 Sessions (15D)",
+        "1M": "Last Month (21 Sessions)"
+    };
+
+    let tableRows = "";
+    windowOrder.forEach(wKey => {
+        const w = vh.windows[wKey];
+        if (!w || w.status !== "ok") {
+            tableRows += `
+                <tr>
+                    <td><strong>${windowLabels[wKey] || wKey}</strong></td>
+                    <td><span style="color:#64748b;">n/a</span></td>
+                    <td><span style="color:#64748b;">n/a</span></td>
+                    <td><span class="ratio-pill ratio-normal">n/a</span></td>
+                    <td><span style="color:#64748b;">n/a</span></td>
+                    <td><span style="color:#64748b;">n/a</span></td>
+                </tr>
+            `;
+            return;
+        }
+
+        let ratioClass = "ratio-normal";
+        if (w.today_ratio !== null && w.today_ratio !== undefined) {
+            if (w.today_ratio >= 1.5) ratioClass = "ratio-high";
+            else if (w.today_ratio < 0.6) ratioClass = "ratio-low";
+        }
+        const ratioText = w.today_ratio !== null && w.today_ratio !== undefined ? `${w.today_ratio.toFixed(2)}x` : "n/a";
+
+        const hiText = w.highest_day ? `<span title="${w.highest_day.volume.toLocaleString()} shares">${formatVolume(w.highest_day.volume)}</span> <span style="font-size:0.7rem; color:#64748b;">(${w.highest_day.date})</span>` : "—";
+        const loText = w.lowest_day ? `<span title="${w.lowest_day.volume.toLocaleString()} shares">${formatVolume(w.lowest_day.volume)}</span> <span style="font-size:0.7rem; color:#64748b;">(${w.lowest_day.date})</span>` : "—";
+
+        tableRows += `
+            <tr>
+                <td><strong>${windowLabels[wKey] || wKey}</strong></td>
+                <td title="${(w.total_volume || 0).toLocaleString()} shares">${formatVolume(w.total_volume)} shares</td>
+                <td title="${Math.round(w.avg_daily_volume || 0).toLocaleString()} shares/day">${formatVolume(w.avg_daily_volume)} / day</td>
+                <td><span class="ratio-pill ${ratioClass}">${ratioText}</span></td>
+                <td>${hiText}</td>
+                <td>${loText}</td>
+            </tr>
+        `;
+    });
+
+    container.innerHTML = `
+        <div class="vol-header">
+            <div class="vol-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+                <span>Traded Volume History (Trading Sessions)</span>
+            </div>
+            <div class="vol-badges">
+                <span class="vol-trend-badge ${trendClass}">${trendText}</span>
+                ${projHtml}
+            </div>
+        </div>
+
+        <div class="vol-table-wrap">
+            <table class="vol-table">
+                <thead>
+                    <tr>
+                        <th>Window (Sessions)</th>
+                        <th>Total Volume</th>
+                        <th>Daily Average</th>
+                        <th>Today vs Avg</th>
+                        <th>Highest Day</th>
+                        <th>Lowest Day</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tableRows}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="vol-chart-wrap">
+            <div class="vol-chart-header">
+                <span>Multi-Session Volume Trajectory (Last 22 Sessions + Today)</span>
+                <span>Dashed line: 21-Session Avg</span>
+            </div>
+            <canvas id="vol-canvas-element" class="vol-canvas" height="190"></canvas>
+            <div id="vol-canvas-tooltip" class="vol-canvas-tooltip"></div>
+        </div>
+    `;
+
+    // Render Native HTML5 Canvas Chart
+    drawVolumeHistoryCanvas(vh, liveVolume);
+}
+
+function drawVolumeHistoryCanvas(vh, liveVolume) {
+    const canvas = document.getElementById("vol-canvas-element");
+    const tooltip = document.getElementById("vol-canvas-tooltip");
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Handle high DPI display
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const width = rect.width || canvas.clientWidth || 600;
+    const height = 190;
+
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.scale(dpr, dpr);
+
+    const historyBars = (vh.recent_bars || []).map(b => ({
+        date: b.date,
+        volume: b.volume,
+        close_change_pct: b.close_change_pct || 0,
+        is_halted: Boolean(b.is_halted),
+        is_today: false
+    }));
+
+    // Append today's bar
+    const todayVolNum = liveVolume !== undefined && liveVolume !== null ? Number(liveVolume) : (vh.today_volume || 0);
+    const bars = [...historyBars, {
+        date: "Today",
+        volume: todayVolNum,
+        close_change_pct: 0,
+        is_halted: false,
+        is_today: true
+    }];
+
+    const avg21d = vh.avg_21d_volume || 0;
+    const maxVol = Math.max(1, ...bars.map(b => b.volume), avg21d * 1.15);
+
+    const padLeft = 52;
+    const padRight = 16;
+    const padTop = 22;
+    const padBottom = 26;
+    const plotWidth = width - padLeft - padRight;
+    const plotHeight = height - padTop - padBottom;
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Draw Y-axis gridlines
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+    ctx.fillStyle = "#64748b";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+
+    const steps = 3;
+    for (let i = 0; i <= steps; i++) {
+        const y = padTop + (plotHeight / steps) * i;
+        const val = maxVol * (1 - i / steps);
+        ctx.beginPath();
+        ctx.moveTo(padLeft, y);
+        ctx.lineTo(width - padRight, y);
+        ctx.stroke();
+        ctx.fillText(formatVolume(val), padLeft - 6, y);
+    }
+
+    // Draw 21D Average dashed line
+    if (avg21d > 0) {
+        const avgY = padTop + plotHeight * (1 - avg21d / maxVol);
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(padLeft, avgY);
+        ctx.lineTo(width - padRight, avgY);
+        ctx.stroke();
+
+        ctx.fillStyle = "#38bdf8";
+        ctx.textAlign = "left";
+        ctx.fillText(`21D Avg: ${formatVolume(avg21d)}`, width - padRight - 90, Math.max(padTop + 10, avgY - 6));
+        ctx.restore();
+    }
+
+    // Draw Bars
+    const totalBars = bars.length;
+    const slotWidth = plotWidth / totalBars;
+    const barWidth = Math.max(2, slotWidth * 0.72);
+    const barPositions = [];
+
+    bars.forEach((b, i) => {
+        const x = padLeft + i * slotWidth + (slotWidth - barWidth) / 2;
+        const barHeight = Math.max(2, (b.volume / maxVol) * plotHeight);
+        const y = padTop + plotHeight - barHeight;
+
+        barPositions.push({ x, y, width: barWidth, height: barHeight, bar: b });
+
+        if (b.is_today) {
+            // Highlight today's bar
+            ctx.fillStyle = "rgba(56, 189, 248, 0.85)";
+            ctx.fillRect(x, y, barWidth, barHeight);
+            ctx.strokeStyle = "#38bdf8";
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(x, y, barWidth, barHeight);
+        } else if (b.is_halted) {
+            ctx.fillStyle = "#475569";
+            ctx.fillRect(x, y, barWidth, barHeight);
+        } else if (b.close_change_pct >= 0) {
+            ctx.fillStyle = "#22c55e";
+            ctx.fillRect(x, y, barWidth, barHeight);
+        } else {
+            ctx.fillStyle = "#ef4444";
+            ctx.fillRect(x, y, barWidth, barHeight);
+        }
+
+        // Sample X-axis date labels
+        if (i % 4 === 0 || i === totalBars - 1) {
+            ctx.fillStyle = b.is_today ? "#38bdf8" : "#94a3b8";
+            ctx.font = b.is_today ? "bold 10px sans-serif" : "9px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            const label = b.is_today ? "Today" : b.date.slice(5); // e.g. "09-18"
+            ctx.fillText(label, x + barWidth / 2, height - padBottom + 6);
+        }
+    });
+
+    // Tooltip Interaction
+    function handlePointer(e) {
+        const r = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const mouseX = clientX - r.left;
+
+        const hovered = barPositions.find(p => mouseX >= p.x - 2 && mouseX <= p.x + p.width + 2);
+        if (hovered && tooltip) {
+            const b = hovered.bar;
+            const changeText = b.is_today ? "Live Session" : `${b.close_change_pct >= 0 ? '+' : ''}${b.close_change_pct.toFixed(2)}%`;
+            tooltip.innerHTML = `
+                <div style="font-weight:700; color:#38bdf8; margin-bottom:2px;">${b.date}</div>
+                <div>Vol: <strong>${b.volume.toLocaleString()}</strong> shares (${formatVolume(b.volume)})</div>
+                <div style="color:${b.close_change_pct >= 0 ? '#4ade80' : '#f87171'};">Close: ${changeText}</div>
+            `;
+            tooltip.style.display = "block";
+            const tooltipX = Math.min(width - 150, Math.max(10, mouseX - 50));
+            const tooltipY = Math.max(10, hovered.y - 48);
+            tooltip.style.left = tooltipX + "px";
+            tooltip.style.top = tooltipY + "px";
+        } else if (tooltip) {
+            tooltip.style.display = "none";
+        }
+    }
+
+    canvas.onmousemove = handlePointer;
+    canvas.ontouchmove = handlePointer;
+    canvas.onmouseleave = () => { if (tooltip) tooltip.style.display = "none"; };
+    canvas.ontouchend = () => { if (tooltip) tooltip.style.display = "none"; };
+}
+
+// ─── Stage 6: Signal Track Record & Historical Backtest Studio ───
+
+function loadLiveSignalTrackRecord(symbol) {
+    const container = document.getElementById("live-signal-track-record-container");
+    if (!container) return;
+
+    fetch("/api/signal-stats")
+        .then(r => r.json())
+        .then(res => {
+            if (res.success && res.data) {
+                renderSignalTrackRecord(res.data, symbol);
+            } else {
+                container.innerHTML = `<div style="padding:16px; color:#94a3b8; font-size:0.85rem;">No tracked signals recorded yet. Live signals are logged during active sessions.</div>`;
+            }
+        })
+        .catch(err => {
+            container.innerHTML = `<div style="padding:16px; color:#f87171; font-size:0.85rem;">Could not load signal statistics: ${err.message}</div>`;
+        });
+}
+
+function renderSignalTrackRecord(stats, symbol) {
+    const container = document.getElementById("live-signal-track-record-container");
+    if (!container) return;
+
+    const tiers = ["STRONG BUY", "BUY", "HOLD", "SELL", "STRONG SELL"];
+    const breakdown = stats.tier_breakdown || {};
+
+    const wrText = stats.overall_display_win_rate_pct !== null && stats.overall_display_win_rate_pct !== undefined
+        ? `${stats.overall_display_win_rate_pct}%`
+        : `<span class="sample-warning-badge">⚠️ &lt;30 signals</span>`;
+
+    let html = `
+        <div class="track-stat-grid">
+            <div class="track-stat-box">
+                <div class="track-stat-label">Total Signals Logged</div>
+                <div class="track-stat-num">${stats.total_signals || 0}</div>
+            </div>
+            <div class="track-stat-box">
+                <div class="track-stat-label">Resolved Signals</div>
+                <div class="track-stat-num">${stats.resolved_signals || 0}</div>
+            </div>
+            <div class="track-stat-box">
+                <div class="track-stat-label">Overall Win Rate</div>
+                <div class="track-stat-num" style="display:flex; align-items:center; flex-wrap:wrap;">
+                    ${wrText}
+                    ${stats.overall_wilson_ci_95 && stats.resolved_signals > 0 ? `<span class="wilson-ci-badge" title="95% Wilson Confidence Interval">CI: ${stats.overall_wilson_ci_95.text}</span>` : ''}
+                </div>
+            </div>
+            <div class="track-stat-box">
+                <div class="track-stat-label">Average R-Multiple</div>
+                <div class="track-stat-num" style="color: ${(stats.overall_avg_r_multiple || 0) >= 0 ? '#34d399' : '#f87171'}">
+                    ${(stats.overall_avg_r_multiple || 0) >= 0 ? '+' : ''}${stats.overall_avg_r_multiple || 0.0}R
+                </div>
+            </div>
+        </div>
+
+        <!-- Tier Performance Table -->
+        <div class="track-table-wrap">
+            <table class="track-record-table">
+                <thead>
+                    <tr>
+                        <th>Signal Tier</th>
+                        <th>Logged Signals</th>
+                        <th>Win Rate</th>
+                        <th>95% Wilson CI</th>
+                        <th>Average R</th>
+                        <th>Sample Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tiers.map(t => {
+                        const row = breakdown[t] || { count: 0, wins: 0, losses: 0, win_rate: 0, avg_r: 0, wilson_ci_95: { text: "N/A" }, sample_size_warning: true };
+                        const resolved = (row.wins || 0) + (row.losses || 0);
+                        const hasWarn = resolved < 30;
+                        const dispWr = !hasWarn ? `${row.win_rate}%` : `<span style="color:#94a3b8; font-style:italic;">Suppressed (&lt;30)</span>`;
+                        return `
+                            <tr>
+                                <td><strong>${t}</strong></td>
+                                <td>${row.count || 0} (${resolved} resolved)</td>
+                                <td>${dispWr}</td>
+                                <td>${row.wilson_ci_95 ? row.wilson_ci_95.text : 'N/A'}</td>
+                                <td style="color:${row.avg_r >= 0 ? '#34d399' : '#f87171'}">${row.avg_r >= 0 ? '+' : ''}${row.avg_r}R</td>
+                                <td>
+                                    ${hasWarn ? `<span class="sample-warning-badge" title="Minimum 30 resolved signals required for statistical validity">⚠️ Low Sample (${resolved}/30)</span>` : `<span style="color:#34d399; font-weight:700;">✅ Valid Sample</span>`}
+                                </td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
+
+        <div id="live-backtest-results-container"></div>
+    `;
+
+    container.innerHTML = html;
+}
+
+function triggerSymbolBacktest(symbol) {
+    const btn = document.getElementById("btn-run-backtest");
+    const container = document.getElementById("live-backtest-results-container");
+    if (!container) return;
+
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = "⏳ Replaying 100 bars (no lookahead)...";
+    }
+    container.innerHTML = `<div style="padding:20px; text-align:center; color:#06b6d4;">Replaying deterministic v2 engine across historical daily bars with strictly zero lookahead...</div>`;
+
+    fetch(`/api/live-trading/backtest?symbol=${encodeURIComponent(symbol)}`)
+        .then(r => r.json())
+        .then(res => {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = "🔬 Run Historical Backtest (v2 Replay)";
+            }
+            if (res.success && res.data) {
+                renderBacktestResults(res.data, symbol);
+            } else {
+                container.innerHTML = `<div style="padding:16px; color:#f87171;">Backtest error: ${res.error || 'Unknown error'}</div>`;
+            }
+        })
+        .catch(err => {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = "🔬 Run Historical Backtest (v2 Replay)";
+            }
+            container.innerHTML = `<div style="padding:16px; color:#f87171;">Backtest network error: ${err.message}</div>`;
+        });
+}
+
+function renderBacktestResults(data, symbol) {
+    const container = document.getElementById("live-backtest-results-container");
+    if (!container) return;
+
+    const bt = data.backtest || {};
+    const base = data.baseline || {};
+    const comp = data.comparison || {};
+    const wf = data.walk_forward || {};
+    const tiers = bt.tier_metrics || {};
+
+    let html = `
+        <div class="backtest-studio-wrap">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                <div>
+                    <h4 style="margin:0; font-size:1.0rem; color:#f8fafc;">Historical Replay & Calibration: ${symbol}</h4>
+                    <span style="font-size:0.75rem; color:#94a3b8;">
+                        ${bt.total_bars_evaluated || 0} evaluated bars (${bt.warmup_bars || 50} warmup) • Deducting ${bt.transaction_friction_pct || 0.35}% round-trip friction
+                    </span>
+                </div>
+                <span class="badge" style="background:rgba(6, 182, 212, 0.15); border:1px solid rgba(6, 182, 212, 0.4); color:#06b6d4; font-weight:700; padding:4px 8px; border-radius:4px;">
+                    Strict Zero Lookahead
+                </span>
+            </div>
+
+            <!-- Value Added Verdict Banner -->
+            <div class="backtest-verdict-banner ${comp.value_added ? 'verdict-positive' : 'verdict-neutral'}">
+                <span>${comp.value_added ? '🏆' : '⚖️'}</span>
+                <span>${comp.verdict} — Engine Profit Factor: <strong>${comp.engine_profit_factor}</strong> vs Baseline: <strong>${comp.baseline_profit_factor}</strong> (${comp.pf_difference >= 0 ? '+' : ''}${comp.pf_difference} PF Delta)</span>
+            </div>
+
+            <!-- Comparison Grid: V2 vs Baseline -->
+            <div class="backtest-comp-grid">
+                <div class="backtest-card">
+                    <div style="font-size:0.8rem; font-weight:700; color:#38bdf8; margin-bottom:8px;">
+                        🤖 Deterministic V2 Engine (Long Trades)
+                    </div>
+                    <div style="font-size:0.8rem; line-height:1.6; color:#cbd5e1;">
+                        <div>Win Rate: <strong>${bt.overall_long?.win_rate_pct !== null && bt.overall_long?.win_rate_pct !== undefined ? bt.overall_long?.win_rate_pct + '%' : 'Suppressed (<30)'}</strong> (Raw: ${bt.overall_long?.raw_win_rate_pct || 0}%)</div>
+                        <div>95% Wilson CI: <strong>[${bt.overall_long?.wilson_ci_95?.lower_pct}% – ${bt.overall_long?.wilson_ci_95?.upper_pct}%]</strong></div>
+                        <div>Average R: <strong>${bt.overall_long?.average_r || 0}R</strong></div>
+                        <div>Profit Factor: <strong>${bt.overall_long?.profit_factor || 0}</strong></div>
+                        <div>Max Drawdown: <strong style="color:#f87171;">${bt.max_drawdown_pct || 0}%</strong></div>
+                    </div>
+                </div>
+
+                <div class="backtest-card">
+                    <div style="font-size:0.8rem; font-weight:700; color:#94a3b8; margin-bottom:8px;">
+                        📉 Simple Baseline (Buy P > EMA50, Exit P < EMA50)
+                    </div>
+                    <div style="font-size:0.8rem; line-height:1.6; color:#cbd5e1;">
+                        <div>Strategy Trades: <strong>${base.trades_count || 0}</strong></div>
+                        <div>Win Rate: <strong>${base.win_rate_pct || 0}%</strong></div>
+                        <div>Profit Factor: <strong>${base.profit_factor || 0}</strong></div>
+                        <div>Max Drawdown: <strong style="color:#f87171;">${base.max_drawdown_pct || 0}%</strong></div>
+                        <div>Strategy Return: <strong>${base.total_return_pct || 0}%</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Walk-Forward Testing Stability Summary -->
+            ${wf.status === 'success' ? `
+            <div class="backtest-card" style="margin-bottom:14px; background:rgba(15, 23, 42, 0.85); border-left:3px solid #a855f7;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <span style="font-size:0.82rem; font-weight:700; color:#c084fc;">🔬 Walk-Forward Out-of-Sample Calibration</span>
+                    <span style="font-size:0.72rem; padding:2px 8px; border-radius:4px; font-weight:700; background:rgba(168, 85, 247, 0.2); color:#e9d5ff;">
+                        Stability: ${wf.stability}
+                    </span>
+                </div>
+                <div style="font-size:0.78rem; color:#cbd5e1; line-height:1.5;">
+                    <span>Trained on <strong>${wf.split_bars?.train}</strong> bars (70%), tested on <strong>${wf.split_bars?.test}</strong> unseen bars (30%). In-Sample PF: <strong>${wf.in_sample_profit_factor}</strong> ➔ Out-of-Sample PF: <strong>${wf.out_of_sample_profit_factor}</strong> (Gap: ${wf.in_sample_vs_oos_gap}).</span>
+                    <div style="margin-top:4px; font-size:0.74rem; color:#94a3b8;">
+                        📁 Best candidate (<em>${wf.best_in_sample_candidate}</em>) written to <code>config/suggested_weights.json</code> for human review. Live weights preserved.
+                    </div>
+                </div>
+            </div>` : ''}
+
+            <!-- Per-Tier Backtest Table -->
+            <div class="track-table-wrap" style="margin-bottom:0;">
+                <table class="track-record-table">
+                    <thead>
+                        <tr>
+                            <th>Tier</th>
+                            <th>Signals</th>
+                            <th>Win Rate</th>
+                            <th>95% Wilson CI</th>
+                            <th>Average R</th>
+                            <th>Profit Factor</th>
+                            <th>Sample Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${Object.keys(tiers).map(t => {
+                            const row = tiers[t];
+                            return `
+                                <tr>
+                                    <td><strong>${t}</strong></td>
+                                    <td>${row.signals_count}</td>
+                                    <td>${row.display_win_rate_pct !== null ? row.display_win_rate_pct + '%' : '<span style="color:#94a3b8; font-style:italic;">Suppressed</span>'}</td>
+                                    <td>${row.wilson_ci_95.text}</td>
+                                    <td style="color:${row.average_r >= 0 ? '#34d399' : '#f87171'}">${row.average_r >= 0 ? '+' : ''}${row.average_r}R</td>
+                                    <td>${row.profit_factor}</td>
+                                    <td>
+                                        ${row.sample_size_warning ? `<span class="sample-warning-badge">⚠️ &lt;30 signals</span>` : `<span style="color:#34d399; font-weight:700;">✅ Valid Sample</span>`}
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
+}
+
+// ─────────────────────────────────────────────────────────────
+// STAGE 8: WORKFLOW FEATURES
+// ─────────────────────────────────────────────────────────────
+
+// ─── Stage 8.1: Paper Trading Modal & Execution ───
+let _currentPaperTradeParams = null;
+
+function openLivePaperTradeModal(symbol, name, sector, price, entry, stop, target, rec, risk) {
+    const capInput = document.getElementById("live-pos-capital");
+    const riskInput = document.getElementById("live-pos-risk-pct");
+    const cap = parseFloat(capInput ? capInput.value : 500000) || 500000;
+    const rPct = parseFloat(riskInput ? riskInput.value : 1.5) || 1.5;
+    const pos = calculatePositionSize(cap, rPct, entry, stop);
+    const shares = pos.shares || 100;
+    const outlay = shares * entry;
+
+    _currentPaperTradeParams = {
+        symbol, name, sector, price, entry, stop, target, rec, risk, shares, outlay
+    };
+
+    let modal = document.getElementById("live-paper-trade-modal");
+    if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "live-paper-trade-modal";
+        modal.className = "modal-overlay";
+        document.body.appendChild(modal);
+        modal.addEventListener("click", (e) => {
+            if (e.target === modal) closeLivePaperTradeModal();
+        });
+    }
+
+    const isSell = rec.includes("SELL");
+    modal.style.display = "flex";
+    modal.innerHTML = `
+        <div class="pos-modal-box paper-trade-modal-box">
+            <div class="pos-modal-header">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:1.4rem;">${isSell ? '🔻' : '⚡'}</span>
+                    <div>
+                        <h3 style="margin:0; font-size:1.1rem; color:#f8fafc;">Confirm Paper Trade Execution</h3>
+                        <div style="font-size:0.75rem; color:#94a3b8;">Deterministic Stage 3 Sizing & Trade Brackets Pre-filled</div>
+                    </div>
+                </div>
+                <button class="lic-close" onclick="closeLivePaperTradeModal()">✕</button>
+            </div>
+            <div class="paper-modal-body" style="padding:16px;">
+                <div class="paper-param-grid">
+                    <div class="paper-param-item">
+                        <span class="pp-label">Action & Symbol</span>
+                        <strong class="pp-val ${isSell ? 'negative' : 'positive'}">${isSell ? 'SELL' : 'BUY'} ${symbol}</strong>
+                    </div>
+                    <div class="paper-param-item">
+                        <span class="pp-label">Company</span>
+                        <strong class="pp-val">${escapeHtml(name)}</strong>
+                    </div>
+                    <div class="paper-param-item">
+                        <span class="pp-label">Entry Price</span>
+                        <strong class="pp-val">₨${entry.toFixed(2)}</strong>
+                    </div>
+                    <div class="paper-param-item">
+                        <span class="pp-label">Position Size (Shares)</span>
+                        <input type="number" id="paper-modal-shares" class="paper-shares-input" value="${shares}" min="1" step="10" oninput="updatePaperModalOutlay(${entry})">
+                    </div>
+                    <div class="paper-param-item">
+                        <span class="pp-label">Total Outlay</span>
+                        <strong class="pp-val" id="paper-modal-outlay">₨${outlay.toLocaleString('en-PK', {minimumFractionDigits:2})}</strong>
+                    </div>
+                    <div class="paper-param-item">
+                        <span class="pp-label">Stop-Loss</span>
+                        <strong class="pp-val negative">₨${stop.toFixed(2)}</strong>
+                    </div>
+                    <div class="paper-param-item">
+                        <span class="pp-label">Take Profit Target</span>
+                        <strong class="pp-val positive">₨${target.toFixed(2)}</strong>
+                    </div>
+                    <div class="paper-param-item">
+                        <span class="pp-label">Recommendation / Risk</span>
+                        <strong class="pp-val">${rec} (${risk})</strong>
+                    </div>
+                </div>
+                <div class="paper-modal-actions" style="margin-top:20px; display:flex; gap:10px; justify-content:flex-end;">
+                    <button class="btn btn-secondary" onclick="closeLivePaperTradeModal()">Cancel</button>
+                    <button class="btn ${isSell ? 'btn-danger' : 'btn-primary'}" id="btn-confirm-paper-order" onclick="confirmAndPlaceLivePaperTrade()">
+                        ✅ Confirm & Place ${isSell ? 'Sell' : 'Buy'} Order
+                    </button>
+                </div>
+                <div id="paper-modal-msg" style="margin-top:10px; display:none; padding:8px; border-radius:4px;"></div>
+            </div>
+        </div>
+    `;
+}
+
+function updatePaperModalOutlay(entryPrice) {
+    const input = document.getElementById("paper-modal-shares");
+    const display = document.getElementById("paper-modal-outlay");
+    if (input && display) {
+        const s = parseInt(input.value) || 0;
+        display.textContent = `₨${(s * entryPrice).toLocaleString('en-PK', {minimumFractionDigits:2})}`;
+    }
+}
+
+function closeLivePaperTradeModal() {
+    const modal = document.getElementById("live-paper-trade-modal");
+    if (modal) modal.style.display = "none";
+}
+
+function confirmAndPlaceLivePaperTrade() {
+    if (!_currentPaperTradeParams) return;
+    const btn = document.getElementById("btn-confirm-paper-order");
+    const msg = document.getElementById("paper-modal-msg");
+    const sharesInput = document.getElementById("paper-modal-shares");
+    const shares = sharesInput ? parseInt(sharesInput.value) || _currentPaperTradeParams.shares : _currentPaperTradeParams.shares;
+
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Processing order...";
+    }
+
+    fetch("/api/trading/approve-trade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            symbol: _currentPaperTradeParams.symbol,
+            name: _currentPaperTradeParams.name,
+            sector: _currentPaperTradeParams.sector,
+            entry_price: _currentPaperTradeParams.entry,
+            stop_loss: _currentPaperTradeParams.stop,
+            take_profit_1: _currentPaperTradeParams.target,
+            shares: shares,
+            strategy: "Live Trading V2"
+        })
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            closeLivePaperTradeModal();
+            const toastMsg = `✅ Paper Order Executed: Placed order for ${shares.toLocaleString()} ${_currentPaperTradeParams.symbol} @ PKR ${_currentPaperTradeParams.entry.toFixed(2)}`;
+            if (typeof showToast === "function") {
+                showToast(toastMsg);
+            } else {
+                alert(toastMsg);
+            }
+            if (typeof loadTradingPortfolio === "function") {
+                loadTradingPortfolio();
+            }
+        } else {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = "Confirm & Place Order";
+            }
+            if (msg) {
+                msg.style.display = "block";
+                msg.style.color = "#f87171";
+                msg.textContent = `Execution rejected: ${res.error || 'Unknown error'}`;
+            }
+        }
+    })
+    .catch(err => {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Confirm & Place Order";
+        }
+        if (msg) {
+            msg.style.display = "block";
+            msg.style.color = "#f87171";
+            msg.textContent = `Network error: ${err.message}`;
+        }
+    });
+}
+
+// ─── Stage 8.4: Symbol Signal History Panel ───
+function fetchAndRenderSymbolSignals(symbol) {
+    const container = document.getElementById("live-symbol-signal-history-container");
+    if (!container) return;
+
+    fetch(`/api/live-trading/signal-history?symbol=${encodeURIComponent(symbol)}&limit=10`)
+        .then(r => r.json())
+        .then(res => {
+            if (res.success && Array.isArray(res.data)) {
+                renderSymbolSignalsTable(res.data, symbol);
+            } else {
+                container.innerHTML = `<div style="padding:16px; color:#94a3b8; text-align:center;">No previous signals recorded in SQLite for ${symbol}.</div>`;
+            }
+        })
+        .catch(err => {
+            container.innerHTML = `<div style="padding:16px; color:#f87171; text-align:center;">Error loading signal history: ${err.message}</div>`;
+        });
+}
+
+function renderSymbolSignalsTable(signals, symbol) {
+    const container = document.getElementById("live-symbol-signal-history-container");
+    if (!container) return;
+
+    if (!signals.length) {
+        container.innerHTML = `<div style="padding:16px; color:#94a3b8; text-align:center;">No past forward-evaluated signals for ${symbol} yet. Signals are logged automatically when scores change.</div>`;
+        return;
+    }
+
+    let html = `
+    <div style="overflow-x:auto;">
+        <table class="track-record-table">
+            <thead>
+                <tr>
+                    <th>Timestamp (PKT)</th>
+                    <th>Signal</th>
+                    <th>Confidence</th>
+                    <th>Entry</th>
+                    <th>Target</th>
+                    <th>Stop</th>
+                    <th>1D Horizon</th>
+                    <th>3D Horizon</th>
+                    <th>R-Multiple</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${signals.map(s => {
+                    const o1 = s.outcome_1d || 'PENDING';
+                    const o3 = s.outcome_3d || 'PENDING';
+                    const o1Class = o1 === 'WIN' ? 'positive' : (o1 === 'LOSS' ? 'negative' : 'neutral');
+                    const o3Class = o3 === 'WIN' ? 'positive' : (o3 === 'LOSS' ? 'negative' : 'neutral');
+                    return `
+                    <tr>
+                        <td style="font-family:monospace; font-size:0.75rem; color:#94a3b8;">${escapeHtml(s.timestamp_pkt || '')}</td>
+                        <td><strong style="color:${s.recommendation.includes('BUY') ? '#4ade80' : (s.recommendation.includes('SELL') ? '#f87171' : '#fbbf24')}">${escapeHtml(s.recommendation)}</strong></td>
+                        <td>${parseFloat(s.score || 0).toFixed(1)}%</td>
+                        <td>₨${parseFloat(s.entry || 0).toFixed(2)}</td>
+                        <td style="color:#4ade80;">₨${parseFloat(s.target || 0).toFixed(2)}</td>
+                        <td style="color:#f87171;">₨${parseFloat(s.stop_loss || 0).toFixed(2)}</td>
+                        <td><span class="outcome-pill outcome-${o1Class}">${o1}</span></td>
+                        <td><span class="outcome-pill outcome-${o3Class}">${o3}</span></td>
+                        <td><strong>${s.r_multiple !== null && s.r_multiple !== undefined ? (s.r_multiple >= 0 ? '+' : '') + parseFloat(s.r_multiple).toFixed(2) + 'R' : '—'}</strong></td>
+                    </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    </div>
+    `;
+    container.innerHTML = html;
+}
+
+// ─── Stage 8.2: Live Market Opportunities Scanner ───
+let _scannerData = null;
+let _activeScannerTab = "longs";
+
+function fetchAndRenderLiveScanner(force = false) {
+    const container = document.getElementById("live-scanner-results-container");
+    if (!container) return;
+
+    if (force) {
+        container.innerHTML = `<div style="padding:16px; color:#06b6d4; text-align:center;">Scanning liquid PSX universe with deterministic v2 engine...</div>`;
+    }
+
+    fetch(`/api/live-trading/scanner${force ? '?force=1' : ''}`)
+        .then(r => r.json())
+        .then(res => {
+            if (res.success && res.data) {
+                _scannerData = res.data;
+                renderScannerTable();
+            } else {
+                container.innerHTML = `<div style="padding:16px; color:#f87171; text-align:center;">Scanner error: ${res.error || 'Failed to scan'}</div>`;
+            }
+        })
+        .catch(err => {
+            container.innerHTML = `<div style="padding:16px; color:#f87171; text-align:center;">Scanner network error: ${err.message}</div>`;
+        });
+}
+
+function switchScannerTab(tab) {
+    _activeScannerTab = tab;
+    const btnL = document.getElementById("scanner-btn-longs");
+    const btnS = document.getElementById("scanner-btn-shorts");
+    if (btnL && btnS) {
+        btnL.className = tab === 'longs' ? "scanner-toggle-btn active" : "scanner-toggle-btn";
+        btnS.className = tab === 'shorts' ? "scanner-toggle-btn active" : "scanner-toggle-btn";
+    }
+    renderScannerTable();
+}
+
+function refreshLiveScanner(force = true) {
+    fetchAndRenderLiveScanner(force);
+}
+
+function renderScannerTable() {
+    const container = document.getElementById("live-scanner-results-container");
+    if (!container || !_scannerData) return;
+
+    const list = _activeScannerTab === "longs" ? (_scannerData.top_bullish || []) : (_scannerData.top_bearish || []);
+    if (!list.length) {
+        container.innerHTML = `<div style="padding:16px; color:#94a3b8; text-align:center;">No ${_activeScannerTab === 'longs' ? 'long' : 'short'} setups currently meeting liquidity and scoring thresholds.</div>`;
+        return;
+    }
+
+    let html = `
+    <div style="overflow-x:auto;">
+        <table class="track-record-table scanner-table">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Sector</th>
+                    <th>Price</th>
+                    <th>Change</th>
+                    <th>Volume (21D Gate)</th>
+                    <th>V2 Score</th>
+                    <th>Regime</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${list.map(c => `
+                <tr style="cursor:pointer;" onclick="selectLiveTradingSymbol('${escapeHtml(c.symbol)}')">
+                    <td><strong>${escapeHtml(c.symbol)}</strong></td>
+                    <td style="color:#94a3b8; font-size:0.75rem;">${escapeHtml(c.sector)}</td>
+                    <td>₨${c.price.toFixed(2)}</td>
+                    <td class="${c.change >= 0 ? 'positive' : 'negative'}">${c.change >= 0 ? '+' : ''}${c.change.toFixed(2)}%</td>
+                    <td style="font-family:monospace;">${Number(c.volume).toLocaleString()}</td>
+                    <td><span class="scanner-score-pill ${c.confidence >= 60 ? 'score-high' : (c.confidence <= 40 ? 'score-low' : 'score-med')}">${c.confidence.toFixed(1)}%</span></td>
+                    <td><span class="regime-tag">${escapeHtml(c.regime)}</span></td>
+                    <td><button class="btn btn-sm btn-outline-cyan" onclick="event.stopPropagation(); selectLiveTradingSymbol('${escapeHtml(c.symbol)}')">Analyze</button></td>
+                </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    </div>
+    <div style="padding:8px 12px; font-size:0.72rem; color:#94a3b8; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+        <span>Scanned ${_scannerData.scanned_total || 0} symbols • ${_scannerData.liquid_count || 0} passed 21D liquidity gate</span>
+        <span>Cached as of ${_scannerData.timestamp || 'just now'} (60s TTL)</span>
+    </div>
+    `;
+    container.innerHTML = html;
+}
+
+function selectLiveTradingSymbol(symbol) {
+    const input = document.getElementById("live-symbol-search-input");
+    if (input) {
+        input.value = symbol;
+    }
+    fetchLiveTradingData(symbol);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ─── Stage 8.3: Browser Alerts & Web Notifications ───
+const _localAlertHistory = {};
+
+function checkBrowserAlerts(stock, rec) {
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+        try { Notification.requestPermission(); } catch (e) {}
+    }
+    if (Notification.permission !== "granted") return;
+
+    const symbol = stock.symbol;
+    const price = stock.price;
+    const target = rec.targetPrice;
+    const stop = rec.stopLoss;
+    const recommendation = rec.recommendation;
+    const now = Date.now();
+    const dedupWindow = 60 * 60 * 1000; // 60 min
+
+    // 1. Signal cross
+    if (recommendation.includes("BUY") || recommendation.includes("SELL")) {
+        const key = `${symbol}:SIGNAL:${recommendation}`;
+        if (!(_localAlertHistory[key]) || (now - _localAlertHistory[key]) > dedupWindow) {
+            _localAlertHistory[key] = now;
+            try {
+                new Notification(`PSX Live Alert: ${symbol} ${recommendation}`, {
+                    body: `${symbol} reached ${recommendation} conviction (${rec.confidence}%) @ PKR ${price.toFixed(2)}`,
+                    icon: "/static/images/favicon.png"
+                });
+            } catch (e) {}
+        }
+    }
+
+    // 2. Target Hit
+    if (target > 0) {
+        const isHit = (recommendation.includes("BUY") && price >= target) || (recommendation.includes("SELL") && price <= target);
+        if (isHit) {
+            const key = `${symbol}:TARGET`;
+            if (!(_localAlertHistory[key]) || (now - _localAlertHistory[key]) > dedupWindow) {
+                _localAlertHistory[key] = now;
+                try {
+                    new Notification(`🎯 Target Reached: ${symbol}`, {
+                        body: `${symbol} touched target price PKR ${target.toFixed(2)} (Current: PKR ${price.toFixed(2)})`,
+                        icon: "/static/images/favicon.png"
+                    });
+                } catch (e) {}
+            }
+        }
+    }
+
+    // 3. Approaching Stop
+    if (stop > 0) {
+        const isClose = (recommendation.includes("BUY") && price <= stop * 1.005 && price > stop * 0.95) ||
+                        (recommendation.includes("SELL") && price >= stop * 0.995 && price < stop * 1.05);
+        if (isClose) {
+            const key = `${symbol}:STOP`;
+            if (!(_localAlertHistory[key]) || (now - _localAlertHistory[key]) > dedupWindow) {
+                _localAlertHistory[key] = now;
+                try {
+                    new Notification(`⚠️ Stop-Loss Warning: ${symbol}`, {
+                        body: `${symbol} is within 0.5% of stop-loss PKR ${stop.toFixed(2)} (Current: PKR ${price.toFixed(2)})`,
+                        icon: "/static/images/favicon.png"
+                    });
+                } catch (e) {}
+            }
+        }
+    }
 }
 
 // ─── Paper Trading Simulator Engine ───
@@ -5406,6 +8132,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initTrialSystem();
     initSidebarState();
     startVisitorHeartbeat();
+    initIntradaySSE();
     
     // Live Pakistan Clock Ticker
     updatePKTClock();
@@ -10280,6 +13007,61 @@ async function loadPortfolioData() {
         if (profitFactorEl) profitFactorEl.textContent = `Profit Factor: ${data.profit_factor || 1.0}x`;
         if (openBadgeEl) openBadgeEl.textContent = `${(data.open_positions || []).length}`;
 
+        // Institutional Performance Analytics
+        const mddEl = document.getElementById("pf-max-drawdown");
+        const mddPkrEl = document.getElementById("pf-max-drawdown-pkr");
+        const sharpeEl = document.getElementById("pf-sharpe-ratio");
+        const payoffEl = document.getElementById("pf-payoff-ratio");
+        const winLossEl = document.getElementById("pf-win-loss-ratio");
+
+        if (mddEl) mddEl.textContent = `${data.max_drawdown_pct != null ? data.max_drawdown_pct.toFixed(1) : '0.0'}%`;
+        if (mddPkrEl) mddPkrEl.textContent = `Peak-to-Trough: ₨${(data.max_drawdown_pkr || 0).toLocaleString('en-PK', {minimumFractionDigits:2})}`;
+        if (sharpeEl) sharpeEl.textContent = `${data.sharpe_ratio != null ? data.sharpe_ratio.toFixed(2) : '0.00'}`;
+        if (payoffEl) payoffEl.textContent = `${data.payoff_ratio != null ? data.payoff_ratio.toFixed(2) : '1.00'}x`;
+        if (winLossEl) winLossEl.textContent = `Win/Loss: ${data.win_loss_ratio != null ? data.win_loss_ratio.toFixed(2) : '0.00'}x`;
+
+        // Render Automated Trade Journal
+        const journalBody = document.getElementById("pf-trade-journal-body");
+        const journalBadge = document.getElementById("pf-journal-count-badge");
+        if (journalBadge) journalBadge.textContent = `${(data.trade_journal || []).length} Logged Trades`;
+        if (journalBody) {
+            const jList = data.trade_journal || [];
+            if (jList.length === 0) {
+                journalBody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:32px; color:var(--text-tertiary);">No journaled trades recorded yet.</td></tr>`;
+            } else {
+                journalBody.innerHTML = jList.map(j => {
+                    const isWin = j.status === 'WIN';
+                    const isLoss = j.status === 'LOSS';
+                    const pnlSign = j.realized_pnl >= 0 ? '+' : '';
+                    const rSign = j.r_multiple >= 0 ? '+' : '';
+                    const statusBadge = isWin
+                        ? `<span style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); padding:2px 8px; border-radius:4px; font-weight:800; font-size:0.7rem;">WIN</span>`
+                        : (isLoss
+                            ? `<span style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:2px 8px; border-radius:4px; font-weight:800; font-size:0.7rem;">LOSS</span>`
+                            : `<span style="background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3); padding:2px 8px; border-radius:4px; font-weight:800; font-size:0.7rem;">BE</span>`);
+
+                    return `
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                        <td style="padding:10px; font-family:'JetBrains Mono', monospace; font-size:0.74rem; color:var(--text-tertiary);">${j.trade_id}</td>
+                        <td style="padding:10px;">
+                            <strong style="color:#f8fafc; cursor:pointer;" onclick="showDetail('${j.symbol}')">${j.symbol}</strong>
+                            <div style="font-size:0.72rem; color:var(--text-tertiary);">${j.name}</div>
+                        </td>
+                        <td style="padding:10px; font-weight:600;">${(j.shares || 0).toLocaleString()}</td>
+                        <td style="padding:10px;">₨${parseFloat(j.entry_price || 0).toFixed(2)}</td>
+                        <td style="padding:10px;">₨${parseFloat(j.exit_price || 0).toFixed(2)}</td>
+                        <td style="padding:10px; font-weight:800; color:${isWin ? '#10b981' : (isLoss ? '#ef4444' : '#94a3b8')};">${pnlSign}₨${j.realized_pnl.toLocaleString('en-PK', {minimumFractionDigits:2})}</td>
+                        <td style="padding:10px; font-weight:700; color:${isWin ? '#10b981' : (isLoss ? '#ef4444' : '#94a3b8')};">${pnlSign}${j.realized_pnl_pct.toFixed(2)}%</td>
+                        <td style="padding:10px; font-weight:800; font-family:'JetBrains Mono', monospace; color:${j.r_multiple >= 0 ? '#34d399' : '#f87171'};">${rSign}${j.r_multiple.toFixed(2)}R</td>
+                        <td style="padding:10px;">${statusBadge}</td>
+                        <td style="padding:10px; font-size:0.75rem; color:#cbd5e1;">${j.reason || 'Manual Close'}</td>
+                        <td style="padding:10px; color:var(--text-tertiary); font-size:0.75rem;">${(j.exit_time || '').slice(0, 16)}</td>
+                    </tr>
+                    `;
+                }).join("");
+            }
+        }
+
         // Render Open Positions Table
         const positionsBody = document.getElementById("pf-open-positions-body");
         if (positionsBody) {
@@ -10441,3 +13223,341 @@ function filterEarningsTable() {
 
 
 
+
+
+// ═════════════════════════════════════════════════════════════════
+// 📊 TRADINGVIEW LIGHTWEIGHT CHARTS ENGINE
+// ═════════════════════════════════════════════════════════════════
+
+let currentTradingViewChart = null;
+let currentCandleSeries = null;
+let currentVolumeSeries = null;
+let currentVwapSeries = null;
+let currentUpperBandSeries = null;
+let currentLowerBandSeries = null;
+let currentActiveTimeframe = '1D';
+
+async function renderTradingViewChart(symbol, timeframe = '1D') {
+    currentActiveTimeframe = timeframe;
+    const renderTarget = document.getElementById("stock-chart-render-target");
+    if (!renderTarget) return;
+
+    if (currentTradingViewChart) {
+        try {
+            currentTradingViewChart.remove();
+        } catch (e) {}
+        currentTradingViewChart = null;
+    }
+    renderTarget.innerHTML = "";
+
+    renderTarget.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:#94a3b8; font-size:0.85rem;">
+            <div class="loading-spinner" style="width:28px; height:28px; margin-bottom:8px;">
+                <svg viewBox="0 0 50 50">
+                    <circle cx="25" cy="25" r="20" fill="none" stroke="#6366f1" stroke-width="4" stroke-linecap="round" stroke-dasharray="80 200">
+                        <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/>
+                    </circle>
+                </svg>
+            </div>
+            <span>Loading ${timeframe} candlesticks, VWAP & circuit bands for ${symbol}...</span>
+        </div>
+    `;
+
+    try {
+        const res = await fetch(`/api/chart-data?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&limit=140`);
+        const json = await res.json();
+        if (!json.success || !json.candles || json.candles.length === 0) {
+            renderTarget.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:#64748b; font-size:0.85rem;">No historical OHLCV data available for ${symbol} on ${timeframe}</div>`;
+            return;
+        }
+
+        renderTarget.innerHTML = "";
+
+        if (typeof LightweightCharts === "undefined") {
+            renderTarget.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:#f43f5e; font-size:0.85rem;">Lightweight Charts library not yet loaded. Please reopen modal.</div>`;
+            return;
+        }
+
+        const width = renderTarget.clientWidth || 700;
+        const height = renderTarget.clientHeight || 360;
+
+        const chart = LightweightCharts.createChart(renderTarget, {
+            width: width,
+            height: height,
+            layout: {
+                background: { type: 'solid', color: '#090d16' },
+                textColor: '#94a3b8',
+                fontSize: 11,
+                fontFamily: "'JetBrains Mono', 'Inter', monospace",
+            },
+            grid: {
+                vertLines: { color: 'rgba(255, 255, 255, 0.04)' },
+                horzLines: { color: 'rgba(255, 255, 255, 0.04)' },
+            },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+                vertLine: {
+                    color: 'rgba(99, 102, 241, 0.5)',
+                    width: 1,
+                    style: 3,
+                    labelBackgroundColor: '#4f46e5',
+                },
+                horzLine: {
+                    color: 'rgba(99, 102, 241, 0.5)',
+                    width: 1,
+                    style: 3,
+                    labelBackgroundColor: '#4f46e5',
+                },
+            },
+            timeScale: {
+                borderColor: 'rgba(255, 255, 255, 0.1)',
+                timeVisible: timeframe !== '1D' && timeframe !== '1W',
+                secondsVisible: false,
+            },
+            rightPriceScale: {
+                borderColor: 'rgba(255, 255, 255, 0.1)',
+                scaleMargins: {
+                    top: 0.1,
+                    bottom: 0.25,
+                },
+            },
+        });
+
+        currentTradingViewChart = chart;
+
+        // 1. Candlestick Series
+        const candleSeries = chart.addCandlestickSeries({
+            upColor: '#10b981',
+            downColor: '#f43f5e',
+            borderVisible: false,
+            wickUpColor: '#10b981',
+            wickDownColor: '#f43f5e',
+        });
+        currentCandleSeries = candleSeries;
+
+        // 2. Volume Histogram Series (Sub-pane overlay)
+        const volumeSeries = chart.addHistogramSeries({
+            priceFormat: { type: 'volume' },
+            priceScaleId: '',
+            scaleMargins: {
+                top: 0.75,
+                bottom: 0,
+            },
+        });
+        currentVolumeSeries = volumeSeries;
+
+        // 3. VWAP Line Series
+        const vwapSeries = chart.addLineSeries({
+            color: '#06b6d4',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            title: 'VWAP',
+            priceLineVisible: false,
+        });
+        currentVwapSeries = vwapSeries;
+
+        // 4. PSX Upper & Lower Circuit Bands (+/- 7.5%)
+        const upperBandSeries = chart.addLineSeries({
+            color: '#e11d48',
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dotted,
+            title: 'Upper Lock (+7.5%)',
+            priceLineVisible: false,
+        });
+        currentUpperBandSeries = upperBandSeries;
+
+        const lowerBandSeries = chart.addLineSeries({
+            color: '#6366f1',
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dotted,
+            title: 'Lower Lock (-7.5%)',
+            priceLineVisible: false,
+        });
+        currentLowerBandSeries = lowerBandSeries;
+
+        const candleData = [];
+        const volumeData = [];
+        const vwapData = [];
+        const upperData = [];
+        const lowerData = [];
+
+        const isIntraday = (timeframe !== '1D' && timeframe !== '1W');
+        let prevTime = null;
+
+        json.candles.forEach((c) => {
+            let timeVal = isIntraday ? c.timestamp : c.dateStr;
+            if (timeVal === prevTime) return;
+            prevTime = timeVal;
+
+            candleData.push({
+                time: timeVal,
+                open: parseFloat(c.open),
+                high: parseFloat(c.high),
+                low: parseFloat(c.low),
+                close: parseFloat(c.close),
+            });
+
+            volumeData.push({
+                time: timeVal,
+                value: parseFloat(c.volume || 0),
+                color: c.close >= c.open ? 'rgba(16, 185, 129, 0.45)' : 'rgba(244, 63, 94, 0.45)',
+            });
+
+            if (c.vwap != null) {
+                vwapData.push({ time: timeVal, value: parseFloat(c.vwap) });
+            }
+            if (c.circuit_upper != null) {
+                upperData.push({ time: timeVal, value: parseFloat(c.circuit_upper) });
+            }
+            if (c.circuit_lower != null) {
+                lowerData.push({ time: timeVal, value: parseFloat(c.circuit_lower) });
+            }
+        });
+
+        candleSeries.setData(candleData);
+        volumeSeries.setData(volumeData);
+        vwapSeries.setData(vwapData);
+        upperBandSeries.setData(upperData);
+        lowerBandSeries.setData(lowerData);
+
+        // Crosshair legend update
+        chart.subscribeCrosshairMove((param) => {
+            const legO = document.getElementById("leg-open");
+            const legH = document.getElementById("leg-high");
+            const legL = document.getElementById("leg-low");
+            const legC = document.getElementById("leg-close");
+            const legV = document.getElementById("leg-vwap");
+
+            if (!param || !param.time || !param.seriesData) {
+                const lastC = candleData[candleData.length - 1];
+                const lastV = vwapData[vwapData.length - 1];
+                if (lastC && legO) {
+                    legO.textContent = lastC.open.toFixed(2);
+                    legH.textContent = lastC.high.toFixed(2);
+                    legL.textContent = lastC.low.toFixed(2);
+                    legC.textContent = lastC.close.toFixed(2);
+                    legC.style.color = lastC.close >= lastC.open ? '#10b981' : '#f43f5e';
+                }
+                if (lastV && legV) {
+                    legV.textContent = lastV.value.toFixed(2);
+                }
+                return;
+            }
+
+            const cData = param.seriesData.get(candleSeries);
+            const vData = param.seriesData.get(vwapSeries);
+
+            if (cData && legO) {
+                legO.textContent = cData.open ? cData.open.toFixed(2) : '-';
+                legH.textContent = cData.high ? cData.high.toFixed(2) : '-';
+                legL.textContent = cData.low ? cData.low.toFixed(2) : '-';
+                legC.textContent = cData.close ? cData.close.toFixed(2) : '-';
+                legC.style.color = cData.close >= cData.open ? '#10b981' : '#f43f5e';
+            }
+            if (vData && legV) {
+                legV.textContent = vData.value ? vData.value.toFixed(2) : '-';
+            }
+        });
+
+        chart.timeScale().fitContent();
+
+        const ro = new ResizeObserver((entries) => {
+            if (!entries || entries.length === 0 || !currentTradingViewChart) return;
+            const cr = entries[0].contentRect;
+            if (cr.width > 0 && cr.height > 0) {
+                currentTradingViewChart.applyOptions({ width: cr.width, height: cr.height });
+            }
+        });
+        ro.observe(renderTarget);
+
+    } catch (err) {
+        console.error("Error rendering TradingView Lightweight chart:", err);
+        renderTarget.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:#f43f5e; font-size:0.85rem;">Failed to load chart: ${err.message}</div>`;
+    }
+}
+
+function switchStockChartTimeframe(symbol, tf) {
+    document.querySelectorAll('#chart-tf-group .chart-tf-btn').forEach(btn => {
+        if (btn.getAttribute('data-tf') === tf) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+    renderTradingViewChart(symbol, tf);
+}
+
+// ═════════════════════════════════════════════════════════════════
+// ⚡ REAL-TIME INTRADAY SSE STREAM & TOAST ALERTS
+// ═════════════════════════════════════════════════════════════════
+
+let sseEventSource = null;
+
+function initIntradaySSE() {
+    if (sseEventSource || typeof EventSource === "undefined") return;
+    try {
+        sseEventSource = new EventSource('/api/stream/intraday');
+
+        sseEventSource.addEventListener('connected', (e) => {
+            const data = JSON.parse(e.data || '{}');
+            console.log('[SSE] Intraday live stream connected:', data);
+        });
+
+        sseEventSource.addEventListener('alert', (e) => {
+            try {
+                const alert = JSON.parse(e.data || '{}');
+                showSSEToast(alert);
+            } catch (err) {
+                console.error('[SSE] Failed to parse alert payload:', err);
+            }
+        });
+
+        sseEventSource.addEventListener('ping', () => {});
+
+        sseEventSource.onerror = () => {
+            console.warn('[SSE] Stream interrupted; browser will auto-reconnect.');
+        };
+    } catch (err) {
+        console.warn('[SSE] EventSource init skipped:', err);
+    }
+}
+
+function showSSEToast(alert) {
+    const container = document.getElementById('sse-toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'sse-toast';
+
+    const isLock = alert.type === 'CIRCUIT_RUNNER';
+    const title = isLock ? `⚡ Upper Lock Alert: ${alert.symbol}` : `🚀 Volume Breakout: ${alert.symbol}`;
+    const desc = isLock
+        ? `${alert.symbol} locked at ₨${parseFloat(alert.price || 0).toFixed(2)} with ${(alert.rvol || 1).toFixed(1)}x Relative Volume!`
+        : `${alert.symbol} momentum pick detected: ${alert.reason || 'Volume Surge'} at ₨${parseFloat(alert.price || 0).toFixed(2)}`;
+
+    toast.innerHTML = `
+        <div class="sse-toast-header">
+            <span class="sse-toast-title">
+                <span>${isLock ? '🔒' : '📈'}</span>
+                <span>${title}</span>
+            </span>
+            <span class="sse-toast-time">${alert.time ? alert.time.slice(-8) : 'Just Now'}</span>
+        </div>
+        <div class="sse-toast-body">${desc}</div>
+    `;
+
+    toast.onclick = () => {
+        if (alert.symbol) {
+            showDetail(alert.symbol);
+        }
+        toast.remove();
+    };
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 6000);
+}

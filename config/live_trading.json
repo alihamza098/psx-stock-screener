@@ -1,0 +1,171 @@
+{
+  "engine_version": "v1",
+  "signal_logging": {
+    "enabled": true,
+    "throttle_minutes": 15,
+    "score_band_change_threshold": 5.0,
+    "db_path": "cache/live_trading.db"
+  },
+  "data_freshness": {
+    "amber_stale_seconds": 30,
+    "red_stale_seconds": 120,
+    "prevent_strong_signals_when_stale": true
+  },
+  "outcome_tracker": {
+    "check_horizons_trading_days": [1, 3],
+    "ambiguous_count_as_loss": true
+  },
+  "technical_defaults": {
+    "rsi_period": 14,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "bollinger_period": 20,
+    "bollinger_multiplier": 2.0,
+    "atr_period": 14,
+    "adx_period": 14,
+    "fractal_n": 5
+  },
+  "trade_brackets": {
+    "mode": "atr_dynamic",
+    "atr_period": 14,
+    "regime_multipliers": {
+      "Trending": {
+        "k_stop": 1.5,
+        "k_target": 3.0
+      },
+      "Range-Bound": {
+        "k_stop": 1.2,
+        "k_target": 2.0
+      }
+    },
+    "circuit_limit_default_pct": 7.5,
+    "near_circuit_threshold_pct": 1.0,
+    "pivot_buffer_pct": 0.5,
+    "min_rr_threshold": 1.5,
+    "costs": {
+      "brokerage_pct": 0.15,
+      "cvt_pct": 0.02,
+      "secp_charges_pct": 0.03,
+      "total_round_trip_pct": 0.35,
+      "note": "Configurable estimated PSX transaction costs (TODO: broker fee schedule)"
+    },
+    "volatility_thresholds": {
+      "high_atr_pct": 4.0,
+      "normal_atr_pct": 2.5
+    },
+    "default_sizing": {
+      "capital_pkr": 500000.0,
+      "risk_pct": 1.5
+    }
+  },
+  "liquidity_gate": {
+    "min_avg_volume_21d": 25000,
+    "min_avg_turnover_21d_pkr": 500000
+  },
+  "volume_history": {
+    "windows": {
+      "1D": 1,
+      "2D": 2,
+      "1W": 5,
+      "15D": 15,
+      "1M": 21
+    },
+    "chart_sessions": 22,
+    "trend_flat_band_pct": 10.0,
+    "min_elapsed_minutes_for_projection": 45,
+    "ratio_thresholds": {
+      "high": 1.5,
+      "low": 0.6
+    }
+  },
+  "scoring_engine_v2": {
+    "flow_group_cap": 20.0,
+    "adx_trending_threshold": 25.0,
+    "ema_trend_threshold_pct": 0.75,
+    "volume_tags": {
+      "drying_up_ratio": 0.50,
+      "weak_participation_ratio": 0.70,
+      "confirmation_ratio": 1.25
+    },
+    "score_thresholds": {
+      "strong_buy": 75,
+      "buy": 60,
+      "sell": 42,
+      "strong_sell": 30
+    }
+  },
+  "multi_timeframe_confluence": {
+    "enabled": true,
+    "timeframes": ["15M", "1H", "4H", "1D"],
+    "roles": {
+      "1D": "Macro Bias",
+      "4H": "Swing Bias",
+      "1H": "Setup",
+      "15M": "Trigger"
+    },
+    "cache_ttl_seconds": 60,
+    "require_higher_tf_for_strong": true,
+    "counter_trend_cap_at_hold": true
+  },
+  "psx_intelligence": {
+    "event_risk": {
+      "enabled": true,
+      "lookahead_days": 2,
+      "suppress_strong_signals": true,
+      "keywords": ["BOARD MEETING", "FINANCIAL RESULTS", "BOOK CLOSURE", "CLOSED PERIOD", "EGM", "AGM"]
+    },
+    "ex_dividend": {
+      "enabled": true,
+      "neutralize_negative_momentum": true
+    },
+    "index_filter": {
+      "enabled": true,
+      "index_symbol": "KSE100",
+      "downtrend_threshold_pct": -0.75,
+      "downgrade_buy_signals": true
+    },
+    "sector_context": {
+      "enabled": true,
+      "relative_strength_threshold": 1.0
+    }
+  },
+  "backtest_calibration": {
+    "min_sample_size": 30,
+    "transaction_friction_pct": 0.35,
+    "max_holding_bars": 10,
+    "train_test_split_ratio": 0.70,
+    "suggested_weights_file": "config/suggested_weights.json",
+    "wilson_confidence_level": 1.96
+  },
+  "order_book": {
+    "public_dps_has_depth": false,
+    "fallback_to_estimated_pressure": true,
+    "label_estimated": "Estimated pressure (from price change)",
+    "label_real": "Market Depth Imbalance (Real L2 Top-5)",
+    "wall_multiple_threshold": 3.0,
+    "spoof_vanish_snapshots_threshold": 2,
+    "imbalance_weights": {
+      "level_1_weight": 0.35,
+      "level_2_weight": 0.25,
+      "level_3_weight": 0.20,
+      "level_4_weight": 0.12,
+      "level_5_weight": 0.08
+    }
+  },
+  "workflow_features": {
+    "scanner_cache_seconds": 60,
+    "top_candidates_limit": 10,
+    "signal_history_limit": 10
+  },
+  "alerts": {
+    "browser_notifications": true,
+    "stop_approach_threshold_pct": 0.5,
+    "dedup_window_minutes": 60,
+    "telegram": {
+      "enabled": false,
+      "bot_token": "",
+      "chat_id": ""
+    }
+  }
+}

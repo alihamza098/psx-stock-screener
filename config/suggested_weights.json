@@ -1,0 +1,19 @@
+{
+  "timestamp_utc": "2026-09-21T11:39:40Z",
+  "symbol_evaluated": "TEST",
+  "selected_configuration": "Standard Default",
+  "suggested_parameters": {
+    "name": "Standard Default",
+    "flow_group_cap": 20.0,
+    "rsi_trending_oversold": 35.0,
+    "score_buy": 60
+  },
+  "metrics": {
+    "in_sample_pf": 2.01,
+    "out_of_sample_pf": 0.0,
+    "pf_gap": 2.01,
+    "out_of_sample_win_rate": 0.0,
+    "stability_assessment": "Overfit Warning"
+  },
+  "review_note": "Human review required. To apply these calibrated weights, manually merge into config/live_trading.json under scoring_engine_v2."
+}

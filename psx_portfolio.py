@@ -125,17 +125,94 @@ def get_portfolio_summary() -> Dict[str, Any]:
     total_losses = abs(sum(float(t.get("realized_pnl", 0)) for t in losses))
     profit_factor = round(total_gains / max(total_losses, 1.0), 2) if total_losses > 0 else (99.0 if total_gains > 0 else 1.0)
 
-    # Simulated/Accumulated Equity Curve
+    # Institutional Performance Analytics
+    avg_win = round(total_gains / max(len(wins), 1), 2) if wins else 0.0
+    avg_loss = round(total_losses / max(len(losses), 1), 2) if losses else 0.0
+    payoff_ratio = round(avg_win / max(avg_loss, 1.0), 2) if avg_loss > 0 else (round(avg_win, 2) if avg_win > 0 else 1.0)
+    win_loss_ratio = round(len(wins) / max(len(losses), 1), 2) if losses else float(len(wins))
+
+    # Simulated/Accumulated Equity Curve & Maximum Drawdown (MDD)
     equity_curve = [
         {"date": "Start", "equity": initial_capital, "pnl": 0.0}
     ]
     running_eq = initial_capital
+    peak_equity = initial_capital
+    max_drawdown_pkr = 0.0
+    max_drawdown_pct = 0.0
+
     for t in sorted(closed_trades, key=lambda x: x.get("exit_time", "")):
         pnl = float(t.get("realized_pnl", 0.0))
         running_eq += pnl
+        if running_eq > peak_equity:
+            peak_equity = running_eq
+        dd_pkr = peak_equity - running_eq
+        dd_pct = (dd_pkr / peak_equity * 100.0) if peak_equity > 0 else 0.0
+        if dd_pkr > max_drawdown_pkr:
+            max_drawdown_pkr = dd_pkr
+        if dd_pct > max_drawdown_pct:
+            max_drawdown_pct = dd_pct
+
         date_label = (t.get("exit_time", "") or "")[:10]
         equity_curve.append({"date": date_label or "Trade", "equity": round(running_eq, 2), "pnl": round(pnl, 2)})
+
+    if total_equity > peak_equity:
+        peak_equity = total_equity
+    curr_dd_pkr = peak_equity - total_equity
+    curr_dd_pct = (curr_dd_pkr / peak_equity * 100.0) if peak_equity > 0 else 0.0
+    if curr_dd_pkr > max_drawdown_pkr:
+        max_drawdown_pkr = curr_dd_pkr
+    if curr_dd_pct > max_drawdown_pct:
+        max_drawdown_pct = curr_dd_pct
+
     equity_curve.append({"date": "Current Live", "equity": round(total_equity, 2), "pnl": round(unrealized_pnl, 2)})
+
+    # Annualized Sharpe Ratio (SBP Benchmark Rf = 17.5% per annum)
+    sharpe_ratio = 0.0
+    if total_closed >= 2:
+        trade_returns = []
+        for t in closed_trades:
+            entry_cost = float(t.get("entry_price", 0.0)) * float(t.get("shares_sold", 1))
+            pnl = float(t.get("realized_pnl", 0.0))
+            if entry_cost > 0:
+                trade_returns.append(pnl / entry_cost)
+        if len(trade_returns) >= 2:
+            mean_r = sum(trade_returns) / len(trade_returns)
+            variance = sum((r - mean_r) ** 2 for r in trade_returns) / (len(trade_returns) - 1)
+            std_r = variance ** 0.5
+            rf_per_trade = 0.175 / 52.0
+            if std_r > 0.0001:
+                sharpe_ratio = round(((mean_r - rf_per_trade) / std_r) * (52.0 ** 0.5), 2)
+
+    # Enriched Trade Journal Ledger
+    trade_journal = []
+    for t in reversed(closed_trades):
+        pnl = float(t.get("realized_pnl", 0.0))
+        pnl_pct = float(t.get("realized_pnl_pct", 0.0))
+        entry_p = float(t.get("entry_price", 0.0))
+        exit_p = float(t.get("exit_price", 0.0))
+        shares = int(t.get("shares_sold", 0))
+        invested = entry_p * shares
+        status = "WIN" if pnl > 0 else ("LOSS" if pnl < 0 else "BREAKEVEN")
+        risk_per_trade = max(invested * 0.03, 100.0)
+        r_multiple = round(pnl / risk_per_trade, 2)
+
+        trade_journal.append({
+            "trade_id": t.get("trade_id", "N/A"),
+            "symbol": t.get("symbol", "").upper(),
+            "name": t.get("name", t.get("symbol", "")),
+            "shares": shares,
+            "entry_price": round(entry_p, 2),
+            "exit_price": round(exit_p, 2),
+            "invested": round(invested, 2),
+            "net_proceeds": round(float(t.get("net_proceeds", 0.0)), 2),
+            "realized_pnl": round(pnl, 2),
+            "realized_pnl_pct": round(pnl_pct, 2),
+            "r_multiple": r_multiple,
+            "status": status,
+            "reason": t.get("reason", "Manual Close"),
+            "entry_time": t.get("entry_time", ""),
+            "exit_time": t.get("exit_time", "")
+        })
 
     return {
         "account_id": acc.get("account_id", "ACC-DEFAULT"),
@@ -150,11 +227,19 @@ def get_portfolio_summary() -> Dict[str, Any]:
         "total_return_pct": round(total_return_pct, 2),
         "win_rate_pct": win_rate,
         "profit_factor": profit_factor,
+        "avg_win": avg_win,
+        "avg_loss": avg_loss,
+        "payoff_ratio": payoff_ratio,
+        "win_loss_ratio": win_loss_ratio,
+        "max_drawdown_pkr": round(max_drawdown_pkr, 2),
+        "max_drawdown_pct": round(max_drawdown_pct, 2),
+        "sharpe_ratio": sharpe_ratio,
         "closed_trades_count": total_closed,
         "wins_count": len(wins),
         "losses_count": len(losses),
         "open_positions": open_positions_list,
         "closed_trades": list(reversed(closed_trades)),
+        "trade_journal": trade_journal,
         "sector_exposure": sector_exposure,
         "equity_curve": equity_curve
     }

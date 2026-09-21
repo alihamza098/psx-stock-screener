@@ -137,6 +137,29 @@ class TestPhase2Phase3(unittest.TestCase):
         self.assertIn('سیمنٹ', ur)
         self.assertIn('سٹاپ لاس', ur)
 
+    def test_portfolio_institutional_analytics(self):
+        from psx_portfolio import get_portfolio_summary
+        summary = get_portfolio_summary()
+        self.assertIn('total_equity', summary)
+        self.assertIn('max_drawdown_pkr', summary)
+        self.assertIn('max_drawdown_pct', summary)
+        self.assertGreaterEqual(summary['max_drawdown_pct'], 0.0)
+        self.assertIn('sharpe_ratio', summary)
+        self.assertIsInstance(summary['sharpe_ratio'], (int, float))
+        self.assertIn('payoff_ratio', summary)
+        self.assertIsInstance(summary['payoff_ratio'], (int, float))
+        self.assertIn('win_loss_ratio', summary)
+        self.assertIsInstance(summary['win_loss_ratio'], (int, float))
+        self.assertIn('trade_journal', summary)
+        self.assertIsInstance(summary['trade_journal'], list)
+        for item in summary['trade_journal']:
+            self.assertIn('trade_id', item)
+            self.assertIn('symbol', item)
+            self.assertIn('status', item)
+            self.assertIn(item['status'], ('WIN', 'LOSS', 'BREAKEVEN'))
+            self.assertIn('r_multiple', item)
+            self.assertIn('reason', item)
+
 
 if __name__ == '__main__':
     unittest.main()

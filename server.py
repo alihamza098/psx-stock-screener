@@ -1645,7 +1645,7 @@ def fetch_stock_history(symbol):
         raw = json.loads(html)
         if raw.get('status') == 1 and raw.get('data'):
             days = []
-            for entry in raw['data'][:30]:
+            for entry in raw['data'][:100]:
                 ts, close, volume, open_price = entry
                 date_str = time.strftime('%Y-%m-%d', time.localtime(ts))
                 day_name = time.strftime('%A', time.localtime(ts))
@@ -1719,6 +1719,8 @@ def fetch_stock_history(symbol):
 
 
 
+_DPS_TIMESERIES_CACHE = {}  # { symbol: (timestamp, raw_data) }
+
 def fetch_stock_timeframe_series(symbol, timeframe="4H", limit=150):
     """
     Fetch and aggregate PSX OHLCV candle series for a symbol on selected timeframe:
@@ -1728,15 +1730,28 @@ def fetch_stock_timeframe_series(symbol, timeframe="4H", limit=150):
     - Friday: Bar 1 (09:17 - 12:00 morning session), Bar 2 (14:32 - 16:30 afternoon session).
       Midday Friday gap (12:00 to 14:32 PKT) is strictly excluded and never bridged.
     """
-    url = f"https://dps.psx.com.pk/timeseries/eod/{symbol.upper()}"
+    sym = symbol.upper()
+    now_ts = time.time()
+    raw_data = None
+
+    cached = _DPS_TIMESERIES_CACHE.get(sym)
+    if cached and (now_ts - cached[0] < 60) and cached[1]:
+        raw_data = cached[1]
+    else:
+        url = f"https://dps.psx.com.pk/timeseries/eod/{sym}"
+        try:
+            html = fetch_url(url)
+            raw = json.loads(html)
+            if raw.get('status') == 1 and raw.get('data'):
+                raw_data = raw['data']
+                _DPS_TIMESERIES_CACHE[sym] = (now_ts, raw_data)
+        except Exception as e:
+            print(f"[PSX Chart] Error fetching timeseries for {sym}: {e}")
+
+    if not raw_data:
+        return []
+
     try:
-        html = fetch_url(url)
-        raw = json.loads(html)
-        if raw.get('status') != 1 or not raw.get('data'):
-            return []
-        
-        raw_data = raw['data'] # [[ts, close, volume, open], ...] (newest first)
-        
         # Sort chronologically (oldest to newest)
         sorted_raw = sorted(raw_data, key=lambda x: x[0])
         
@@ -1928,6 +1943,23 @@ def fetch_stock_timeframe_series(symbol, timeframe="4H", limit=150):
                     })
                     cur_o = cur_c
                     
+        # Calculate VWAP and PSX Circuit Bands (+/- 7.5% or min Rs 1.00)
+        cum_vol = 0
+        cum_vol_price = 0.0
+        prev_c = None
+        for c in candles:
+            typ_p = (c["high"] + c["low"] + c["close"]) / 3.0
+            vol = max(1, int(c.get("volume", 1) or 1))
+            cum_vol += vol
+            cum_vol_price += typ_p * vol
+            c["vwap"] = round(cum_vol_price / cum_vol, 2)
+            
+            ref_p = prev_c if prev_c is not None else c["open"]
+            band_spread = max(1.00, ref_p * 0.075)
+            c["circuit_upper"] = round(ref_p + band_spread, 2)
+            c["circuit_lower"] = round(max(0.01, ref_p - band_spread), 2)
+            prev_c = c["close"]
+
         # Return requested limit (latest N candles)
         return candles[-limit:] if limit and len(candles) > limit else candles
     except Exception as e:
@@ -1936,36 +1968,100 @@ def fetch_stock_timeframe_series(symbol, timeframe="4H", limit=150):
 
 
 def get_psx_market_status():
-    """Determine whether PSX market is currently Open, Closed, or Pre-Open (PKT UTC+5)."""
+    """
+    Determine whether PSX market is currently Open, Closed, or Pre-Open (PKT UTC+5)
+    driven by config/psx_calendar.json with fallback.
+    """
     import datetime
-    # Get current time in PKT (UTC+5)
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     now_pkt = now_utc + datetime.timedelta(hours=5)
-    weekday = now_pkt.weekday()  # 0=Monday..4=Friday, 5=Saturday, 6=Sunday
-    
+    date_str = now_pkt.strftime("%Y-%m-%d")
     time_minutes = now_pkt.hour * 60 + now_pkt.minute
-    
-    if weekday in (5, 6):
-        return {"status": "Closed", "reason": "Weekend", "is_open": False, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
-    
-    # Friday timetable vs Mon-Thu timetable
-    if weekday == 4: # Friday
-        # Session 1: 09:15 - 12:00 (555 - 720 mins)
-        # Session 2: 14:30 - 16:30 (870 - 990 mins)
-        if 555 <= time_minutes < 720 or 870 <= time_minutes <= 990:
-            return {"status": "Open", "reason": "Trading Session Active", "is_open": True, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
-        elif 720 <= time_minutes < 870:
-            return {"status": "Break", "reason": "Friday Prayer Break", "is_open": False, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
-        elif 540 <= time_minutes < 555:
-            return {"status": "Pre-Open", "reason": "Pre-Open Order Accumulation", "is_open": True, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
-    else:
-        # Mon-Thu: 09:15 - 15:30 (555 - 930 mins)
-        if 555 <= time_minutes <= 930:
-            return {"status": "Open", "reason": "Regular Trading Session", "is_open": True, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
-        elif 540 <= time_minutes < 555:
-            return {"status": "Pre-Open", "reason": "Pre-Open Order Accumulation", "is_open": True, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
+    pkt_time_str = now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")
+    weekday = now_pkt.weekday()  # 0=Monday..4=Friday, 5=Saturday, 6=Sunday
 
-    return {"status": "Closed", "reason": "Outside Market Hours (09:15-15:30 PKT)", "is_open": False, "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT")}
+    # Load calendar configuration
+    cal_path = Path(__file__).parent / "config" / "psx_calendar.json"
+    calendar_cfg = {}
+    if cal_path.exists():
+        try:
+            with open(cal_path, "r", encoding="utf-8") as f:
+                calendar_cfg = json.load(f)
+        except Exception:
+            calendar_cfg = {}
+
+    # 1. Weekend Check
+    if weekday in (5, 6):
+        day_name = "Saturday" if weekday == 5 else "Sunday"
+        return {
+            "status": "Closed",
+            "reason": f"Weekend ({day_name})",
+            "is_open": False,
+            "pkt_time": pkt_time_str
+        }
+
+    # 2. Official PSX Holiday Check
+    holidays = calendar_cfg.get("holidays", [])
+    for h in holidays:
+        if h.get("date") == date_str:
+            h_name = h.get("name", "Public Holiday")
+            return {
+                "status": "Closed",
+                "reason": f"Holiday: {h_name}",
+                "is_open": False,
+                "holiday": h_name,
+                "pkt_time": pkt_time_str
+            }
+
+    # 3. Ramadan Schedule Check (if enabled)
+    ramadan = calendar_cfg.get("ramadan", {})
+    if ramadan.get("is_active"):
+        if weekday == 4:  # Friday
+            # Pre-open 09:00 - 09:17 (540 - 557), Open 09:17 - 12:30 (557 - 750)
+            if 540 <= time_minutes < 557:
+                return {"status": "Pre-Open", "reason": "Ramadan Friday Pre-Open", "is_open": True, "pkt_time": pkt_time_str}
+            elif 557 <= time_minutes <= 750:
+                return {"status": "Open", "reason": "Ramadan Friday Active Session", "is_open": True, "pkt_time": pkt_time_str}
+            elif time_minutes < 540:
+                return {"status": "Closed", "reason": "Before Ramadan Open (Opens 09:17 PKT)", "is_open": False, "pkt_time": pkt_time_str}
+            else:
+                return {"status": "Closed", "reason": "After Ramadan Close (Closed at 12:30 PKT)", "is_open": False, "pkt_time": pkt_time_str}
+        else:  # Mon-Thu
+            # Pre-open 09:15 - 09:32 (555 - 572), Open 09:32 - 13:30 (572 - 810)
+            if 555 <= time_minutes < 572:
+                return {"status": "Pre-Open", "reason": "Ramadan Pre-Open Order Accumulation", "is_open": True, "pkt_time": pkt_time_str}
+            elif 572 <= time_minutes <= 810:
+                return {"status": "Open", "reason": "Ramadan Active Session", "is_open": True, "pkt_time": pkt_time_str}
+            elif time_minutes < 555:
+                return {"status": "Closed", "reason": "Before Ramadan Open (Opens 09:32 PKT)", "is_open": False, "pkt_time": pkt_time_str}
+            else:
+                return {"status": "Closed", "reason": "After Ramadan Close (Closed at 13:30 PKT)", "is_open": False, "pkt_time": pkt_time_str}
+
+    # 4. Standard PSX Timetable (Mon-Thu: 09:32-15:30, Friday Split: 09:17-12:00 & 14:32-16:30)
+    if weekday == 4:  # Friday
+        if 540 <= time_minutes < 557:
+            return {"status": "Pre-Open", "reason": "Friday Morning Pre-Open (09:00-09:17)", "is_open": True, "pkt_time": pkt_time_str}
+        elif 557 <= time_minutes < 720:
+            return {"status": "Open", "reason": "Friday Morning Session (09:17-12:00)", "is_open": True, "pkt_time": pkt_time_str}
+        elif 720 <= time_minutes < 855:
+            return {"status": "Break", "reason": "Friday Jummah Prayer Break (Resumes 14:32)", "is_open": False, "pkt_time": pkt_time_str}
+        elif 855 <= time_minutes < 872:
+            return {"status": "Pre-Open", "reason": "Friday Afternoon Pre-Open (14:15-14:32)", "is_open": True, "pkt_time": pkt_time_str}
+        elif 872 <= time_minutes <= 990:
+            return {"status": "Open", "reason": "Friday Afternoon Session (14:32-16:30)", "is_open": True, "pkt_time": pkt_time_str}
+        elif time_minutes < 540:
+            return {"status": "Closed", "reason": "Before Friday Open (Opens 09:17 PKT)", "is_open": False, "pkt_time": pkt_time_str}
+        else:
+            return {"status": "Closed", "reason": "After Friday Market Close (Closed at 16:30 PKT)", "is_open": False, "pkt_time": pkt_time_str}
+    else:  # Monday - Thursday
+        if 555 <= time_minutes < 572:
+            return {"status": "Pre-Open", "reason": "Pre-Open Order Accumulation (09:15-09:32)", "is_open": True, "pkt_time": pkt_time_str}
+        elif 572 <= time_minutes <= 930:
+            return {"status": "Open", "reason": "Regular Trading Session Active", "is_open": True, "pkt_time": pkt_time_str}
+        elif time_minutes < 555:
+            return {"status": "Closed", "reason": "Before Market Open (Opens 09:32 PKT)", "is_open": False, "pkt_time": pkt_time_str}
+        else:
+            return {"status": "Closed", "reason": "After Market Close (Closed at 15:30 PKT)", "is_open": False, "pkt_time": pkt_time_str}
 
 
 def generate_position_analysis(symbol, buy_price, qty, purchase_date=None):
@@ -2218,6 +2314,248 @@ def generate_position_analysis(symbol, buy_price, qty, purchase_date=None):
     }
 
 
+LIVE_TRADING_CONFIG_PATH = Path(__file__).parent / "config" / "live_trading.json"
+
+def load_live_trading_config():
+    """Loads configuration parameters for live trading engine."""
+    if LIVE_TRADING_CONFIG_PATH.exists():
+        try:
+            with open(LIVE_TRADING_CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[PSX Live] Warning: could not read {LIVE_TRADING_CONFIG_PATH}: {e}")
+    return {
+        "engine_version": "v1",
+        "volume_history": {
+            "windows": {"1D": 1, "2D": 2, "1W": 5, "15D": 15, "1M": 21},
+            "chart_sessions": 22,
+            "trend_flat_band_pct": 10.0,
+            "min_elapsed_minutes_for_projection": 45,
+            "ratio_thresholds": {"high": 1.5, "low": 0.6}
+        }
+    }
+
+
+def compute_volume_stats(bars, today_volume=0, windows_config=None):
+    """
+    Computes traded volume history across configurable trading session windows (1D, 2D, 1W, 15D, 1M).
+    Input:
+        bars: list of completed daily bars (oldest to newest, or unordered).
+        today_volume: live traded volume for today's session.
+        windows_config: optional dict defining windows, flat band, and chart session length.
+    Returns:
+        dict containing windows metrics, trend label, recent bars for canvas chart, and 21D average.
+    """
+    if windows_config is None:
+        cfg = load_live_trading_config()
+        vh_cfg = cfg.get("volume_history", {})
+        windows_def = vh_cfg.get("windows", {"1D": 1, "2D": 2, "1W": 5, "15D": 15, "1M": 21})
+        flat_band = float(vh_cfg.get("trend_flat_band_pct", 10.0))
+        chart_count = int(vh_cfg.get("chart_sessions", 22))
+    else:
+        windows_def = windows_config.get("windows", {"1D": 1, "2D": 2, "1W": 5, "15D": 15, "1M": 21})
+        flat_band = float(windows_config.get("trend_flat_band_pct", 10.0))
+        chart_count = int(windows_config.get("chart_sessions", 22))
+
+    cleaned = []
+    seen_dates = set()
+
+    if bars:
+        for b in bars:
+            if not isinstance(b, dict):
+                continue
+            d = b.get("date")
+            if not d or d in seen_dates:
+                continue
+            seen_dates.add(d)
+
+            raw_v = b.get("volume")
+            try:
+                vol = max(0, int(raw_v)) if raw_v is not None else 0
+            except (ValueError, TypeError):
+                vol = 0
+
+            raw_cp = b.get("changePct")
+            try:
+                cp = float(raw_cp) if raw_cp is not None else 0.0
+            except (ValueError, TypeError):
+                cp = 0.0
+
+            raw_c = b.get("close")
+            try:
+                close_pr = float(raw_c) if raw_c is not None else 0.0
+            except (ValueError, TypeError):
+                close_pr = 0.0
+
+            cleaned.append({
+                "date": str(d),
+                "volume": vol,
+                "changePct": cp,
+                "close": close_pr,
+                "is_halted": (vol == 0)
+            })
+
+    # Sort oldest to newest
+    cleaned.sort(key=lambda x: x["date"])
+    total_bars = len(cleaned)
+
+    windows_res = {}
+    for w_name, w_size in windows_def.items():
+        if total_bars < w_size:
+            windows_res[w_name] = {
+                "window": w_name,
+                "sessions_required": w_size,
+                "sessions_available": total_bars,
+                "status": "n/a",
+                "total_volume": None,
+                "avg_daily_volume": None,
+                "highest_day": None,
+                "lowest_day": None,
+                "today_ratio": None
+            }
+        else:
+            w_bars = cleaned[-w_size:]
+            tot_vol = sum(x["volume"] for x in w_bars)
+            avg_vol = round(tot_vol / w_size, 1) if w_size > 0 else 0.0
+
+            hi_bar = max(w_bars, key=lambda x: x["volume"])
+            lo_bar = min(w_bars, key=lambda x: x["volume"])
+
+            today_ratio = None
+            if today_volume is not None:
+                try:
+                    today_v = max(0, int(today_volume))
+                    if avg_vol > 0:
+                        today_ratio = round(today_v / avg_vol, 2)
+                except (ValueError, TypeError):
+                    pass
+
+            windows_res[w_name] = {
+                "window": w_name,
+                "sessions_required": w_size,
+                "sessions_available": w_size,
+                "status": "ok",
+                "total_volume": tot_vol,
+                "avg_daily_volume": avg_vol,
+                "highest_day": {"date": hi_bar["date"], "volume": hi_bar["volume"]},
+                "lowest_day": {"date": lo_bar["date"], "volume": lo_bar["volume"]},
+                "today_ratio": today_ratio
+            }
+
+    # Volume trend: average of last 5 sessions vs 5 before them
+    trend_label = "n/a"
+    trend_change_pct = None
+    if total_bars >= 10:
+        recent_5 = cleaned[-5:]
+        prev_5 = cleaned[-10:-5]
+        avg_rec = sum(x["volume"] for x in recent_5) / 5.0
+        avg_prev = sum(x["volume"] for x in prev_5) / 5.0
+
+        if avg_prev == 0:
+            trend_label = "Rising" if avg_rec > 0 else "Flat"
+            trend_change_pct = 100.0 if avg_rec > 0 else 0.0
+        else:
+            trend_change_pct = round(((avg_rec - avg_prev) / avg_prev) * 100.0, 1)
+            if trend_change_pct > flat_band:
+                trend_label = "Rising"
+            elif trend_change_pct < -flat_band:
+                trend_label = "Falling"
+            else:
+                trend_label = "Flat"
+
+    # Recent 22 bars for chart
+    recent_slice = cleaned[-chart_count:] if total_bars >= chart_count else cleaned
+    recent_bars = [{
+        "date": x["date"],
+        "volume": x["volume"],
+        "close_change_pct": round(x["changePct"], 2),
+        "close": x["close"],
+        "is_halted": x["is_halted"]
+    } for x in recent_slice]
+
+    avg_21d = windows_res.get("1M", {}).get("avg_daily_volume") if "1M" in windows_res else None
+
+    return {
+        "windows": windows_res,
+        "trend_label": trend_label,
+        "trend_change_pct": trend_change_pct,
+        "recent_bars": recent_bars,
+        "avg_21d_volume": avg_21d,
+        "bars_count": total_bars
+    }
+
+
+def compute_projected_volume(live_volume, market_status=None):
+    """
+    Computes estimated full-day volume based on the session fraction elapsed.
+    Returns None if session has been open for < 45 minutes, or live_volume if closed.
+    """
+    if live_volume is None:
+        return None
+    try:
+        vol = max(0, int(live_volume))
+    except (ValueError, TypeError):
+        return None
+
+    if not market_status or not market_status.get("is_open"):
+        return {
+            "projected_volume": vol,
+            "status": "final",
+            "fraction_elapsed": 1.0,
+            "elapsed_minutes": 0,
+            "is_estimate": False,
+            "label": "Final Completed Volume"
+        }
+
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_pkt = now_utc + datetime.timedelta(hours=5)
+    cur_mins = now_pkt.hour * 60 + now_pkt.minute
+    weekday = now_pkt.weekday()
+
+    session_start_mins = 9 * 60 + 32
+    session_end_mins = 15 * 60 + 30
+
+    if weekday == 4: # Friday split
+        if cur_mins < 12 * 60:
+            session_start_mins = 9 * 60 + 17
+            session_end_mins = 12 * 60
+        else:
+            session_start_mins = 14 * 60 + 32
+            session_end_mins = 16 * 60 + 30
+
+    total_session_mins = max(1, session_end_mins - session_start_mins)
+    elapsed_mins = max(0, cur_mins - session_start_mins)
+
+    cfg = load_live_trading_config()
+    min_mins = cfg.get("volume_history", {}).get("min_elapsed_minutes_for_projection", 45)
+
+    if elapsed_mins < min_mins:
+        return {
+            "projected_volume": None,
+            "status": "insufficient_time",
+            "fraction_elapsed": round(elapsed_mins / total_session_mins, 3),
+            "elapsed_minutes": elapsed_mins,
+            "min_required_minutes": min_mins,
+            "is_estimate": True,
+            "label": f"Projection available after {min_mins}m of trading"
+        }
+
+    fraction = min(1.0, max(0.05, elapsed_mins / total_session_mins))
+    projected = int(round(vol / fraction))
+
+    return {
+        "projected_volume": projected,
+        "status": "active",
+        "fraction_elapsed": round(fraction, 3),
+        "elapsed_minutes": elapsed_mins,
+        "is_estimate": True,
+        "label": f"Estimated full-day ({round(fraction * 100)}% session elapsed)"
+    }
+
+
+_COMPLETED_VOLUME_CACHE = {}
+
+
 def fetch_live_stock_analysis(symbol):
     """Fetch live data, history, and company profile for single-stock live trading analysis concurrently."""
     symbol = symbol.upper()
@@ -2246,14 +2584,85 @@ def fetch_live_stock_analysis(symbol):
             company_data = {}
 
     market_status = get_psx_market_status()
-    
+    cache_ts = stock_cache.get("timestamp", 0)
+    now_epoch = time.time()
+    freshness_sec = max(0, int(now_epoch - cache_ts)) if cache_ts > 0 else 0
+    today_pkt_date = time.strftime("%Y-%m-%d", time.localtime(now_epoch + 5 * 3600))
+    today_volume = stock_info.get("volume", 0) if stock_info else 0
+
+    # Separate completed daily sessions (exclude today if present in history)
+    completed_history = [b for b in history if b.get("date") != today_pkt_date]
+
+    # Check cache for completed volume stats
+    cached_entry = _COMPLETED_VOLUME_CACHE.get(symbol)
+    if cached_entry and cached_entry[0] == today_pkt_date and cached_entry[1]:
+        base_stats = cached_entry[1]
+        stats = {
+            "windows": {},
+            "trend_label": base_stats["trend_label"],
+            "trend_change_pct": base_stats["trend_change_pct"],
+            "recent_bars": base_stats["recent_bars"],
+            "avg_21d_volume": base_stats["avg_21d_volume"],
+            "bars_count": base_stats["bars_count"]
+        }
+        for w_k, w_v in base_stats["windows"].items():
+            w_copy = dict(w_v)
+            if w_copy.get("status") == "ok" and w_copy.get("avg_daily_volume"):
+                w_copy["today_ratio"] = round(today_volume / w_copy["avg_daily_volume"], 2)
+            stats["windows"][w_k] = w_copy
+    else:
+        stats = compute_volume_stats(completed_history, today_volume)
+        _COMPLETED_VOLUME_CACHE[symbol] = (today_pkt_date, stats)
+
+    projected_vol = compute_projected_volume(today_volume, market_status)
+    volume_history = {
+        "windows": stats["windows"],
+        "trend_label": stats["trend_label"],
+        "trend_change_pct": stats["trend_change_pct"],
+        "recent_bars": stats["recent_bars"],
+        "avg_21d_volume": stats["avg_21d_volume"],
+        "projected": projected_vol,
+        "today_volume": today_volume
+    }
+
+    # Stage 5: PSX-Specific Intelligence
+    psx_intel = None
+    try:
+        from scoring_engine import evaluate_psx_intelligence
+        idx_data, _ = fetch_index_data()
+        corp_data = get_corporate_actions_and_dividends()
+        div_cal = corp_data.get("dividendCalendar", []) if corp_data else []
+        psx_intel = evaluate_psx_intelligence(
+            stock=stock_info or {},
+            company_data=company_data,
+            all_stocks=stocks,
+            index_data=idx_data,
+            dividend_calendar=div_cal
+        )
+    except Exception as e:
+        print(f"[PSX Live] Error evaluating PSX intelligence for {symbol}: {e}")
+
+    # Stage 7: Real Order Book / Market Depth (Stage 7.1 inspection & fallback)
+    order_book = None
+    try:
+        from order_book_engine import analyze_order_book
+        change_val = float(stock_info.get("change", 0.0)) if stock_info else 0.0
+        order_book = analyze_order_book(symbol, real_depth=None, price_change_pct=change_val)
+    except Exception as e:
+        print(f"[PSX Live] Error evaluating Order Book for {symbol}: {e}")
+
     return {
         "symbol": symbol,
         "stockInfo": stock_info,
         "history": history,
         "companyData": company_data,
         "marketStatus": market_status,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(time.time() + 5*3600))
+        "volumeHistory": volume_history,
+        "psxIntelligence": psx_intel,
+        "orderBook": order_book,
+        "dataFreshnessSec": freshness_sec,
+        "lastTickTimestamp": cache_ts,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_epoch + 5*3600))
     }
 
 
@@ -3812,11 +4221,117 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         }, 402)
         return False
 
+    def _handle_sse_intraday_stream(self):
+        """
+        Server-Sent Events (SSE) stream for real-time intraday push notifications:
+        - Volume spike breakouts & morning/afternoon momentum picks
+        - Upper lock / circuit runner alerts
+        - Periodic heartbeats (every 15s)
+        """
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+        import time, json, datetime
+        NL = chr(10)
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S PKT")
+        init_payload = json.dumps({
+            "status": "connected",
+            "server_time": now_str,
+            "stream": "psx_intraday_realtime"
+        })
+        try:
+            msg = "event: connected" + NL + "data: " + init_payload + NL + NL
+            self.wfile.write(msg.encode("utf-8"))
+            self.wfile.flush()
+        except Exception:
+            return
+
+        last_ping = time.time()
+        last_alert_check = 0.0
+        seen_event_ids = set()
+
+        while True:
+            try:
+                now = time.time()
+                if now - last_alert_check >= 8.0:
+                    last_alert_check = now
+                    try:
+                        # 1. Intraday learner picks
+                        import psx_intraday_engine as _ie
+                        status = _ie.get_daily_status()
+                        picks = status.get("morning_picks", []) + status.get("afternoon_picks", [])
+                        for p in picks:
+                            eid = f"pick_{p.get('symbol')}_{p.get('pick_time', '')}"
+                            if eid not in seen_event_ids:
+                                seen_event_ids.add(eid)
+                                alert_data = json.dumps({
+                                    "type": "INTRADAY_PICK",
+                                    "symbol": p.get("symbol"),
+                                    "reason": p.get("reason", "Intraday Momentum Pick"),
+                                    "price": p.get("entry_price", 0.0),
+                                    "time": p.get("pick_time", now_str)
+                                })
+                                msg = "event: alert" + NL + "data: " + alert_data + NL + NL
+                                self.wfile.write(msg.encode("utf-8"))
+                                self.wfile.flush()
+
+                        # 2. Circuit runners
+                        import psx_intelligence_engine as intel_module
+                        intel_db = intel_module.get_engine().db
+                        conn = intel_db._connect()
+                        rows = conn.execute("""
+                            SELECT symbol, sector, event_type, price, detected_at, rvol
+                            FROM stock_events
+                            WHERE event_type IN ('UPPER_LOCK', 'CONSECUTIVE_UPPER_LOCK')
+                            ORDER BY id DESC LIMIT 5
+                        """).fetchall()
+                        conn.close()
+                        for r in rows:
+                            r_dict = dict(r)
+                            cid = f"lock_{r_dict['symbol']}_{r_dict['detected_at']}"
+                            if cid not in seen_event_ids:
+                                seen_event_ids.add(cid)
+                                lock_alert = json.dumps({
+                                    "type": "CIRCUIT_RUNNER",
+                                    "symbol": r_dict["symbol"],
+                                    "sector": r_dict.get("sector", ""),
+                                    "price": r_dict.get("price", 0.0),
+                                    "rvol": r_dict.get("rvol", 1.0),
+                                    "time": r_dict.get("detected_at", now_str)
+                                })
+                                msg = "event: alert" + NL + "data: " + lock_alert + NL + NL
+                                self.wfile.write(msg.encode("utf-8"))
+                                self.wfile.flush()
+                    except Exception:
+                        pass
+
+                # Periodic Heartbeat
+                if now - last_ping >= 15.0:
+                    last_ping = now
+                    ping_payload = json.dumps({"ts": int(now)})
+                    msg = "event: ping" + NL + "data: " + ping_payload + NL + NL
+                    self.wfile.write(msg.encode("utf-8"))
+                    self.wfile.flush()
+
+                time.sleep(1.0)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                break
+            except Exception:
+                break
+
     def do_GET(self):
         from urllib.parse import urlparse, parse_qs
         parsed_path = urlparse(self.path)
         
-        if parsed_path.path == "/api/stocks":
+        if parsed_path.path == "/api/stream/intraday":
+            self._handle_sse_intraday_stream()
+            return
+        elif parsed_path.path == "/api/stocks":
             query = parse_qs(parsed_path.query)
             if not self._check_auth(query): return
             force = query.get("force", ["0"])[0] in ["1", "true"]
@@ -3874,6 +4389,28 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             if not self._check_auth(query): return
             symbol = query.get("symbol", [""])[0]
             self._handle_live_trading(symbol)
+        elif parsed_path.path == "/api/signal-stats":
+            self._handle_signal_stats()
+        elif parsed_path.path in ("/api/live-trading/backtest", "/api/live/backtest"):
+            query = parse_qs(parsed_path.query)
+            if not self._check_auth(query): return
+            symbol = query.get("symbol", ["OGDC"])[0]
+            self._handle_live_backtest(symbol)
+        elif parsed_path.path in ("/api/live-trading/order-book", "/api/live/order-book"):
+            query = parse_qs(parsed_path.query)
+            if not self._check_auth(query): return
+            symbol = query.get("symbol", ["OGDC"])[0]
+            self._handle_live_order_book(symbol)
+        elif parsed_path.path in ("/api/live-trading/scanner", "/api/live/scanner"):
+            query = parse_qs(parsed_path.query)
+            if not self._check_auth(query): return
+            self._handle_live_scanner()
+        elif parsed_path.path in ("/api/live-trading/signal-history", "/api/live/signal-history"):
+            query = parse_qs(parsed_path.query)
+            if not self._check_auth(query): return
+            symbol = query.get("symbol", ["OGDC"])[0]
+            limit = int(query.get("limit", ["10"])[0])
+            self._handle_live_symbol_signal_history(symbol, limit)
         elif parsed_path.path == "/api/position-analysis":
             query = parse_qs(parsed_path.query)
             if not self._check_auth(query): return
@@ -5334,6 +5871,28 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json({"success": True, "message": f"Backtest processed {added} runs.", "reference_table": rows})
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
+        elif self.path == "/api/log-signal":
+            try:
+                body = json.loads(post_data.decode("utf-8")) if post_data else {}
+                import live_trading_db
+                signal_id = live_trading_db.log_signal_if_eligible(body)
+                logged = signal_id is not None
+                self._send_json({"success": True, "logged": logged, "signal_id": signal_id})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+        elif self.path == "/api/track-outcomes":
+            try:
+                import live_trading_db
+                def history_provider(sym, created_at):
+                    raw = fetch_stock_history(sym)
+                    if not raw:
+                        return []
+                    sig_date = time.strftime('%Y-%m-%d', time.localtime(created_at))
+                    return [b for b in raw if b.get('date', '') > sig_date]
+                updates = live_trading_db.track_signal_outcomes(history_provider)
+                self._send_json({"success": True, "updates": updates})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
         else:
             self.send_error(404)
 
@@ -5505,6 +6064,112 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json({"success": True, "data": analysis})
         except Exception as e:
             print(f"[PSX] Error in live trading analysis handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_signal_stats(self):
+        try:
+            import live_trading_db
+            stats = live_trading_db.get_signal_statistics()
+            self._send_json({"success": True, "data": stats})
+        except Exception as e:
+            print(f"[PSX] Error in signal stats handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_live_backtest(self, symbol):
+        if not symbol:
+            symbol = "OGDC"
+        symbol = symbol.upper().strip()
+        try:
+            from live_backtest import (
+                run_v2_backtest,
+                run_ema50_baseline_backtest,
+                run_walk_forward_calibration
+            )
+            # fetch_stock_history returns list of dicts (newest first)
+            history = fetch_stock_history(symbol)
+            if not history or len(history) < 55:
+                self._send_json({
+                    "success": False,
+                    "error": f"Insufficient historical bars for {symbol} (found {len(history) if history else 0}, minimum 55 required)"
+                }, 400)
+                return
+
+            # Backtester expects chronological order (oldest to newest)
+            chronological_bars = list(reversed(history))
+
+            v2_res = run_v2_backtest(chronological_bars, symbol=symbol)
+            base_res = run_ema50_baseline_backtest(chronological_bars)
+            wf_res = run_walk_forward_calibration(chronological_bars, symbol=symbol)
+
+            # Stage 6.3 Baseline Comparison
+            v2_pf = v2_res.get("overall_long", {}).get("profit_factor", 0.0)
+            base_pf = base_res.get("profit_factor", 0.0)
+            v2_wr = v2_res.get("overall_long", {}).get("raw_win_rate_pct", 0.0)
+            base_wr = base_res.get("win_rate_pct", 0.0)
+
+            comparison = {
+                "engine_profit_factor": v2_pf,
+                "baseline_profit_factor": base_pf,
+                "pf_difference": round(v2_pf - base_pf, 2),
+                "engine_win_rate_pct": v2_wr,
+                "baseline_win_rate_pct": base_wr,
+                "win_rate_difference": round(v2_wr - base_wr, 1),
+                "engine_max_dd_pct": v2_res.get("max_drawdown_pct", 0.0),
+                "baseline_max_dd_pct": base_res.get("max_drawdown_pct", 0.0),
+                "value_added": bool(v2_pf > base_pf or v2_wr > base_wr),
+                "verdict": "V2 Engine Outperforms Baseline (Added Value)" if (v2_pf > base_pf or v2_wr > base_wr) else "V2 Engine In-Line with Baseline"
+            }
+
+            self._send_json({
+                "success": True,
+                "data": {
+                    "symbol": symbol,
+                    "bars_count": len(history),
+                    "backtest": v2_res,
+                    "baseline": base_res,
+                    "comparison": comparison,
+                    "walk_forward": wf_res
+                }
+            })
+        except Exception as e:
+            print(f"[PSX] Error in live backtest handler for {symbol}: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_live_order_book(self, symbol):
+        if not symbol:
+            symbol = "OGDC"
+        symbol = symbol.upper().strip()
+        try:
+            from order_book_engine import analyze_order_book
+            analysis = fetch_live_stock_analysis(symbol)
+            stock_info = analysis.get("stockInfo") or {}
+            change_val = float(stock_info.get("change", 0.0))
+            ob_data = analyze_order_book(symbol, real_depth=None, price_change_pct=change_val)
+            self._send_json({"success": True, "data": ob_data})
+        except Exception as e:
+            print(f"[PSX] Error in live order book handler for {symbol}: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_live_scanner(self):
+        try:
+            from live_scanner import run_live_market_scan
+            stocks, _ = fetch_stock_data()
+            scan_res = run_live_market_scan(stocks)
+            self._send_json({"success": True, "data": scan_res})
+        except Exception as e:
+            print(f"[PSX] Error in live scanner handler: {e}")
+            self._send_json({"success": False, "error": str(e)}, 500)
+
+    def _handle_live_symbol_signal_history(self, symbol, limit=10):
+        if not symbol:
+            symbol = "OGDC"
+        symbol = symbol.upper().strip()
+        try:
+            import live_trading_db
+            signals = live_trading_db.get_symbol_signals(symbol, limit=limit)
+            self._send_json({"success": True, "symbol": symbol, "data": signals})
+        except Exception as e:
+            print(f"[PSX] Error in symbol signal history handler for {symbol}: {e}")
             self._send_json({"success": False, "error": str(e)}, 500)
 
     def _handle_financial_statements(self, symbol):
@@ -5713,6 +6378,13 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             shares = sizing["shares"]
+            if body.get("shares"):
+                try:
+                    req_shares = int(body["shares"])
+                    if req_shares > 0:
+                        shares = req_shares
+                except Exception:
+                    pass
             # 2. Paper Broker Execution
             exec_res = paper_broker.place_buy_order(
                 symbol=symbol,

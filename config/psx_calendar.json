@@ -1,0 +1,64 @@
+{
+  "description": "Pakistan Stock Exchange (PSX) Official Trading Calendar and Market Hours",
+  "timezone": "Asia/Karachi",
+  "utc_offset_hours": 5,
+  "sessions": {
+    "mon_thu": {
+      "pre_open_start": "09:15",
+      "open": "09:32",
+      "close": "15:30",
+      "name": "Regular Trading Session"
+    },
+    "friday": {
+      "session_1": {
+        "pre_open_start": "09:00",
+        "open": "09:17",
+        "close": "12:00",
+        "name": "Friday Morning Session"
+      },
+      "jummah_break": {
+        "start": "12:00",
+        "end": "14:32",
+        "name": "Friday Jummah Prayer & Inter-Session Break"
+      },
+      "session_2": {
+        "pre_open_start": "14:15",
+        "open": "14:32",
+        "close": "16:30",
+        "name": "Friday Afternoon Session"
+      }
+    }
+  },
+  "ramadan": {
+    "is_active": false,
+    "note": "Toggle is_active to true during the holy month of Ramadan",
+    "mon_thu": {
+      "pre_open_start": "09:15",
+      "open": "09:32",
+      "close": "13:30",
+      "name": "Ramadan Mon-Thu Session"
+    },
+    "friday": {
+      "pre_open_start": "09:00",
+      "open": "09:17",
+      "close": "12:30",
+      "name": "Ramadan Friday Session"
+    }
+  },
+  "holidays": [
+    { "date": "2026-02-05", "name": "Kashmir Solidarity Day", "status": "CONFIRMED" },
+    { "date": "2026-03-23", "name": "Pakistan Day", "status": "CONFIRMED" },
+    { "date": "2026-05-01", "name": "Labour Day", "status": "CONFIRMED" },
+    { "date": "2026-08-14", "name": "Independence Day", "status": "CONFIRMED" },
+    { "date": "2026-11-09", "name": "Iqbal Day", "status": "CONFIRMED" },
+    { "date": "2026-12-25", "name": "Quaid-e-Azam Day / Christmas", "status": "CONFIRMED" },
+    { "date": "2026-03-20", "name": "Eid-ul-Fitr (Day 1)", "status": "TODO_VERIFY_MOON_SIGHTING" },
+    { "date": "2026-03-21", "name": "Eid-ul-Fitr (Day 2)", "status": "TODO_VERIFY_MOON_SIGHTING" },
+    { "date": "2026-03-22", "name": "Eid-ul-Fitr (Day 3)", "status": "TODO_VERIFY_MOON_SIGHTING" },
+    { "date": "2026-05-27", "name": "Eid-ul-Azha (Day 1)", "status": "TODO_VERIFY_MOON_SIGHTING" },
+    { "date": "2026-05-28", "name": "Eid-ul-Azha (Day 2)", "status": "TODO_VERIFY_MOON_SIGHTING" },
+    { "date": "2026-06-25", "name": "Ashura (9th Muharram)", "status": "TODO_VERIFY_MOON_SIGHTING" },
+    { "date": "2026-06-26", "name": "Ashura (10th Muharram)", "status": "TODO_VERIFY_MOON_SIGHTING" },
+    { "date": "2026-08-25", "name": "Eid Milad-un-Nabi (12 Rabi-ul-Awwal)", "status": "TODO_VERIFY_MOON_SIGHTING" }
+  ]
+}
