@@ -45,6 +45,7 @@ import weekly_scan_engine as weekly_engine
 import psx_intelligence_engine as intel_module
 import psx_calibration_engine as calib_module
 import psx_longterm_engine as lt_module
+import psx_daily_opportunities as daily_opps_module
 
 
 PORT = int(os.environ.get('PORT', 3000))
@@ -729,7 +730,18 @@ def _start_continuous_poller():
             print(f"[LongTerm] Engine init error: {e}")
             longterm = None
 
+        # Init Today's Opportunities (Same-Day Scanner)
+        try:
+            opps_scanner = daily_opps_module.get_scanner()
+            stocks_dict = {s.get("symbol","").upper(): s for s in (stock_cache.get("data") or []) if s.get("symbol")}
+            opps_scanner.lifecycle.reconcile_on_startup(stocks_dict)
+            print("[DailyOpportunities] Scanner ready and reconciled on startup.")
+        except Exception as oe:
+            print(f"[DailyOpportunities] Init error: {oe}")
+            opps_scanner = None
+
         _last_intel_tick    = [0]
+        _last_opps_tick     = [0]
         _last_eod_tick      = [0]
         _last_overnight     = [0]
         _last_audit_tick    = [0]
@@ -737,6 +749,7 @@ def _start_continuous_poller():
         _last_lt_scrape     = [0]   # Daily 7 AM — DPS fundamentals scrape
         _last_lt_scan       = [0]   # Daily 9 AM — 7-stage pipeline scan
         _last_intraday_tick  = [0]   # Every 5 min — intraday scanner + breadth
+
         _last_eod_learner    = [""]  # Daily 3:30 PM — EOD eval + market wrap
         _last_morning_brief  = [""]  # Daily 9:15 AM — morning brief
         _last_breadth_alert  = [""]  # Breadth emergency — once per BEAR/CRASH day
@@ -824,7 +837,34 @@ def _start_continuous_poller():
                             except Exception as ie:
                                 print(f"[Intelligence] Overnight error: {ie}")
 
+                # ── Today's Opportunities (Same-Day Scanner) — every 5 minutes during market hours ──
+                if opps_scanner and (time.time() - _last_opps_tick[0] >= 300):
+                    try:
+                        cur_sched = psx_calendar.get_psx_market_status()
+                        if cur_sched.get("is_open", False) or is_trading_hours:
+                            stocks_snap = stock_cache.get("data") or []
+                            circ_anomalies = []
+                            if intelligence and hasattr(intelligence, "detector") and hasattr(intelligence.detector, "_intraday_circuit_buffer"):
+                                with intelligence.detector._circuit_lock:
+                                    circ_anomalies = list(intelligence.detector._intraday_circuit_buffer.keys())
+                            regime_name = "Neutral"
+                            if intelligence and hasattr(intelligence, "regime_engine") and intelligence.regime_engine:
+                                try:
+                                    regime_name = intelligence.regime_engine.get_current_regime().get("regime", "Neutral")
+                                except Exception:
+                                    pass
+                            opps_scanner.scan_universe(
+                                stocks=stocks_snap,
+                                history_provider=fetch_stock_history,
+                                market_regime=regime_name,
+                                circuit_anomalies=circ_anomalies
+                            )
+                        _last_opps_tick[0] = time.time()
+                    except Exception as oe:
+                        print(f"[DailyOpportunities] Poller tick error: {oe}")
+
                 # ── Weekly Prediction Audit (every 15 minutes) ───────────────
+
                 if time.time() - _last_audit_tick[0] >= 900:
                     try:
                         stocks_snap = stock_cache.get("data") or []
@@ -5053,7 +5093,66 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
+        # ─── Today's Opportunities (Same-Day Trade Scanner) API ─────────────
+        elif parsed_path.path == "/api/daily-opportunities/live":
+            try:
+                opps_scanner = daily_opps_module.get_scanner()
+                now_pkt = psx_calendar.get_current_pkt_datetime()
+                today_str = now_pkt.strftime("%Y-%m-%d")
+                cands = opps_scanner.db.get_all_today(today_str)
+                sched = shared_trading_utils.get_session_schedule(now_pkt)
+                cur_mins = now_pkt.hour * 60 + now_pkt.minute
+                time_exit_mins = sched.get("time_exit_mins", 915)
+                mins_to_exit = max(0, time_exit_mins - cur_mins)
+
+                cache_ts = stock_cache.get("timestamp", time.time())
+                freshness_sec = round(time.time() - cache_ts)
+
+                self._send_json({
+                    "success": True,
+                    "date": today_str,
+                    "pkt_time": now_pkt.strftime("%Y-%m-%d %H:%M:%S PKT"),
+                    "minutes_to_forced_exit": mins_to_exit,
+                    "time_exit_cutoff_str": sched.get("time_exit_cutoff_str", "15:15 PKT"),
+                    "is_in_trading_hours": sched.get("is_in_trading_hours", False),
+                    "is_friday": sched.get("is_friday", False),
+                    "is_jummah_break": sched.get("is_jummah_break", False),
+                    "data_freshness_seconds": freshness_sec,
+                    "is_stale": freshness_sec > 120,
+                    "candidates": cands,
+                    "stats": {
+                        "total": len(cands),
+                        "watching": sum(1 for c in cands if c.get("state") == "WATCHING"),
+                        "triggered": sum(1 for c in cands if c.get("state") == "TRIGGERED"),
+                        "closed": sum(1 for c in cands if c.get("state") == "CLOSED"),
+                        "target_hit": sum(1 for c in cands if c.get("exit_type") == "TARGET_HIT"),
+                        "stopped_out": sum(1 for c in cands if c.get("exit_type") == "STOPPED_OUT"),
+                        "time_exit": sum(1 for c in cands if c.get("exit_type") == "TIME_EXIT")
+                    },
+                    "disclaimer": "Not investment advice — informational tool based on historical pattern statistics"
+                })
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/daily-opportunities/track-record":
+            try:
+                opps_scanner = daily_opps_module.get_scanner()
+                data = opps_scanner.tracker.get_track_record()
+                self._send_json({"success": True, **data})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/daily-opportunities/near-misses":
+            try:
+                opps_scanner = daily_opps_module.get_scanner()
+                with opps_scanner.db._get_conn() as conn:
+                    rows = conn.execute("SELECT * FROM near_miss_logs ORDER BY id DESC LIMIT 50").fetchall()
+                self._send_json({"success": True, "near_misses": [dict(r) for r in rows]})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
         # ─── Self-Learning Calibration API ───────────────────────────────────
+
 
         elif parsed_path.path == "/api/calibration/report":
             try:
@@ -5727,6 +5826,33 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._handle_company(symbol)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 400)
+        elif self.path == "/api/daily-opportunities/scan-now":
+            try:
+                opps_scanner = daily_opps_module.get_scanner()
+                stocks_snap = stock_cache.get("data") or []
+                circ_anomalies = []
+                try:
+                    intel = intel_module.get_engine()
+                    with intel.detector._circuit_lock:
+                        circ_anomalies = list(intel.detector._intraday_circuit_buffer.keys())
+                except Exception:
+                    pass
+                regime_name = "Neutral"
+                try:
+                    intel = intel_module.get_engine()
+                    regime_name = intel.regime_engine.get_current_regime().get("regime", "Neutral")
+                except Exception:
+                    pass
+                res = opps_scanner.scan_universe(
+                    stocks=stocks_snap,
+                    history_provider=fetch_stock_history,
+                    market_regime=regime_name,
+                    circuit_anomalies=circ_anomalies
+                )
+                self._send_json(res)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
         elif self.path == "/api/feedback":
             try:
                 body = json.loads(post_data.decode('utf-8'))

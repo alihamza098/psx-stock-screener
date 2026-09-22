@@ -96,39 +96,18 @@ def evaluate_regime(
     return "Ranging", "Neutral"
 
 
+from shared_trading_utils import (
+    calculate_position_size as _shared_calc_pos_size,
+    compute_trade_brackets as _shared_compute_brackets
+)
+
+
 def calculate_position_size(capital: float, risk_pct: float, entry: float, stop: float) -> Dict[str, Any]:
     """
     Computes position size based on capital and account risk percentage.
-    Handles zero/negative risk, stop equal to entry, and rounds down to whole shares.
+    Delegates to shared_trading_utils to prevent logic drift.
     """
-    try:
-        cap = float(capital)
-        rp = float(risk_pct)
-        ent = float(entry)
-        stp = float(stop)
-    except (ValueError, TypeError):
-        return {"shares": 0, "pkr_at_risk": 0.0, "total_outlay": 0.0, "risk_amount": 0.0, "per_share_risk": 0.0}
-
-    if cap <= 0 or rp <= 0 or ent <= 0:
-        return {"shares": 0, "pkr_at_risk": 0.0, "total_outlay": 0.0, "risk_amount": 0.0, "per_share_risk": 0.0}
-
-    risk_amount = cap * (rp / 100.0)
-    per_share_risk = abs(ent - stp)
-
-    if per_share_risk <= 0.0001:
-        return {"shares": 0, "pkr_at_risk": 0.0, "total_outlay": 0.0, "risk_amount": round(risk_amount, 2), "per_share_risk": 0.0}
-
-    shares = int(math.floor(risk_amount / per_share_risk))
-    pkr_at_risk = round(shares * per_share_risk, 2)
-    total_outlay = round(shares * ent, 2)
-
-    return {
-        "shares": shares,
-        "pkr_at_risk": pkr_at_risk,
-        "total_outlay": total_outlay,
-        "risk_amount": round(risk_amount, 2),
-        "per_share_risk": round(per_share_risk, 2)
-    }
+    return _shared_calc_pos_size(capital, risk_pct, entry, stop)
 
 
 def compute_trade_brackets(
@@ -142,206 +121,21 @@ def compute_trade_brackets(
 ) -> Dict[str, Any]:
     """
     Stage 3 Smarter Trade Brackets:
-    - 3.1: ATR14 dynamic brackets: k_stop (1.2-1.5), k_target (2.0-3.0) tuned by regime
-    - 3.2: PSX circuit awareness: clamp to upper/lower limits, near-circuit liquidity risk tag
-    - 3.3: Pivot anchoring: pull target back inside resistance (R1/R2) or stop inside support (S1/S2)
-    - 3.4: R:R calculation: downgrade if rr < 1.5, calculate Net R:R after transaction friction
-    - 3.6: Risk classification including ATR-based volatility
+    Delegates to shared_trading_utils to prevent logic drift.
     """
-    if config is None:
-        config = load_config()
-
-    if stock is None:
-        stock = {}
-
-    tb_cfg = config.get("trade_brackets", {})
-    regime_mults = tb_cfg.get("regime_multipliers", {
-        "Trending": {"k_stop": 1.5, "k_target": 3.0},
-        "Range-Bound": {"k_stop": 1.2, "k_target": 2.0}
-    })
-    mult = regime_mults.get(regime, {"k_stop": 1.5, "k_target": 3.0} if regime == "Trending" else {"k_stop": 1.2, "k_target": 2.0})
-    k_stop = float(mult.get("k_stop", 1.5))
-    k_target = float(mult.get("k_target", 3.0))
-
-    if atr <= 0.0001:
-        atr = entry * 0.025  # Fallback 2.5%
-
-    is_buy = "BUY" in recommendation
-    is_sell = "SELL" in recommendation
-
-    # 1. Base ATR brackets
-    if is_buy:
-        raw_stop = entry - (k_stop * atr)
-        raw_target = entry + (k_target * atr)
-    elif is_sell:
-        raw_stop = entry + (k_stop * atr)
-        raw_target = entry - (k_target * atr)
-    else:  # HOLD
-        raw_stop = entry - (1.0 * atr)
-        raw_target = entry + (1.5 * atr)
-
-    # 2. PSX Circuit limits (Requirement 3.2)
-    circuit_pct = float(stock.get("circuit_limit_pct") or tb_cfg.get("circuit_limit_default_pct", 7.5))
-    circuit_assumed = stock.get("circuit_limit_pct") is None
-
-    # Reference price (LDCP or implied from change)
-    if stock.get("ldcp"):
-        ref_price = float(stock["ldcp"])
-    elif stock.get("change") is not None:
-        chg = float(stock.get("change", 0.0))
-        ref_price = entry / (1.0 + (chg / 100.0)) if (1.0 + (chg / 100.0)) != 0 else entry
-    else:
-        ref_price = entry
-
-    band_spread = max(1.00, ref_price * (circuit_pct / 100.0))
-    circuit_upper = round(ref_price + band_spread, 2)
-    circuit_lower = round(max(0.01, ref_price - band_spread), 2)
-
-    # Check near circuit (within ~1%)
-    near_thresh = float(tb_cfg.get("near_circuit_threshold_pct", 1.0)) / 100.0
-    is_near_upper = entry >= (circuit_upper * (1.0 - near_thresh))
-    is_near_lower = entry <= (circuit_lower * (1.0 + near_thresh))
-    is_near_circuit = is_near_upper or is_near_lower
-    circuit_warning = "Near circuit: exit liquidity risk" if is_near_circuit else None
-
-    # Clamp target and stop to circuit limits
-    if is_buy:
-        clamped_target = min(raw_target, circuit_upper)
-        clamped_stop = max(raw_stop, circuit_lower)
-    elif is_sell:
-        clamped_target = max(raw_target, circuit_lower)
-        clamped_stop = min(raw_stop, circuit_upper)
-    else:
-        clamped_target = min(raw_target, circuit_upper)
-        clamped_stop = max(raw_stop, circuit_lower)
-
-    # 3. Pivot Anchoring (Requirement 3.3)
-    target = clamped_target
-    stop = clamped_stop
-    pivot_anchored_target = False
-    pivot_anchored_stop = False
-
-    if pivots:
-        r1 = pivots.get("r1")
-        r2 = pivots.get("r2")
-        s1 = pivots.get("s1")
-        s2 = pivots.get("s2")
-
-        if is_buy:
-            if r1 and entry < r1 and target > r1:
-                target = round(r1 * 0.995, 2)
-                pivot_anchored_target = True
-            elif r2 and entry < r2 and target > r2:
-                target = round(r2 * 0.995, 2)
-                pivot_anchored_target = True
-
-            if s1 and entry > s1 and stop < s1:
-                stop = round(s1 * 1.005, 2)
-                pivot_anchored_stop = True
-            elif s2 and entry > s2 and stop < s2:
-                stop = round(s2 * 1.005, 2)
-                pivot_anchored_stop = True
-
-        elif is_sell:
-            if s1 and entry > s1 and target < s1:
-                target = round(s1 * 1.005, 2)
-                pivot_anchored_target = True
-            elif s2 and entry > s2 and target < s2:
-                target = round(s2 * 1.005, 2)
-                pivot_anchored_target = True
-
-            if r1 and entry < r1 and stop > r1:
-                stop = round(r1 * 0.995, 2)
-                pivot_anchored_stop = True
-
-    # Safety bounds to ensure valid non-crossing brackets
-    if is_buy:
-        if target <= entry:
-            target = round(entry + max(0.10, atr * 0.5), 2)
-        if stop >= entry:
-            stop = round(entry - max(0.10, atr * 0.5), 2)
-    elif is_sell:
-        if target >= entry:
-            target = round(entry - max(0.10, atr * 0.5), 2)
-        if stop <= entry:
-            stop = round(entry + max(0.10, atr * 0.5), 2)
-
-    # 4. Risk / Reward Calculation (Requirement 3.4)
-    if is_buy:
-        gross_risk = max(0.01, entry - stop)
-        gross_reward = max(0.0, target - entry)
-    elif is_sell:
-        gross_risk = max(0.01, stop - entry)
-        gross_reward = max(0.0, entry - target)
-    else:
-        gross_risk = max(0.01, entry - stop)
-        gross_reward = max(0.0, target - entry)
-
-    gross_rr = round(gross_reward / gross_risk, 2) if gross_risk > 0 else 0.0
-
-    # Net R:R after estimated PSX costs
-    costs_cfg = tb_cfg.get("costs", {})
-    friction_pct = float(costs_cfg.get("total_round_trip_pct", 0.35)) / 100.0
-    friction = entry * friction_pct
-
-    net_reward = max(0.0, gross_reward - friction)
-    net_risk = gross_risk + friction
-    net_rr = round(net_reward / max(0.01, net_risk), 2)
-
-    # Signal downgrade if rr < 1.5
-    min_rr = float(tb_cfg.get("min_rr_threshold", 1.5))
-    adjusted_rec = recommendation
-    is_poor_rr = gross_rr < min_rr
-
-    if is_poor_rr and recommendation != "HOLD":
-        if recommendation == "STRONG BUY":
-            adjusted_rec = "BUY"
-        elif recommendation == "BUY":
-            adjusted_rec = "HOLD"
-        elif recommendation == "STRONG SELL":
-            adjusted_rec = "SELL"
-        elif recommendation == "SELL":
-            adjusted_rec = "HOLD"
-
-    # 5. Volatility & Risk Level (Requirement 3.6)
-    atr_pct = (atr / entry) * 100.0 if entry > 0 else 0.0
-    vol_cfg = tb_cfg.get("volatility_thresholds", {"high_atr_pct": 4.0, "normal_atr_pct": 2.5})
-    high_vol_thresh = float(vol_cfg.get("high_atr_pct", 4.0))
-
-    if atr_pct >= high_vol_thresh:
-        volatility_level = "High"
-    elif atr_pct >= float(vol_cfg.get("normal_atr_pct", 2.5)):
-        volatility_level = "Normal"
-    else:
-        volatility_level = "Low"
-
-    return {
-        "entry": round(entry, 2),
-        "target": round(target, 2),
-        "stop": round(stop, 2),
-        "k_stop": k_stop,
-        "k_target": k_target,
-        "atr": round(atr, 2),
-        "atr_pct": round(atr_pct, 2),
-        "volatility_level": volatility_level,
-        "circuit_upper": circuit_upper,
-        "circuit_lower": circuit_lower,
-        "circuit_pct": circuit_pct,
-        "circuit_assumed": circuit_assumed,
-        "is_near_circuit": is_near_circuit,
-        "circuit_warning": circuit_warning,
-        "pivot_anchored_target": pivot_anchored_target,
-        "pivot_anchored_stop": pivot_anchored_stop,
-        "gross_rr": gross_rr,
-        "net_rr": net_rr,
-        "is_poor_rr": is_poor_rr,
-        "original_recommendation": recommendation,
-        "adjusted_recommendation": adjusted_rec,
-        "friction_pct": round(friction_pct * 100.0, 2)
-    }
+    return _shared_compute_brackets(
+        entry=entry,
+        recommendation=recommendation,
+        regime=regime,
+        atr=atr,
+        pivots=pivots,
+        stock=stock,
+        config=config
+    )
 
 
 def analyze_timeframe_candles(candles: List[Dict[str, Any]]) -> Dict[str, Any]:
+
     """
     Analyzes candle series for a timeframe using EMA alignment and MACD state.
     Returns direction: 'up', 'down', or 'neutral'.

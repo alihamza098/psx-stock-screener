@@ -1289,6 +1289,7 @@ function switchView(view) {
     } else if (view === "live-trading") {
         if (!currentLiveSymbol) currentLiveSymbol = "UNITY";
         fetchLiveTradingAnalysis(currentLiveSymbol);
+        fetchDailyOpportunities();
     } else if (view === "simulator") {
         initTradingSimulator();
     } else if (view === "portfolio") {
@@ -2540,7 +2541,338 @@ function fetchLiveTradingAnalysis(symbol, isSilent = false, force = false) {
         });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ⚡ TODAY'S OPPORTUNITIES (SAME-DAY TRADE SCANNER) CONTROLLER
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _dailyOppsState = {
+    candidates: [],
+    filter: 'ALL',
+    trackRecord: null,
+    showTrackRecord: false,
+    stats: {},
+    isScanning: false,
+    lastFetchedAt: null
+};
+
+async function fetchDailyOpportunities() {
+    try {
+        const res = await fetch('/api/daily-opportunities/live');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.success) return;
+
+        _dailyOppsState.candidates = data.candidates || [];
+        _dailyOppsState.stats = data.stats || {};
+        _dailyOppsState.lastFetchedAt = Date.now();
+
+        // Update badge counts
+        const allEl = document.getElementById("count-opps-all");
+        const momEl = document.getElementById("count-opps-mom");
+        const actEl = document.getElementById("count-opps-act");
+        const stdEl = document.getElementById("count-opps-std");
+        const trigEl = document.getElementById("count-opps-trig");
+
+        const cands = _dailyOppsState.candidates;
+        if (allEl) allEl.textContent = cands.length;
+        if (momEl) momEl.textContent = cands.filter(c => c.tier === "Momentum").length;
+        if (actEl) actEl.textContent = cands.filter(c => c.tier === "Active").length;
+        if (stdEl) stdEl.textContent = cands.filter(c => c.tier === "Steady").length;
+        if (trigEl) trigEl.textContent = cands.filter(c => c.state === "TRIGGERED").length;
+
+        // Update countdown badge
+        const countdownEl = document.getElementById("daily-opps-countdown-text");
+        const countdownWrap = document.getElementById("daily-opps-countdown");
+        if (countdownEl && countdownWrap) {
+            const mins = data.minutes_to_forced_exit;
+            const cutoffStr = data.time_exit_cutoff_str || "15:15 PKT";
+            if (data.is_in_trading_hours && mins > 0) {
+                countdownEl.textContent = `Exit Cutoff: ${cutoffStr} (${mins}m remaining)`;
+                if (mins <= 30) {
+                    countdownWrap.classList.add("urgent");
+                } else {
+                    countdownWrap.classList.remove("urgent");
+                }
+            } else {
+                countdownEl.textContent = `Exit Cutoff: ${cutoffStr} (${data.is_in_trading_hours ? 'Trading Closed' : 'Market Closed'})`;
+                countdownWrap.classList.remove("urgent");
+            }
+        }
+
+        renderDailyOpportunities();
+    } catch (e) {
+        console.error("Error fetching daily opportunities:", e);
+    }
+}
+
+function setDailyOppsFilter(filterName) {
+    _dailyOppsState.filter = filterName;
+    _dailyOppsState.showTrackRecord = false;
+    document.querySelectorAll(".daily-opps-tab").forEach(tab => {
+        if (tab.getAttribute("data-filter") === filterName) {
+            tab.classList.add("active");
+        } else {
+            tab.classList.remove("active");
+        }
+    });
+
+    const body = document.getElementById("daily-opps-body");
+    const trView = document.getElementById("daily-opps-track-record-view");
+    if (body) body.style.display = "grid";
+    if (trView) trView.style.display = "none";
+
+    renderDailyOpportunities();
+}
+
+function renderDailyOpportunities() {
+    const container = document.getElementById("daily-opps-body");
+    if (!container) return;
+
+    const filter = _dailyOppsState.filter;
+    let list = _dailyOppsState.candidates || [];
+
+    if (filter === "MOMENTUM") {
+        list = list.filter(c => c.tier === "Momentum");
+    } else if (filter === "ACTIVE") {
+        list = list.filter(c => c.tier === "Active");
+    } else if (filter === "STEADY") {
+        list = list.filter(c => c.tier === "Steady");
+    } else if (filter === "TRIGGERED") {
+        list = list.filter(c => c.state === "TRIGGERED");
+    }
+
+    if (list.length === 0) {
+        container.className = "daily-opps-grid";
+        container.innerHTML = `
+            <div class="daily-opp-empty" style="grid-column: 1 / -1;">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:8px; opacity:0.6;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <div style="font-weight:600; color:#cbd5e1; margin-bottom:4px;">No ${filter === 'ALL' ? '' : filter} candidates at this moment</div>
+                <div style="font-size:0.75rem; color:#64748b;">The scanner evaluates liquid PSX stocks continuously every 5 minutes during trading hours. Click "Scan Now" to force a live scan.</div>
+            </div>
+        `;
+        return;
+    }
+
+    container.className = "daily-opps-grid";
+    container.innerHTML = list.map(c => {
+        const isMom = c.tier === "Momentum";
+        const isAct = c.tier === "Active";
+        const tierCls = isMom ? "tier-momentum" : (isAct ? "tier-active" : "tier-steady");
+        const stateCls = `state-${(c.state || "watching").toLowerCase().replace(/_/g, "-")}`;
+
+        const entry = parseFloat(c.entry_price || 0).toFixed(2);
+        const target = parseFloat(c.target_price || 0).toFixed(2);
+        const stop = parseFloat(c.stop_loss || 0).toFixed(2);
+        const curPx = parseFloat(c.current_price || entry).toFixed(2);
+
+        // PnL display
+        let pnlHtml = "";
+        if (c.state === "TRIGGERED" || c.state === "CLOSED") {
+            const pnl = parseFloat(c.pnl_pct || 0);
+            const pnlCls = pnl >= 0 ? "opp-pnl-green" : "opp-pnl-red";
+            const pnlPrefix = pnl >= 0 ? "+" : "";
+            pnlHtml = `
+                <div class="daily-opp-live-pnl">
+                    <span style="color:#94a3b8;">${c.state === 'CLOSED' ? 'Realized P&L' : 'Live P&L'}:</span>
+                    <span class="${pnlCls}">${pnlPrefix}${pnl.toFixed(2)}% (PKR ${c.pnl_pkr ? Number(c.pnl_pkr).toLocaleString() : '0'})</span>
+                </div>
+            `;
+        }
+
+        const riskNoteHtml = c.execution_risk_note ? `
+            <div class="daily-opp-risk-alert">
+                ${c.execution_risk_note}
+            </div>
+        ` : '';
+
+        return `
+            <div class="daily-opp-card" onclick="selectStockForLiveAnalysis('${c.symbol}')" title="Click to view full L2 depth & intraday indicators for ${c.symbol}">
+                <div class="daily-opp-card-top">
+                    <div>
+                        <div class="daily-opp-sym">${c.symbol}</div>
+                        <div class="daily-opp-setup-name">${(c.setup_type || "").replace(/_/g, " ")}</div>
+                    </div>
+                    <div class="daily-opp-badges">
+                        <span class="tier-badge ${tierCls}">${c.tier}</span>
+                        <span class="state-badge ${stateCls}">${(c.state || "").replace(/_/g, " ")}</span>
+                    </div>
+                </div>
+
+                <div class="daily-opp-pricing">
+                    <div class="opp-price-col">
+                        <span class="opp-price-label">Entry</span>
+                        <span class="opp-price-val">₨${entry}</span>
+                    </div>
+                    <div class="opp-price-col">
+                        <span class="opp-price-label">Target</span>
+                        <span class="opp-price-val target">₨${target}</span>
+                    </div>
+                    <div class="opp-price-col">
+                        <span class="opp-price-label">Stop</span>
+                        <span class="opp-price-val stop">₨${stop}</span>
+                    </div>
+                </div>
+
+                ${pnlHtml}
+
+                <div class="daily-opp-trigger-note">
+                    <strong>Trigger:</strong> ${c.trigger_condition || 'Awaiting entry confirmation'}
+                </div>
+
+                ${riskNoteHtml}
+            </div>
+        `;
+    }).join("");
+}
+
+async function toggleDailyOppsTrackRecord() {
+    const trView = document.getElementById("daily-opps-track-record-view");
+    const body = document.getElementById("daily-opps-body");
+    const tabBtn = document.getElementById("tab-opps-record");
+    if (!trView || !body) return;
+
+    _dailyOppsState.showTrackRecord = !_dailyOppsState.showTrackRecord;
+
+    document.querySelectorAll(".daily-opps-tab").forEach(t => t.classList.remove("active"));
+
+    if (_dailyOppsState.showTrackRecord) {
+        if (tabBtn) tabBtn.classList.add("active");
+        body.style.display = "none";
+        trView.style.display = "block";
+        trView.innerHTML = '<div style="text-align:center; padding:24px; color:#94a3b8;">Loading track record...</div>';
+
+        try {
+            const res = await fetch('/api/daily-opportunities/track-record');
+            const data = await res.json();
+            if (data.success) {
+                _dailyOppsState.trackRecord = data;
+                renderDailyOppsTrackRecord(data);
+            }
+        } catch (e) {
+            trView.innerHTML = `<div style="color:#f87171; padding:20px;">Failed to load track record: ${e.message}</div>`;
+        }
+    } else {
+        setDailyOppsFilter('ALL');
+    }
+}
+
+function renderDailyOppsTrackRecord(data) {
+    const trView = document.getElementById("daily-opps-track-record-view");
+    if (!trView) return;
+
+    const list = data.breakdown || [];
+    if (list.length === 0) {
+        trView.innerHTML = `
+            <div class="daily-opp-empty">
+                <div style="font-weight:600; color:#cbd5e1;">No closed trades recorded yet.</div>
+                <div style="font-size:0.75rem; margin-top:4px; color:#64748b;">As same-day trades reach target, stop, or time-exit, their outcomes will appear here separated by Tier and Setup Type.</div>
+            </div>
+        `;
+        return;
+    }
+
+    let rowsHtml = list.map(item => {
+        const isConf = item.is_statistically_valid;
+        const rowCls = isConf ? "" : "insufficient-sample";
+        const sampleBadge = isConf ? `<span style="color:#4ade80; font-weight:700;">✓ Confident (${item.total_trades})</span>` : `<span style="color:#94a3b8;">Insufficient Sample (${item.total_trades}/5)</span>`;
+        const winRateDisplay = isConf ? `<strong>${item.win_rate_pct}%</strong>` : `<span style="color:#64748b;">${item.win_rate_pct}%*</span>`;
+        const ciDisplay = isConf ? `[${item.ci_95_lower}% - ${item.ci_95_upper}%]` : `<span style="color:#64748b;">—</span>`;
+
+        return `
+            <tr class="${rowCls}">
+                <td><span class="tier-badge tier-${item.tier.toLowerCase()}">${item.tier}</span></td>
+                <td><strong>${(item.setup_type || "").replace(/_/g, " ")}</strong></td>
+                <td>${item.total_trades}</td>
+                <td>${item.wins} / ${item.losses}</td>
+                <td>${winRateDisplay}</td>
+                <td style="font-family:var(--font-mono, monospace); font-size:0.7rem;">${ciDisplay}</td>
+                <td style="color:${item.avg_return_pct >= 0 ? '#4ade80' : '#f87171'}; font-weight:700;">${item.avg_return_pct >= 0 ? '+' : ''}${item.avg_return_pct}%</td>
+                <td>${item.avg_duration_minutes}m</td>
+                <td>${sampleBadge}</td>
+            </tr>
+        `;
+    }).join("");
+
+    trView.innerHTML = `
+        <div style="padding:10px 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <h4 style="margin:0; color:#f8fafc; font-size:1rem;">📊 Tier-Separated Track Record & Wilson 95% Confidence Bounds</h4>
+                <span style="font-size:0.75rem; color:#94a3b8;">Total Closed Same-Day Trades: <strong>${data.total_closed_trades}</strong></span>
+            </div>
+            <p style="font-size:0.75rem; color:#94a3b8; margin:0 0 14px;">
+                Outcomes are strictly separated per (Tier × Setup Type). Combinations with under 5 trades are greyed out to maintain statistical integrity.
+            </p>
+            <div style="overflow-x:auto;">
+                <table class="track-record-table">
+                    <thead>
+                        <tr>
+                            <th>Tier</th>
+                            <th>Setup Type</th>
+                            <th>Trades</th>
+                            <th>W / L</th>
+                            <th>Win Rate</th>
+                            <th>Wilson 95% CI</th>
+                            <th>Avg Return</th>
+                            <th>Avg Hold</th>
+                            <th>Statistical Gate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+async function triggerDailyOppsScan() {
+    const btn = document.getElementById("btn-daily-opps-scan");
+    if (!btn || _dailyOppsState.isScanning) return;
+
+    _dailyOppsState.isScanning = true;
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = `
+        <svg class="loading-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        <span>Scanning...</span>
+    `;
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/daily-opportunities/scan-now', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            _dailyOppsState.candidates = data.candidates || [];
+            _dailyOppsState.stats = data.stats || {};
+            _dailyOppsState.lastFetchedAt = Date.now();
+            fetchDailyOpportunities();
+        }
+    } catch (e) {
+        console.error("Scan error:", e);
+    } finally {
+        _dailyOppsState.isScanning = false;
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+    }
+}
+
+function selectStockForLiveAnalysis(symbol) {
+    if (!symbol) return;
+    const input = document.getElementById("live-search-input");
+    if (input) {
+        input.value = symbol.toUpperCase().trim();
+    }
+    currentLiveSymbol = symbol.toUpperCase().trim();
+    fetchLiveTradingAnalysis(currentLiveSymbol);
+    const content = document.getElementById("live-trading-content");
+    if (content) {
+        content.scrollIntoView({ behavior: 'smooth' });
+    }
+}
+
+
 function setupLiveAutoRefresh(isOpen) {
+
     liveTradingIsOpen = !!isOpen;
     if (liveTradingTimer) clearInterval(liveTradingTimer);
     if (liveTradingCountdownInterval) clearInterval(liveTradingCountdownInterval);

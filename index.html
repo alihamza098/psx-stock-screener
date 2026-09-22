@@ -896,8 +896,60 @@
                 <div class="loading-text">Analyzing live order flow & technical indicators...</div>
             </div>
 
+            <!-- ⚡ Today's Opportunities (Same-Day Trade Scanner) Section -->
+            <div class="daily-opps-card" id="daily-opps-container">
+                <div class="daily-opps-header">
+                    <div class="daily-opps-title-group">
+                        <div class="daily-opps-badge">SAME-DAY INTRADAY SCANNER</div>
+                        <h2 class="daily-opps-title">⚡ Today's Opportunities</h2>
+                        <p class="daily-opps-subtitle">
+                            Continuous scan across liquid PSX stocks. All candidates are same-day trades with mandatory exit before market close (never held overnight).
+                        </p>
+                    </div>
+                    <div class="daily-opps-header-actions">
+                        <div class="daily-opps-countdown-badge" id="daily-opps-countdown" title="Forced EOD Time-Exit Cutoff">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <span id="daily-opps-countdown-text">Exit Cutoff: 15:15 PKT</span>
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" id="btn-daily-opps-scan" onclick="triggerDailyOppsScan()" title="Scan Liquid PSX Universe Now">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                            <span>Scan Now</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Legal / Correlation Disclaimer & Macro Notice -->
+                <div class="daily-opps-disclaimer-bar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    <span><strong>Not investment advice</strong> — informational tool based on historical pattern statistics. Capital risk is capped per-trade; trailing stops enforced.</span>
+                </div>
+
+                <!-- Navigation Tabs: All / Momentum / Active / Steady / Triggered / Track Record -->
+                <div class="daily-opps-tabs">
+                    <button class="daily-opps-tab active" data-filter="ALL" onclick="setDailyOppsFilter('ALL')">All Candidates (<span id="count-opps-all">0</span>)</button>
+                    <button class="daily-opps-tab tab-momentum" data-filter="MOMENTUM" onclick="setDailyOppsFilter('MOMENTUM')">🔥 Momentum (~8-10%) (<span id="count-opps-mom">0</span>)</button>
+                    <button class="daily-opps-tab tab-active" data-filter="ACTIVE" onclick="setDailyOppsFilter('ACTIVE')">⚡ Active (~5%) (<span id="count-opps-act">0</span>)</button>
+                    <button class="daily-opps-tab tab-steady" data-filter="STEADY" onclick="setDailyOppsFilter('STEADY')">🛡️ Steady (~3%) (<span id="count-opps-std">0</span>)</button>
+                    <button class="daily-opps-tab tab-triggered" data-filter="TRIGGERED" onclick="setDailyOppsFilter('TRIGGERED')">🎯 Active Trades (<span id="count-opps-trig">0</span>)</button>
+                    <button class="daily-opps-tab tab-record" id="tab-opps-record" data-filter="TRACK_RECORD" onclick="toggleDailyOppsTrackRecord()">📊 Track Record</button>
+                </div>
+
+                <!-- Candidates Table / Cards List -->
+                <div class="daily-opps-body" id="daily-opps-body">
+                    <div class="daily-opp-empty">
+                        <span>Loading today's opportunities...</span>
+                    </div>
+                </div>
+
+                <!-- Track Record Sub-View Container (Hidden by default) -->
+                <div class="daily-opps-track-record-view" id="daily-opps-track-record-view" style="display:none;">
+                    <!-- Populated dynamically by JS -->
+                </div>
+            </div>
+
             <!-- Main Analysis Container (Populated by JS) -->
             <div class="live-trading-content" id="live-trading-content">
+
                 <div class="live-trading-placeholder">
                     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                     <h3>Real-Time Intraday Analysis</h3>
