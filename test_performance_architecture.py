@@ -81,6 +81,36 @@ class TestPerformanceArchitecture(unittest.TestCase):
             server.fetch_stock_data(force=False)
             mock_refresh.assert_called_once()
 
+    def test_parse_company_quote_and_live_enrichment(self):
+        """Verify parse_company_quote correctly parses live quote and enriches stock_info."""
+        import server
+        mock_html = '''
+        <div class="quote__price"><div class="quote__close">Rs.11.25</div>
+        <div class="quote__change change__text--pos"><div class="change__direction"><i class="icon-up-dir"></i> </div><div class="change__value">0.59</div><div class="change__percent">  (5.53%)</div></div></div>
+        <div class="stats_item"><div class="stats_label">Open</div><div class="stats_value">10.70</div></div>
+        <div class="stats_item"><div class="stats_label">High</div><div class="stats_value">11.45</div></div>
+        <div class="stats_item"><div class="stats_label">Low</div><div class="stats_value">10.60</div></div>
+        <div class="stats_item"><div class="stats_label">Volume</div><div class="stats_value">520,100</div></div>
+        <div class="stats_item"><div class="stats_label">CIRCUIT BREAKER</div><div class="stats_value">9.85 — 11.50</div></div>
+        '''
+        quote = server.parse_company_quote(mock_html)
+        self.assertEqual(quote.get("price"), 11.25)
+        self.assertEqual(quote.get("change"), 0.59)
+        self.assertEqual(quote.get("changePercent"), 5.53)
+        self.assertEqual(quote.get("open"), 10.70)
+        self.assertEqual(quote.get("high"), 11.45)
+        self.assertEqual(quote.get("low"), 10.60)
+        self.assertEqual(quote.get("volume"), 520100.0)
+        self.assertEqual(quote.get("circuitLower"), 9.85)
+        self.assertEqual(quote.get("circuitUpper"), 11.50)
+
+        # Verify update_live_stock_quote updates cache and price bus
+        server.update_live_stock_quote("TESTXYZ", quote)
+        info = server.get_live_stock_info("TESTXYZ")
+        self.assertIsNotNone(info)
+        self.assertEqual(info.get("price"), 11.25)
+        self.assertEqual(info.get("_live_source"), "DPS_COMPANY_QUOTE")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,6 +13,8 @@ import time
 import datetime
 import threading
 import ssl
+import gzip
+import zlib
 from concurrent.futures import ThreadPoolExecutor
 import urllib.request
 import urllib.error
@@ -452,11 +454,14 @@ DEFAULT_INDEX_FALLBACK = {
 
 
 def fetch_url(url, timeout=FETCH_TIMEOUT, retries=FETCH_RETRIES):
-    """Fetch URL with retries, SSL verification bypass fallback, and realistic headers."""
+    """Fetch URL with retries, SSL verification bypass fallback, gzip/deflate support, and realistic browser headers."""
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
     }
     req = urllib.request.Request(url, headers=headers)
     last_error = None
@@ -464,7 +469,19 @@ def fetch_url(url, timeout=FETCH_TIMEOUT, retries=FETCH_RETRIES):
     for attempt in range(1, retries + 1):
         try:
             with urllib.request.urlopen(req, timeout=timeout, context=SSL_CONTEXT) as response:
-                return response.read().decode("utf-8", errors="ignore")
+                raw = response.read()
+                enc = response.info().get("Content-Encoding", "").lower()
+                if "gzip" in enc or (len(raw) > 2 and raw[:2] == b"\x1f\x8b"):
+                    try:
+                        raw = gzip.decompress(raw)
+                    except Exception:
+                        pass
+                elif "deflate" in enc:
+                    try:
+                        raw = zlib.decompress(raw)
+                    except Exception:
+                        pass
+                return raw.decode("utf-8", errors="ignore")
         except Exception as e:
             last_error = e
             print(f"[PSX] Fetch error (attempt {attempt}/{retries}) for {url}: {e}")
@@ -1028,22 +1045,142 @@ COMPANY_CACHE_DIR = Path(__file__).parent / "cache" / "companies"
 COMPANY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 _COMPANY_DATA_CACHE = {}
 
-def fetch_company_data(symbol):
-    """Fetch and parse company profile and announcements from PSX with caching and robust error handling."""
+
+def parse_company_quote(html: str) -> Dict[str, Any]:
+    """Parse real-time quote metrics from DPS company page (price, change, open, high, low, volume, circuits, depth)."""
+    if not html:
+        return {}
+    res = {}
+    # 1. Price from <div class="quote__close">Rs.10.99</div>
+    p_match = re.search(r'<div class="quote__close">\s*(?:Rs\.?)?\s*([\d,.]+)\s*</div>', html, re.I)
+    if p_match:
+        try:
+            res['price'] = float(p_match.group(1).replace(',', ''))
+        except ValueError:
+            pass
+
+    # 2. Change value and percent from quote__change
+    c_val_match = re.search(r'<div class="change__value">\s*([+-]?[\d,.]+)\s*</div>', html, re.I)
+    if c_val_match:
+        try:
+            res['change'] = float(c_val_match.group(1).replace(',', ''))
+        except ValueError:
+            pass
+
+    cp_match = re.search(r'<div class="change__percent">\s*\(?\s*([+-]?[\d,.]+)%?\s*\)?\s*</div>', html, re.I)
+    if cp_match:
+        try:
+            res['changePercent'] = float(cp_match.group(1).replace(',', ''))
+        except ValueError:
+            pass
+
+    # 3. Stats items: Open, High, Low, Volume, Circuit Breaker, LDCP, Bid, Ask
+    stats_matches = re.findall(r'<div class="stats_item">\s*<div class="stats_label">(.*?)</div>\s*<div class="stats_value">(.*?)</div>', html, re.S)
+    for label_raw, val_raw in stats_matches:
+        label = re.sub(r'<.*?>', '', label_raw).strip().upper()
+        val_clean = re.sub(r'<.*?>', '', val_raw).strip()
+        if 'OPEN' in label and 'open' not in res:
+            try: res['open'] = float(val_clean.replace(',', ''))
+            except: pass
+        elif 'HIGH' in label and 'high' not in res:
+            try: res['high'] = float(val_clean.replace(',', ''))
+            except: pass
+        elif 'LOW' in label and 'low' not in res:
+            try: res['low'] = float(val_clean.replace(',', ''))
+            except: pass
+        elif 'VOLUME' in label and 'volume' not in res:
+            try: res['volume'] = float(val_clean.replace(',', ''))
+            except: pass
+        elif 'LDCP' in label and 'ldcp' not in res:
+            try: res['ldcp'] = float(val_clean.replace(',', ''))
+            except: pass
+        elif 'BID PRICE' in label and 'bidPrice' not in res:
+            try: res['bidPrice'] = float(val_clean.replace(',', ''))
+            except: pass
+        elif 'BID VOLUME' in label and 'bidVolume' not in res:
+            try: res['bidVolume'] = float(val_clean.replace(',', ''))
+            except: pass
+        elif 'ASK PRICE' in label and 'askPrice' not in res:
+            try: res['askPrice'] = float(val_clean.replace(',', ''))
+            except: pass
+        elif 'ASK VOLUME' in label and 'askVolume' not in res:
+            try: res['askVolume'] = float(val_clean.replace(',', ''))
+            except: pass
+        elif 'CIRCUIT BREAKER' in label and 'circuitUpper' not in res:
+            cb_parts = re.findall(r'[\d.]+', val_clean)
+            if len(cb_parts) >= 2:
+                try:
+                    res['circuitLower'] = float(cb_parts[0])
+                    res['circuitUpper'] = float(cb_parts[1])
+                except: pass
+
+    if res.get('price') is not None:
+        res['_fetched_at'] = time.time()
+    return res
+
+
+def update_live_stock_quote(symbol: str, quote: dict):
+    """Updates the central live stock cache and in-memory price bus with fresh quote."""
+    if not symbol or not quote or "price" not in quote:
+        return
+    sym = symbol.upper().strip()
+    stocks = stock_cache.get("data") or []
+    matched = False
+    for s in stocks:
+        if (s.get("symbol") or "").upper().strip() == sym:
+            s["price"] = quote["price"]
+            if "change" in quote: s["change"] = quote["change"]
+            if "changePercent" in quote: s["changePercent"] = quote["changePercent"]
+            if "volume" in quote and quote["volume"] is not None: s["volume"] = quote["volume"]
+            if "open" in quote: s["open"] = quote["open"]
+            if "high" in quote: s["high"] = quote["high"]
+            if "low" in quote: s["low"] = quote["low"]
+            if "circuitLower" in quote: s["circuitLower"] = quote["circuitLower"]
+            if "circuitUpper" in quote: s["circuitUpper"] = quote["circuitUpper"]
+            s["_live_source"] = "DPS_COMPANY_QUOTE"
+            s["_updated_at"] = time.time()
+            matched = True
+            break
+    if not matched and quote.get("price") is not None:
+        stocks.append({
+            "symbol": sym,
+            "name": sym,
+            "price": quote["price"],
+            "change": quote.get("change", 0.0),
+            "changePercent": quote.get("changePercent", 0.0),
+            "volume": quote.get("volume", 0.0),
+            "open": quote.get("open", quote["price"]),
+            "high": quote.get("high", quote["price"]),
+            "low": quote.get("low", quote["price"]),
+            "circuitLower": quote.get("circuitLower"),
+            "circuitUpper": quote.get("circuitUpper"),
+            "isNC": False,
+            "_live_source": "DPS_COMPANY_QUOTE",
+            "_updated_at": time.time()
+        })
+        stock_cache["data"] = stocks
+
+
+def fetch_company_data(symbol, force=False):
+    """Fetch and parse company profile, announcements, and live quote from PSX with caching."""
     if not symbol:
         return {}
-    symbol = symbol.upper()
+    symbol = symbol.upper().strip()
     now = time.time()
 
-    # Check memory cache (24 hours TTL)
-    if symbol in _COMPANY_DATA_CACHE:
+    m_status = get_psx_market_status()
+    # During trading hours, quote cache TTL is 60s; off-hours 24h
+    max_cache_age = 60 if m_status.get("is_open") else 86400
+
+    # Check memory cache
+    if not force and symbol in _COMPANY_DATA_CACHE:
         ts, c_data = _COMPANY_DATA_CACHE[symbol]
-        if now - ts < 86400 and c_data:
+        if (now - ts < max_cache_age) and c_data:
             return c_data
 
-    # Check disk cache
+    # Check disk cache if off-hours
     c_file = COMPANY_CACHE_DIR / f"{symbol}.json"
-    if c_file.exists():
+    if not force and not m_status.get("is_open") and c_file.exists():
         try:
             with open(c_file, "r") as f:
                 disk_data = json.load(f)
@@ -1056,7 +1193,7 @@ def fetch_company_data(symbol):
     print(f"[PSX] Fetching company data for {symbol}...")
     html = ""
     try:
-        html = fetch_url(f"https://dps.psx.com.pk/company/{symbol}", timeout=4, retries=1)
+        html = fetch_url(f"https://dps.psx.com.pk/company/{symbol}", timeout=6, retries=2)
     except Exception as e:
         print(f"[PSX] Warning: Could not fetch company page for {symbol}: {e}")
         if c_file.exists():
@@ -1075,11 +1212,18 @@ def fetch_company_data(symbol):
         "address": "",
         "website": "",
         "people": [],
-        "announcements": []
+        "announcements": [],
+        "quote": {}
     }
 
     if html:
         try:
+            # Parse real-time quote metrics
+            quote = parse_company_quote(html)
+            if quote:
+                data['quote'] = quote
+                update_live_stock_quote(symbol, quote)
+
             desc_match = re.search(r'<div class="item__head">BUSINESS DESCRIPTION</div>\s*<p>(.*?)</p>', html, re.DOTALL | re.IGNORECASE)
             if desc_match:
                 data['description'] = desc_match.group(1).strip()
@@ -2620,6 +2764,33 @@ def fetch_live_stock_analysis(symbol, force=False):
         market_status = get_psx_market_status()
         cache_ts = stock_cache.get("timestamp", 0)
         freshness_sec = max(0, int(now_epoch - cache_ts)) if cache_ts > 0 else 0
+
+        # Stage 9.6: Real-time company quote enrichment (guarantees accurate price e.g. PASM)
+        comp_quote = company_data.get("quote") if isinstance(company_data, dict) else None
+        if comp_quote and comp_quote.get("price") is not None:
+            if not stock_info:
+                stock_info = {"symbol": symbol, "name": symbol}
+            else:
+                stock_info = dict(stock_info)
+            stock_info["price"] = comp_quote["price"]
+            if "change" in comp_quote and comp_quote["change"] is not None:
+                stock_info["change"] = comp_quote["change"]
+            if "changePercent" in comp_quote and comp_quote["changePercent"] is not None:
+                stock_info["changePercent"] = comp_quote["changePercent"]
+            if "volume" in comp_quote and comp_quote["volume"] is not None:
+                stock_info["volume"] = comp_quote["volume"]
+            if "open" in comp_quote: stock_info["open"] = comp_quote["open"]
+            if "high" in comp_quote: stock_info["high"] = comp_quote["high"]
+            if "low" in comp_quote: stock_info["low"] = comp_quote["low"]
+            if "circuitLower" in comp_quote: stock_info["circuitLower"] = comp_quote["circuitLower"]
+            if "circuitUpper" in comp_quote: stock_info["circuitUpper"] = comp_quote["circuitUpper"]
+            if "bidPrice" in comp_quote: stock_info["bidPrice"] = comp_quote["bidPrice"]
+            if "bidVolume" in comp_quote: stock_info["bidVolume"] = comp_quote["bidVolume"]
+            if "askPrice" in comp_quote: stock_info["askPrice"] = comp_quote["askPrice"]
+            if "askVolume" in comp_quote: stock_info["askVolume"] = comp_quote["askVolume"]
+            stock_info["_live_source"] = "DPS_COMPANY_QUOTE"
+            freshness_sec = 0
+
         today_pkt_date = time.strftime("%Y-%m-%d", time.localtime(now_epoch + 5 * 3600))
         today_volume = stock_info.get("volume", 0) if stock_info else 0
 
@@ -6160,8 +6331,15 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         last_price = None
         last_volume = None
 
-        # Send initial tick
+        # Send initial tick with fresh real-time company quote
         stock = get_live_stock_info(symbol)
+        if not stock or stock.get("_live_source") != "DPS_COMPANY_QUOTE":
+            try:
+                fetch_company_data(symbol)
+                stock = get_live_stock_info(symbol)
+            except Exception:
+                pass
+
         if stock:
             last_price = stock.get("price")
             last_volume = stock.get("volume")
@@ -6185,7 +6363,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 time.sleep(2.0)
                 now = time.time()
-                # 15s Heartbeat ping
+                # 15s Heartbeat ping & real-time tick check during market hours
                 if now - last_ping >= 15.0:
                     last_ping = now
                     try:
@@ -6193,6 +6371,12 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                         self.wfile.flush()
                     except Exception:
                         break
+                    m_status = get_psx_market_status()
+                    if m_status.get("is_open"):
+                        try:
+                            fetch_company_data(symbol)
+                        except Exception:
+                            pass
 
                 # Check if price or volume changed in central price bus
                 cur_stock = get_live_stock_info(symbol)
