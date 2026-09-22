@@ -2299,7 +2299,58 @@
                 </div>
             </div>
 
+            <!-- ── Stage 5: Calibrated Suggested Shares ──────────────── -->
+            <div class="intel-panel" style="grid-column: 1 / -1">
+                <div class="intel-panel-header">
+                    <span class="intel-panel-icon">💡</span>
+                    <h3>Calibrated Suggested Shares</h3>
+                    <span class="intel-panel-badge" style="background:rgba(99,102,241,.15);color:#818cf8">Stage 5</span>
+                </div>
+                <div class="intel-panel-body" id="intel-suggested-panel">
+                    <div class="intel-initializing">
+                        <div class="intel-spinner"></div>
+                        <p>Generating calibrated suggestions from active predictions…</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Stage 6: Self-Learning Loop Guardrails & Audit Log ── -->
+            <div class="intel-panel" style="grid-column: 1 / -1">
+                <div class="intel-panel-header">
+                    <span class="intel-panel-icon">🛡️</span>
+                    <h3>Self-Learning Loop Guardrails & Calibration History</h3>
+                    <span class="intel-panel-badge" id="intel-guardrails-badge" style="background:rgba(16,185,129,.15);color:#34d399">10% Cap Active</span>
+                </div>
+                <div class="intel-panel-body" id="intel-guardrails-panel">
+                    <div class="intel-initializing">
+                        <div class="intel-spinner"></div>
+                        <p>Loading calibration audit log and parameter safety boundaries…</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Stage 7: Empirical Calibration Reliability Curve ──── -->
+            <div class="intel-panel" style="grid-column: 1 / -1">
+                <div class="intel-panel-header">
+                    <span class="intel-panel-icon">📈</span>
+                    <h3>Empirical Calibration Reliability Diagram</h3>
+                    <div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                        <span class="intel-panel-badge" id="intel-ece-badge" style="background:rgba(56,189,248,.15);color:#38bdf8">ECE: —</span>
+                        <span class="intel-panel-badge" id="intel-mce-badge" style="background:rgba(168,85,247,.15);color:#c084fc">MCE: —</span>
+                        <span class="intel-panel-badge" id="intel-brier-badge" style="background:rgba(34,197,94,.15);color:#4ade80">Brier: —</span>
+                    </div>
+                </div>
+                <div class="intel-panel-body" id="intel-calibration-curve-panel">
+                    <div class="intel-initializing">
+                        <div class="intel-spinner"></div>
+                        <p>Computing empirical reliability curve and Wilson 95% confidence intervals…</p>
+                    </div>
+                </div>
+            </div>
+
         </div><!-- /.intelligence-grid -->
+
+
 
         <!-- Learning Stats Footer -->
         <div class="intel-footer">

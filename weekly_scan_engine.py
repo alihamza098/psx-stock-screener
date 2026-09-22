@@ -108,7 +108,8 @@ _SECTOR_PERF_TTL = 3600  # refresh hourly
 def _get_sector_performance_multipliers() -> dict:
     """
     Returns dict of {sector: multiplier} based on real scan outcome history.
-    E.g. {"Textile Spinning": 0.5, "Insurance": 1.3, "Cement": 1.0}
+    Stage 3: Replaced flat 1.3x boost / 0.5x penalty with continuous Empirical Bayes
+    shrinkage estimates from IntelligenceDB (or fallback to Beta-Binomial shrinkage on prediction_audits).
     """
     global _sector_perf_cache, _sector_perf_ts
     import time as _time
@@ -116,43 +117,62 @@ def _get_sector_performance_multipliers() -> dict:
         return _sector_perf_cache
 
     result = {}
+    # 1. Primary source: read Empirical Bayes sector multipliers from cache/intelligence.db
+    try:
+        from psx_intelligence_engine import IntelligenceDB
+        db = IntelligenceDB()
+        sec_rows = db.get_sector_shrinkage()
+        if sec_rows:
+            for r in sec_rows:
+                result[r["sector"]] = float(r["multiplier"])
+            _sector_perf_cache = result
+            _sector_perf_ts = _time.time()
+            return result
+    except Exception:
+        pass
+
+    # 2. Fallback: compute Empirical Bayes shrinkage from prediction_audits
     try:
         conn = get_db_connection()
         rows = conn.execute("""
             SELECT sector,
                    COUNT(*) AS n,
-                   AVG(current_return_pct) AS avg_ret,
-                   SUM(CASE WHEN stop_hit = 1 THEN 1 ELSE 0 END) AS stops
+                   SUM(CASE WHEN current_return_pct > 2.0 AND (stop_hit IS NULL OR stop_hit = 0) THEN 1 ELSE 0 END) AS wins,
+                   SUM(CASE WHEN stop_hit = 1 OR current_return_pct < -3.0 THEN 1 ELSE 0 END) AS losses
             FROM prediction_audits
             WHERE sector IS NOT NULL
               AND outcome NOT IN ('PENDING', 'IN_PROGRESS')
             GROUP BY sector
-            HAVING n >= 3
+            HAVING (wins + losses) > 0
         """).fetchall()
         conn.close()
 
+        total_wins = sum(int(r["wins"]) for r in rows)
+        total_decisive = sum(int(r["wins"]) + int(r["losses"]) for r in rows)
+        mu_0 = total_wins / max(total_decisive, 1) if total_decisive > 0 else 0.1443
+        M = 20.0  # Empirical Bayes prior weight
+        alpha = M * mu_0
+
         for row in rows:
             sector = row["sector"]
-            avg_ret = float(row["avg_ret"] or 0.0)
-            n = int(row["n"])
-            if avg_ret < -5.0:
-                mult = 0.5
-            elif avg_ret > 3.0:
-                mult = 1.3
-            else:
-                mult = 1.0
+            w = int(row["wins"])
+            l = int(row["losses"])
+            n = w + l
+            shrunk_wr = (w + alpha) / (n + M)
+            mult = round(shrunk_wr / max(mu_0, 0.01), 2)
+            mult = max(0.5, min(1.5, mult))
             result[sector] = mult
             if mult != 1.0:
                 direction = "⚠️ PENALTY" if mult < 1.0 else "✅ BONUS"
-                print(f"[WeeklyScan] Sector perf multiplier: {sector} "
-                      f"(n={n}, avg={avg_ret:+.1f}%) → {mult:.1f}x {direction}")
+                print(f"[WeeklyScan] EB Sector perf multiplier: {sector} "
+                      f"(n={n}, wins={w}, shrunk_wr={shrunk_wr*100:.1f}%) → {mult:.2f}x {direction}")
     except Exception:
         pass
 
     _sector_perf_cache = result
     _sector_perf_ts = _time.time()
     return result
-# ── End P1-E fix ──────────────────────────────────────────────────────────────
+# ── End Stage 3 fix ───────────────────────────────────────────────────────────
 
 
 

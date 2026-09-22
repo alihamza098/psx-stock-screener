@@ -1,7 +1,67 @@
 {
-  "timestamp": 1789990194.6078541,
+  "timestamp": 1790067357.515842,
   "data": {
     "dividendCalendar": [
+      {
+        "symbol": "HTL",
+        "name": "Hi-Tech Lubricants Limited",
+        "sector": "OIL &amp; GAS MARKETING COMPANIES",
+        "dividendAmount": "11.50%Final Cash",
+        "announcementDate": "September 21, 2026 3:42 PM",
+        "exDividendDate": "19/10/2026",
+        "recordDate": "20/10/2026",
+        "bookClosure": "21/10/2026 - 27/10/2026",
+        "paymentDate": "10/11/2026",
+        "status": "Upcoming"
+      },
+      {
+        "symbol": "NCL",
+        "name": "Nishat Chunian Limited",
+        "sector": "TEXTILE COMPOSITE",
+        "dividendAmount": "30%Final Cash",
+        "announcementDate": "September 18, 2026 4:50 PM",
+        "exDividendDate": "14/10/2026",
+        "recordDate": "15/10/2026",
+        "bookClosure": "16/10/2026 - 23/10/2026",
+        "paymentDate": "06/11/2026",
+        "status": "Upcoming"
+      },
+      {
+        "symbol": "NATF",
+        "name": "National Foods Limited",
+        "sector": "FOOD &amp; PERSONAL CARE PRODUCTS",
+        "dividendAmount": "100%Final Cash",
+        "announcementDate": "September 18, 2026 4:47 PM",
+        "exDividendDate": "17/10/2026",
+        "recordDate": "18/10/2026",
+        "bookClosure": "19/10/2026 - 26/10/2026",
+        "paymentDate": "09/11/2026",
+        "status": "Upcoming"
+      },
+      {
+        "symbol": "GOC",
+        "name": "GOC (Pak) Limited.",
+        "sector": "MISCELLANEOUS",
+        "dividendAmount": "20%Final Cash",
+        "announcementDate": "September 18, 2026 4:46 PM",
+        "exDividendDate": "05/10/2026",
+        "recordDate": "06/10/2026",
+        "bookClosure": "07/10/2026 - 14/10/2026",
+        "paymentDate": "28/10/2026",
+        "status": "Upcoming"
+      },
+      {
+        "symbol": "MUREB",
+        "name": "Murree Brewery Company Limited",
+        "sector": "FOOD &amp; PERSONAL CARE PRODUCTS",
+        "dividendAmount": "145%Final Cash",
+        "announcementDate": "September 18, 2026 4:44 PM",
+        "exDividendDate": "14/10/2026",
+        "recordDate": "15/10/2026",
+        "bookClosure": "16/10/2026 - 23/10/2026",
+        "paymentDate": "06/11/2026",
+        "status": "Upcoming"
+      },
       {
         "symbol": "GHNI",
         "name": "Ghandhara Industries Limited",
@@ -1080,7 +1140,7 @@
         "recordDate": "20/09/2026",
         "bookClosure": "21/09/2026 - 28/09/2026",
         "paymentDate": "12/10/2026",
-        "status": "Upcoming"
+        "status": "Completed"
       },
       {
         "symbol": "MCBIM",
@@ -1141,73 +1201,13 @@
         "bookClosure": "17/09/2026 - 24/09/2026",
         "paymentDate": "08/10/2026",
         "status": "Completed"
-      },
-      {
-        "symbol": "AKBL",
-        "name": "Askari Bank Limited",
-        "sector": "COMMERCIAL BANKS",
-        "dividendAmount": "20%2nd Int. Cash",
-        "announcementDate": "July 31, 2026 4:20 PM",
-        "exDividendDate": "11/08/2026",
-        "recordDate": "12/08/2026",
-        "bookClosure": "13/08/2026 - 18/08/2026",
-        "paymentDate": "01/09/2026",
-        "status": "Completed"
-      },
-      {
-        "symbol": "CSAP",
-        "name": "Crescent Steel &amp; Allied Products Limited",
-        "sector": "ENGINEERING",
-        "dividendAmount": "35%Final Cash",
-        "announcementDate": "July 31, 2026 4:15 PM",
-        "exDividendDate": "20/10/2026",
-        "recordDate": "21/10/2026",
-        "bookClosure": "22/10/2026 - 28/10/2026",
-        "paymentDate": "11/11/2026",
-        "status": "Upcoming"
-      },
-      {
-        "symbol": "SEPL",
-        "name": "Security Papers Limited",
-        "sector": "PAPER, BOARD &amp; PACKAGING",
-        "dividendAmount": "90%Final Cash",
-        "announcementDate": "July 30, 2026 4:17 PM",
-        "exDividendDate": "-",
-        "recordDate": "-",
-        "bookClosure": "19/25/2026 - 25/09/2026",
-        "paymentDate": "-",
-        "status": "Upcoming"
-      },
-      {
-        "symbol": "EPQL",
-        "name": "Engro Powergen Qadirpur Limited",
-        "sector": "POWER GENERATION &amp; DISTRIBUTION",
-        "dividendAmount": "10%1st Int. Cash",
-        "announcementDate": "July 30, 2026 4:14 PM",
-        "exDividendDate": "10/08/2026",
-        "recordDate": "11/08/2026",
-        "bookClosure": "12/08/2026 - 13/08/2026",
-        "paymentDate": "27/08/2026",
-        "status": "Completed"
-      },
-      {
-        "symbol": "BAFL",
-        "name": "Bank Alfalah Limited",
-        "sector": "COMMERCIAL BANKS",
-        "dividendAmount": "30%2nd Int. Cash",
-        "announcementDate": "July 30, 2026 3:53 PM",
-        "exDividendDate": "11/08/2026",
-        "recordDate": "12/08/2026",
-        "bookClosure": "13/08/2026 - 16/08/2026",
-        "paymentDate": "30/08/2026",
-        "status": "Completed"
       }
     ],
     "source": "Pakistan Stock Exchange (dps.psx.com.pk/payouts)",
     "summary": {
       "totalCount": 100,
-      "upcomingCount": 64,
-      "completedCount": 36
+      "upcomingCount": 66,
+      "completedCount": 34
     }
   }
 }

@@ -1,0 +1,190 @@
+{
+  "version": "2.0.0",
+  "comment": "PSX Market Intelligence & Learning Engine Configuration",
+  "anomaly_detector": {
+    "poll_interval_seconds": 300,
+    "trading_hours_only": true,
+    "min_turnover_pkr_daily": 500000.0,
+    "min_volume_daily_shares": 10000.0,
+    "upper_lock_pct": 9.5,
+    "lower_lock_pct": -9.5,
+    "consecutive_locks_min": 2,
+    "consecutive_locks_window_calendar_days": 3,
+    "price_spike_pct": 4.5,
+    "rvol_surge_threshold": 2.8,
+    "accumulation_max_change_pct": 2.0,
+    "breakout_lookback_bars": 30,
+    "resistance_break_margin": 1.005,
+    "persistence_ticks": {
+      "PRICE_SPIKE": 2,
+      "VOLUME_SURGE": 2,
+      "ACCUMULATION": 2,
+      "RSI_MOMENTUM": 2,
+      "RESISTANCE_BREAK": 1,
+      "UPPER_LOCK": 1,
+      "LOWER_LOCK": 1,
+      "CONSECUTIVE_UPPER_LOCK": 1
+    }
+  },
+  "baseline_memory": {
+    "rolling_window_sessions": 90,
+    "min_valid_sessions": 15,
+    "use_median_mad": true,
+    "mad_normalizer": 1.4826,
+    "volume_floor_epsilon": 100.0,
+    "turnover_floor_pkr": 500000.0
+  },
+  "false_discovery": {
+    "enabled": true,
+    "method": "excess_return_escalation",
+    "min_excess_over_sector_pct": 1.5,
+    "min_excess_over_kse_pct": 2.0,
+    "exempt_events": [
+      "UPPER_LOCK",
+      "LOWER_LOCK",
+      "CONSECUTIVE_UPPER_LOCK"
+    ]
+  },
+  "cause_investigator": {
+    "factor_confidence_floor": 50,
+    "breakout_lookback_bars": 30,
+    "volume_accum_3d_ratio_threshold": 1.5,
+    "rsi_momentum_floor": 60.0,
+    "rsi_jump_threshold": 3.0,
+    "sector_momentum_pct_threshold": 1.5,
+    "market_momentum_pct_threshold": 1.0
+  },
+  "prediction_engine": {
+    "prior_weight_alpha": 5.0,
+    "prior_weight_beta": 20.0,
+    "min_sample_size_platt": 30,
+    "max_calibration_adj_points": 15
+  },
+  "causal_calibration": {
+    "min_samples_platt": 100,
+    "rolling_brier_window_days": 90,
+    "momentum_cluster_factors": [
+      "TECHNICAL_BREAKOUT",
+      "RSI_MOMENTUM",
+      "MACD_CONFIRMATION"
+    ],
+    "cluster_weights": {
+      "MOMENTUM_CLUSTER": 0.35,
+      "VOLUME_ACCUMULATION": 0.25,
+      "SECTOR_MOMENTUM": 0.15,
+      "CORPORATE_ANNOUNCEMENT": 0.15,
+      "MARKET_MOMENTUM": 0.10
+    },
+    "max_momentum_secondary_bonus": 10.0,
+    "regularization_l2": 0.001
+  },
+  "learning_engine": {
+    "horizon_sessions": 5,
+    "purging_window_calendar_days": 5,
+    "embargo_calendar_days": 2,
+    "neutral_band_pct": 1.0,
+    "asymmetric_reward": {
+      "win_return_threshold_pct": 2.0,
+      "win_max_drawdown_threshold_pct": 1.5,
+      "loss_max_drawdown_threshold_pct": 3.0,
+      "win_reward": 1.0,
+      "loss_penalty": -1.5,
+      "scratch_reward": 0.0
+    },
+    "benchmark": {
+      "index_symbol": "KSE100",
+      "compare_excess_return": true
+    }
+  },
+  "empirical_bayes": {
+    "sector_prior_weight_m": 20.0,
+    "pattern_prior_weight_m": 20.0,
+    "min_prior_weight": 5.0,
+    "max_prior_weight": 50.0,
+    "auto_estimate_m": true,
+    "sample_size_gate": 3,
+    "sector_multiplier_min": 0.5,
+    "sector_multiplier_max": 1.5,
+    "default_population_win_rate": 0.1443
+  },
+  "stage4_pattern_lifecycle": {
+    "regime_conditioning": {
+      "enabled": true,
+      "regimes": ["BULL", "NEUTRAL", "BEAR", "CRASH"],
+      "kse_5d_thresholds": {
+        "crash": -4.0,
+        "bear": -1.0,
+        "neutral_high": 1.5
+      },
+      "breadth_score_thresholds": {
+        "crash": 15.0,
+        "bear": 40.0,
+        "neutral_high": 70.0
+      },
+      "regime_multipliers": {
+        "CRASH": 0.40,
+        "BEAR": 0.70,
+        "NEUTRAL": 1.00,
+        "BULL": 1.20
+      },
+      "min_samples_regime": 3
+    },
+    "decay_tracking": {
+      "enabled": true,
+      "rolling_window_days": 90,
+      "min_samples_for_decay": 3,
+      "decay_divergence_threshold_pct": -5.0,
+      "accelerating_threshold_pct": 5.0,
+      "decay_confidence_multiplier": 0.80
+    },
+    "pattern_expansion": {
+      "enabled": true,
+      "min_occurrences": 5,
+      "min_distinct_symbols": 2,
+      "confidence_floor": 50,
+      "max_expanded_patterns": 10,
+      "candidate_id_prefix": "P"
+    }
+  },
+  "stage5_suggested_shares": {
+    "enabled": true,
+    "max_list_size": 10,
+    "max_ideas_per_sector": 2,
+    "min_composite_score": 45.0,
+    "reorder_score_delta_threshold": 2.0,
+    "horizon_sessions": 5,
+    "liquidity_floor": {
+      "min_turnover_pkr_daily": 500000.0,
+      "min_volume_daily_shares": 10000.0
+    },
+    "confidence_tiers": {
+      "high_min_n": 20,
+      "high_max_ci_width": 0.35,
+      "medium_min_n": 5,
+      "medium_max_ci_width": 0.55
+    },
+    "kelly_sizing": {
+      "fraction": 0.25,
+      "default_capital_pkr": 500000.0,
+      "max_risk_per_idea_pct": 1.0,
+      "max_aggregate_risk_pct": 6.0,
+      "regime_sizing_multipliers": {
+        "BULL": 1.0,
+        "NEUTRAL": 1.0,
+        "BEAR": 0.70,
+        "CRASH": 0.40
+      }
+    },
+    "circuit_proximity_threshold_pct": 1.0
+  },
+  "stage6_self_learning_guardrails": {
+    "enabled": true,
+    "max_relative_weight_change": 0.10,
+    "min_absolute_weight_change_floor": 0.02,
+    "held_out_validation_split": 0.30,
+    "max_held_out_brier_degradation_pct": 15.0,
+    "auto_abort_on_severe_degradation": true,
+    "default_weights_version": "W_v1.0.0",
+    "default_pattern_version": "P_v1.0.0"
+  }
+}

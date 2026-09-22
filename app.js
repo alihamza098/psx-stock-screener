@@ -10439,25 +10439,32 @@ const intelligenceTab = (() => {
     }
 
     async function _fetchAll() {
-        const [s, e, p, pr] = await Promise.allSettled([
+        const [s, e, p, pr, ss, cr, cc] = await Promise.allSettled([
             fetch('/api/intelligence/summary').then(r => r.json()),
             fetch('/api/intelligence/live-events?limit=50').then(r => r.json()),
             fetch('/api/intelligence/patterns').then(r => r.json()),
-            fetch('/api/intelligence/predictions?limit=20').then(r => r.json())
+            fetch('/api/intelligence/predictions?limit=20').then(r => r.json()),
+            fetch('/api/intelligence/suggested-shares').then(r => r.json()),
+            fetch('/api/intelligence/calibration-runs?limit=10').then(r => r.json()),
+            fetch('/api/intelligence/calibration-curve').then(r => r.json())
         ]);
         return {
-            summary:     s.status  === 'fulfilled' ? s.value  : null,
-            events:      e.status  === 'fulfilled' ? e.value  : null,
-            patterns:    p.status  === 'fulfilled' ? p.value  : null,
-            predictions: pr.status === 'fulfilled' ? pr.value : null
+            summary:          s.status  === 'fulfilled' ? s.value  : null,
+            events:           e.status  === 'fulfilled' ? e.value  : null,
+            patterns:         p.status  === 'fulfilled' ? p.value  : null,
+            predictions:      pr.status === 'fulfilled' ? pr.value : null,
+            suggestedShares:  ss.status === 'fulfilled' ? ss.value : null,
+            calibrationRuns:  cr.status === 'fulfilled' ? cr.value : null,
+            calibrationCurve: cc.status === 'fulfilled' ? cc.value : null
         };
     }
+
 
     async function load() {
         if (_isLoading) return;
         _isLoading = true;
         try {
-            const { summary, events, patterns, predictions } = await _fetchAll();
+            const { summary, events, patterns, predictions, suggestedShares, calibrationRuns, calibrationCurve } = await _fetchAll();
             if (summary && summary.success) renderHeader(summary);
             if (events && events.success) {
                 renderEventFeed(events.events || []);
@@ -10465,20 +10472,26 @@ const intelligenceTab = (() => {
             }
             if (patterns && patterns.success) renderPatternPanel(patterns.patterns || []);
             if (predictions && predictions.success) renderPredictionPanel(predictions.predictions || []);
+            if (suggestedShares && suggestedShares.success) renderSuggestedSharesPanel(suggestedShares);
+            if (calibrationRuns && calibrationRuns.success) renderCalibrationGuardrailsPanel(calibrationRuns);
+            if (calibrationCurve && calibrationCurve.success) renderCalibrationCurvePanel(calibrationCurve);
             _setText('intel-footer-refreshed', 'Last refreshed: ' + new Date().toLocaleTimeString('en-PK'));
         } catch (err) {
             console.error('[Intelligence] load error:', err);
         } finally {
+
             _isLoading = false;
         }
     }
 
+
     function renderHeader(summary) {
         const s = summary.stats || {};
         const cal = summary.calibration || {};
+        const evaluatedN = s.evaluated_predictions ?? 0;
         _setText('intel-stat-events',   s.total_events_detected ?? '—');
         _setText('intel-stat-patterns', s.patterns_discovered ?? '—');
-        _setText('intel-stat-winrate',  s.evaluated_predictions > 0 ? s.win_rate_pct + '%' : '—');
+        _setText('intel-stat-winrate',  evaluatedN > 0 ? `${s.win_rate_pct}% (N=${evaluatedN})` : '—');
         _setText('intel-stat-last-tick', _timeAgo(s.last_anomaly_tick));
         _setText('intel-stat-calibration', cal.last_run ? _timeAgo(cal.last_run) : 'v1.0.1');
         _setText('intel-footer-preds',   s.total_predictions ?? 0);
@@ -10513,7 +10526,7 @@ const intelligenceTab = (() => {
                     <span class="intel-sector">${ev.sector || ''}</span>
                 </div>
                 ${ev.narrative ? `<div class="intel-narrative">${ev.narrative}</div>` : ''}
-                ${ev.top_cause ? `<div class="intel-top-cause"><span>${FACTOR_LABELS[ev.top_cause.factor] || ev.top_cause.factor}</span><span class="intel-cause-conf">${ev.top_cause.confidence}%</span></div>` : ''}
+                ${ev.top_cause ? `<div class="intel-top-cause"><span>${FACTOR_LABELS[ev.top_cause.factor] || ev.top_cause.factor}</span><span class="intel-cause-conf" title="Observed Heuristic Association">score ${ev.top_cause.confidence}%</span></div>` : ''}
             </div>`;
         }).join('');
     }
@@ -10534,7 +10547,7 @@ const intelligenceTab = (() => {
                 ${ev.top_cause ? `<div class="intel-cause-row">
                     <div class="intel-cause-name">${FACTOR_LABELS[ev.top_cause.factor] || ev.top_cause.factor}</div>
                     ${_confBar(ev.top_cause.confidence)}
-                    <div class="intel-cause-pct">${ev.top_cause.confidence}%</div>
+                    <div class="intel-cause-pct" title="Heuristic Association Strength">score ${ev.top_cause.confidence}%</div>
                 </div>` : ''}
                 ${ev.narrative ? `<div class="intel-why-narrative">${ev.narrative}</div>` : ''}
                 <button class="intel-detail-btn" onclick="intelligenceTab.showEventDetail('${ev.id}')">Full Analysis →</button>
@@ -10549,18 +10562,93 @@ const intelligenceTab = (() => {
         if (ct) ct.textContent = patterns.length + ' pattern' + (patterns.length !== 1 ? 's' : '');
         if (!patterns.length) { c.innerHTML = '<div class="intel-initializing"><div class="intel-spinner"></div><p>Pattern library builds overnight.<br>Needs ≥3 occurrences per pattern.</p></div>'; return; }
         c.innerHTML = patterns.map(p => {
-            const total = (p.win_count || 0) + (p.loss_count || 0);
-            const wr = total > 0 ? Math.round((p.win_count / total) * 100) : null;
-            const wrHtml = wr !== null ? `<span class="intel-win-rate ${wr >= 60 ? 'good' : wr >= 45 ? 'med' : 'low'}">${wr}% win</span>` : '<span class="intel-win-rate neutral">Pending</span>';
+            const n = p.sample_size_n !== undefined ? p.sample_size_n : ((p.win_count || 0) + (p.loss_count || 0));
+            const rawWr = p.raw_win_rate_pct !== undefined ? p.raw_win_rate_pct : (n > 0 ? Math.round((p.win_count / n) * 1000) / 10 : null);
+            const shrunkWr = p.shrunk_win_rate_pct !== undefined ? p.shrunk_win_rate_pct : rawWr;
+            const ciLo = p.wilson_ci_low !== undefined ? p.wilson_ci_low : (p.wilson_ci ? p.wilson_ci[0] : 0.0);
+            const ciHi = p.wilson_ci_high !== undefined ? p.wilson_ci_high : (p.wilson_ci ? p.wilson_ci[1] : 0.0);
+            const isGated = p.is_sample_gated || n < 3;
+            const shrinkWeight = p.shrinkage_weight !== undefined ? Math.round(p.shrinkage_weight * 100) : 0;
+
+            const primaryWr = shrunkWr !== null ? Math.round(shrunkWr) : null;
+            const wrHtml = primaryWr !== null ? `<span class="intel-win-rate ${primaryWr >= 45 ? 'good' : primaryWr >= 20 ? 'med' : 'low'}" title="Empirical Bayes Shrunk Win Rate">${primaryWr}% shrunk [${ciLo}%, ${ciHi}%]</span>` : '<span class="intel-win-rate neutral">Pending</span>';
+
+            const gateBadge = isGated ? `<span style="font-size:0.6rem;background:rgba(234,179,8,0.15);color:#eab308;padding:1px 5px;border-radius:4px;font-weight:600;">Gate N<3 (Prior)</span>` : '';
+
+            // Stage 4.3: AI expanded badge
+            const expandedBadge = p.is_expanded ? `<span style="font-size:0.6rem;background:rgba(168,85,247,0.15);color:#c084fc;border:1px solid rgba(168,85,247,0.3);padding:1px 5px;border-radius:4px;font-weight:600;">🤖 AI Discovered</span>` : '';
+
+            // Stage 4.2: Decay status badge
+            let decayBadge = '';
+            if (p.decay_status === 'DECAYING') {
+                decayBadge = `<span style="font-size:0.62rem;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);padding:1px 5px;border-radius:4px;font-weight:700;" title="Rolling 90d: ${p.win_rate_90d}% (div: ${p.decay_divergence}%)">⚠️ Decaying ${p.decay_divergence}%</span>`;
+            } else if (p.decay_status === 'IMPROVING') {
+                decayBadge = `<span style="font-size:0.62rem;background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3);padding:1px 5px;border-radius:4px;font-weight:700;" title="Rolling 90d: ${p.win_rate_90d}% (div: +${p.decay_divergence}%)">⚡ Improving +${p.decay_divergence}%</span>`;
+            } else if (p.win_rate_90d !== null && p.win_rate_90d !== undefined) {
+                decayBadge = `<span style="font-size:0.60rem;background:rgba(100,116,139,0.2);color:#94a3b8;padding:1px 5px;border-radius:4px;" title="Rolling 90d win rate">90d: ${p.win_rate_90d}%</span>`;
+            }
+
+            // Stage 7.4: Dual Metric Display (Lifetime vs Rolling 90-Day with Wilson CIs)
+            const ci90Lo = p.wilson_ci_90d_low !== undefined ? p.wilson_ci_90d_low : (p.wilson_ci_90d ? p.wilson_ci_90d[0] : 0.0);
+            const ci90Hi = p.wilson_ci_90d_high !== undefined ? p.wilson_ci_90d_high : (p.wilson_ci_90d ? p.wilson_ci_90d[1] : 0.0);
+            const n90 = p.sample_size_90d || 0;
+            const wr90 = p.win_rate_90d !== null && p.win_rate_90d !== undefined ? p.win_rate_90d : null;
+
+            const dualMetricHtml = n > 0 ? `
+                <div style="background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.06);padding:6px 10px;border-radius:6px;margin:8px 0;font-size:0.69rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.05);padding-bottom:3px;">
+                        <span style="color:#94a3b8;font-weight:600;">Lifetime (EB Shrunk):</span>
+                        <span><strong style="color:#38bdf8;">${shrunkWr !== null ? shrunkWr : '—'}%</strong> <span style="color:#64748b;">[${ciLo}%, ${ciHi}%] (N=${n})</span></span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span style="color:#94a3b8;font-weight:600;">Rolling 90-Day:</span>
+                        <span>${wr90 !== null && n90 > 0 ? `<strong style="color:${p.decay_status === 'DECAYING' ? '#ef4444' : p.decay_status === 'IMPROVING' ? '#22c55e' : '#f8fafc'};">${wr90}%</strong> <span style="color:#64748b;">[${ci90Lo}%, ${ci90Hi}%] (N=${n90})</span>` : `<span style="color:#64748b;">No recent events (N=0)</span>`}</span>
+                    </div>
+                </div>
+            ` : `<div style="font-size:0.65rem;color:#64748b;margin:4px 0;">No decisive outcomes yet — defaulted to population prior (${shrunkWr !== null ? shrunkWr : '10.96'}%)</div>`;
+
+            // Stage 4.1: Regime breakdown strip
+            const regimes = p.regimes || [];
+            let regimeStrip = '';
+            if (regimes.length > 0) {
+                const regMap = {};
+                regimes.forEach(r => { regMap[r.regime] = r; });
+                const rIcons = { "BULL": "📈 Bull", "NEUTRAL": "⚪ Neut", "BEAR": "📉 Bear", "CRASH": "🚨 Crash" };
+                const regChips = ["BULL", "NEUTRAL", "BEAR", "CRASH"].map(rKey => {
+                    const rData = regMap[rKey];
+                    if (!rData) return '';
+                    const rN = rData.sample_count || 0;
+                    const rWr = rData.shrunk_win_rate !== undefined ? rData.shrunk_win_rate : rData.raw_win_rate;
+                    const rColor = rKey === 'BULL' ? '#22c55e' : (rKey === 'CRASH' ? '#ef4444' : (rKey === 'BEAR' ? '#f97316' : '#94a3b8'));
+                    return `<span style="background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.08);padding:2px 5px;border-radius:4px;font-size:0.60rem;color:#cbd5e1;" title="Regime: ${rKey} | Shrunk: ${rWr}% | Mult: ${rData.regime_multiplier}x | 95% CI: [${rData.wilson_ci_low}%, ${rData.wilson_ci_high}%]">
+                        ${rIcons[rKey]}: <strong style="color:${rColor};">${rN > 0 ? rWr + '%' : '—'}</strong> <span style="color:#64748b;">[${rData.wilson_ci_low}%, ${rData.wilson_ci_high}%] (N=${rN})</span>
+                    </span>`;
+                }).filter(Boolean).join('');
+                if (regChips) {
+                    regimeStrip = `<div style="display:flex;gap:4px;margin:5px 0;flex-wrap:wrap;">${regChips}</div>`;
+                }
+            }
+
             return `<div class="intel-pattern-card">
-                <div class="intel-pattern-header"><span class="intel-pattern-name">${p.name}</span>${wrHtml}</div>
+                <div class="intel-pattern-header">
+                    <span class="intel-pattern-name">${p.name}</span>
+                    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                        ${expandedBadge}
+                        ${decayBadge}
+                        ${gateBadge}
+                        ${wrHtml}
+                    </div>
+                </div>
                 <div class="intel-pattern-meta">
                     <span class="intel-occ">${p.occurrences} occurrence${p.occurrences !== 1 ? 's' : ''}</span>
                     ${p.avg_5d_return ? `<span class="intel-avg-return">${p.avg_5d_return >= 0 ? '+' : ''}${_fmt(p.avg_5d_return)}% avg 5D</span>` : ''}
                     ${p.avg_3d_return ? `<span class="intel-avg-return">${p.avg_3d_return >= 0 ? '+' : ''}${_fmt(p.avg_3d_return)}% avg 3D</span>` : ''}
                 </div>
+                ${dualMetricHtml}
+                ${regimeStrip}
                 <div class="intel-pattern-desc">${p.description || ''}</div>
-                ${wr !== null && total > 0 ? _confBar(wr) : ''}
+                ${primaryWr !== null && n > 0 ? _confBar(primaryWr) : ''}
+                <div style="font-size:0.60rem;color:#475569;margin-top:6px;font-style:italic;">Not investment advice — informational tool based on historical pattern statistics</div>
             </div>`;
         }).join('');
     }
@@ -10574,24 +10662,410 @@ const intelligenceTab = (() => {
         c.innerHTML = predictions.map(pred => {
             const sig = SIGNAL_LABELS[pred.signal] || { label: pred.signal, cls: 'signal-watch' };
             const reasoning = pred.reasoning || {};
-            const histText = pred.historical_sample > 0 ? pred.historical_sample + ' hist. matches' : 'First occurrence';
-            const wrText   = pred.historical_win_rate > 0 ? ` · ${_fmt(pred.historical_win_rate, 0)}% win rate` : '';
+            const ciLo = pred.wilson_ci_low !== undefined ? pred.wilson_ci_low : (reasoning.wilson_ci_low || (reasoning.wilson_ci ? reasoning.wilson_ci[0] : 0.0));
+            const ciHi = pred.wilson_ci_high !== undefined ? pred.wilson_ci_high : (reasoning.wilson_ci_high || (reasoning.wilson_ci ? reasoning.wilson_ci[1] : 0.0));
+            const n = pred.historical_sample || 0;
+            const wr = pred.historical_win_rate || 0;
+
+            const histStat = n > 0
+                ? `<div style="font-size:0.69rem;color:#94a3b8;margin:4px 0;">Historical: <strong style="color:#38bdf8;">${wr}% win rate</strong> <span style="color:#64748b;">[${ciLo}%, ${ciHi}%] (N=${n})</span></div>`
+                : `<div style="font-size:0.68rem;color:#64748b;margin:4px 0;">First occurrence (N=0) — baseline prior applied</div>`;
+
             return `<div class="intel-pred-card">
                 <div class="intel-pred-header">
                     <span class="intel-event-symbol" onclick="typeof showDetail==='function'&&showDetail('${pred.symbol}')" style="cursor:pointer">${pred.symbol}</span>
                     <span class="intel-signal-badge ${sig.cls}">${sig.label}</span>
-                    <span class="intel-conf-pct">${pred.confidence}%</span>
+                    <span class="intel-conf-pct" title="Calibrated Confidence">${pred.confidence}% conf</span>
                 </div>
                 <div class="intel-pred-meta">
                     <span>₨${pred.price_at_signal ? Number(pred.price_at_signal).toFixed(2) : '—'} at signal</span>
                     <span>${_timeAgo(pred.predicted_at)}</span>
                 </div>
                 ${pred.pattern_name && pred.pattern_name !== 'No Pattern Matched' ? `<div class="intel-pred-pattern">📚 ${pred.pattern_name}</div>` : ''}
-                <div class="intel-pred-hist">${histText}${wrText}</div>
+                ${histStat}
                 ${reasoning.narrative ? `<div class="intel-why-narrative">${reasoning.narrative}</div>` : ''}
                 ${_confBar(pred.confidence)}
+                <div style="font-size:0.58rem;color:#475569;margin-top:4px;font-style:italic;">Not investment advice — informational tool based on historical pattern statistics</div>
             </div>`;
         }).join('');
+    }
+
+    /* ── Suggested Shares Panel (Stage 5) ──────────────────────────────── */
+    function renderSuggestedSharesPanel(data) {
+        const c = document.getElementById('intel-suggested-panel');
+        if (!c) return;
+
+        const active    = data.active_ideas     || [];
+        const spec      = data.speculative_ideas || [];
+        const track     = data.track_record     || {};
+        const regime    = data.regime           || 'NEUTRAL';
+        const disclaimer = data.disclaimer || 'Not investment advice — informational tool based on historical pattern statistics';
+
+        const TIER_BADGE = {
+            'High':        '<span style="background:#22c55e22;color:#4ade80;border:1px solid #22c55e44;border-radius:4px;padding:1px 7px;font-size:.7rem;font-weight:700">✦ High</span>',
+            'Medium':      '<span style="background:#f59e0b22;color:#fbbf24;border:1px solid #f59e0b44;border-radius:4px;padding:1px 7px;font-size:.7rem;font-weight:700">◈ Medium</span>',
+            'Speculative': '<span style="background:#8b5cf622;color:#a78bfa;border:1px solid #8b5cf644;border-radius:4px;padding:1px 7px;font-size:.7rem;font-weight:700">◇ Speculative</span>'
+        };
+        const CAT_BADGE = {
+            'Breakout Continuation': '<span style="background:#0ea5e922;color:#38bdf8;border:1px solid #0ea5e944;border-radius:12px;padding:1px 8px;font-size:.68rem">🚀 Breakout</span>',
+            'Reversal':              '<span style="background:#ec489922;color:#f472b6;border:1px solid #ec489944;border-radius:12px;padding:1px 8px;font-size:.68rem">↩ Reversal</span>',
+            'Event Catalyst':        '<span style="background:#f59e0b22;color:#fbbf24;border:1px solid #f59e0b44;border-radius:12px;padding:1px 8px;font-size:.68rem">📢 Event</span>',
+            'Sector Rotation':       '<span style="background:#22c55e22;color:#4ade80;border:1px solid #22c55e44;border-radius:12px;padding:1px 8px;font-size:.68rem">🔄 Sector</span>'
+        };
+
+        function ideaCard(idea, isSpec) {
+            const tierBadge = TIER_BADGE[idea.confidence_tier] || TIER_BADGE['Speculative'];
+            const catBadge  = CAT_BADGE[idea.category_tag]     || '';
+            const probBar   = `<div style="height:4px;border-radius:2px;background:#1e293b;margin:4px 0 2px">
+                <div style="height:4px;border-radius:2px;background:linear-gradient(90deg,#8b5cf6,#6366f1);width:${Math.min(100, idea.win_probability)}%"></div>
+            </div>`;
+            const returnRange = (idea.expected_return_q25 != null && idea.expected_return_q75 != null)
+                ? `${idea.expected_return_q25 > 0 ? '+' : ''}${_fmt(idea.expected_return_q25, 1)}% – ${idea.expected_return_q75 > 0 ? '+' : ''}${_fmt(idea.expected_return_q75, 1)}%`
+                : '—';
+            const circuitHtml = idea.circuit_risk_flag
+                ? `<div style="color:#f59e0b;font-size:.72rem;margin-top:4px">${idea.circuit_risk_flag}</div>` : '';
+            const kellyPct = idea.kelly_fraction > 0 ? (idea.kelly_fraction * 100).toFixed(1) + '%' : '0%';
+            const uid = 'ss-' + (idea.id || idea.symbol).replace(/[^a-z0-9]/gi, '');
+
+            return `<div class="intel-pred-card" style="border-left:3px solid ${isSpec ? '#8b5cf6' : '#6366f1'};margin-bottom:8px">
+                <div class="intel-pred-header" style="flex-wrap:wrap;gap:4px">
+                    <span class="intel-event-symbol" onclick="typeof showDetail==='function'&&showDetail('${idea.symbol}')" style="cursor:pointer">${idea.symbol}</span>
+                    ${tierBadge} ${catBadge}
+                    <span style="margin-left:auto;font-size:.8rem;color:#94a3b8">Score: <strong style="color:#c4b5fd">${_fmt(idea.composite_score, 0)}</strong></span>
+                </div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin:6px 0;font-size:.78rem;color:#94a3b8">
+                    <span>Entry <strong style="color:#f8fafc">₨${_fmt(idea.entry_price, 2)}</strong></span>
+                    <span>Target <strong style="color:#4ade80">₨${_fmt(idea.target_price, 2)}</strong></span>
+                    <span>Stop <strong style="color:#f87171">₨${_fmt(idea.stop_loss, 2)}</strong></span>
+                </div>
+                <div style="font-size:.75rem;color:#94a3b8;margin:2px 0">
+                    Win Prob: <strong style="color:#f8fafc">${_fmt(idea.win_probability, 0)}%</strong>
+                    <span style="color:#64748b"> [CI: ${_fmt(idea.wilson_ci_low, 0)}–${_fmt(idea.wilson_ci_high, 0)}%]</span>
+                    <span style="color:#64748b"> N=${idea.sample_size_n}</span>
+                    ${probBar}
+                </div>
+                <div style="font-size:.75rem;color:#94a3b8">
+                    Expected return (Q25–Q75): <strong style="color:#a5f3fc">${returnRange}</strong>
+                    · Sector ×<strong>${_fmt(idea.sector_multiplier, 2)}</strong>
+                </div>
+                ${circuitHtml}
+                <div style="margin-top:8px;font-size:.75rem;background:#0f172a;border-radius:6px;padding:8px">
+                    <div style="color:#94a3b8;margin-bottom:2px;font-size:.7rem">💼 Kelly-Sized Position</div>
+                    <span style="color:#f8fafc">${idea.suggested_shares_qty?.toLocaleString() || 0} shares</span>
+                    <span style="color:#64748b"> · ₨${(idea.suggested_outlay||0).toLocaleString()} outlay</span>
+                    <span style="color:#64748b"> · Risk ₨${(idea.risk_pkr||0).toLocaleString()}</span>
+                    <span style="color:#8b5cf6"> · f*=${kellyPct} (¼-Kelly)</span>
+                </div>
+                <details style="margin-top:6px">
+                    <summary style="cursor:pointer;font-size:.73rem;color:#8b5cf6;user-select:none">📝 Thesis (EN / اردو)</summary>
+                    <div style="margin-top:6px;font-size:.73rem;color:#cbd5e1;line-height:1.5">${idea.thesis_en || ''}</div>
+                    <div style="margin-top:6px;font-size:.73rem;color:#94a3b8;direction:rtl;text-align:right;line-height:1.8">${idea.thesis_ur || ''}</div>
+                </details>
+            </div>`;
+        }
+
+        // Track record
+        let trackHtml = '';
+        if (track.total_closed > 0) {
+            const wr = track.win_rate != null ? _fmt(track.win_rate, 0) + '%' : '—';
+            const ci = track.wilson_ci && track.wilson_ci[0] != null
+                ? ` [CI: ${_fmt(track.wilson_ci[0], 0)}–${_fmt(track.wilson_ci[1], 0)}%]` : '';
+            const pf = track.profit_factor != null ? _fmt(track.profit_factor, 2) : '—';
+            trackHtml = `<details style="margin-bottom:10px">
+                <summary style="cursor:pointer;font-size:.75rem;color:#64748b;user-select:none">📊 List Track Record (${track.total_closed} closed ideas)</summary>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:.75rem;margin-top:6px;color:#94a3b8">
+                    <span>Win Rate: <strong style="color:#4ade80">${wr}</strong>${ci} N=${track.sample_size_n || 0}</span>
+                    <span>Avg Return: <strong>${track.avg_return_5d != null ? (track.avg_return_5d > 0 ? '+' : '') + _fmt(track.avg_return_5d, 1) + '%' : '—'}</strong></span>
+                    <span>Profit Factor: <strong style="color:#a5f3fc">${pf}</strong></span>
+                </div>
+            </details>`;
+        }
+
+        // Speculative section
+        let specHtml = '';
+        if (spec.length > 0) {
+            specHtml = `<details style="margin-top:12px">
+                <summary style="cursor:pointer;font-size:.78rem;color:#a78bfa;user-select:none">◇ Speculative Ideas (${spec.length}) — Higher uncertainty</summary>
+                <div style="margin-top:8px">${spec.map(i => ideaCard(i, true)).join('')}</div>
+            </details>`;
+        }
+
+        const header = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:.85rem;font-weight:700;color:#f8fafc">💡 Calibrated Suggested Shares</span>
+            <span style="margin-left:auto;font-size:.7rem;background:#1e293b;border-radius:12px;padding:2px 10px;color:#8b5cf6">Regime: ${regime}</span>
+        </div>`;
+
+        const mainBody = active.length
+            ? active.map(i => ideaCard(i, false)).join('')
+            : '<div class="intel-initializing"><div class="intel-spinner"></div><p>No qualifying ideas at this time.</p></div>';
+
+        const disc = `<div style="font-size:.68rem;color:#475569;margin-top:10px;padding:6px 10px;background:#0f172a;border-radius:6px;border-left:3px solid #334155">⚠️ ${disclaimer}</div>`;
+
+        c.innerHTML = trackHtml + header + mainBody + specHtml + disc;
+    }
+
+    function renderCalibrationGuardrailsPanel(data) {
+        const c = document.getElementById('intel-guardrails-panel');
+        if (!c) return;
+        const runs = (data && data.runs) ? data.runs : [];
+        const versions = (data && data.active_versions) ? data.active_versions : { weights_version: 'W_v1.0.0', pattern_version: 'P_v1.0.0' };
+
+        const badge = document.getElementById('intel-guardrails-badge');
+        if (badge) {
+            badge.textContent = `Weights: ${versions.weights_version || 'W_v1.0.0'}`;
+        }
+
+        const headerHtml = `
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#0f172a;border-radius:8px;padding:12px;margin-bottom:12px;border:1px solid rgba(255,255,255,0.06)">
+                <div>
+                    <div style="font-size:0.7rem;color:#94a3b8">ACTIVE WEIGHTS VERSION</div>
+                    <div style="font-size:0.95rem;font-weight:700;color:#38bdf8">${versions.weights_version || 'W_v1.0.0'}</div>
+                </div>
+                <div style="border-left:1px solid rgba(255,255,255,0.1);padding-left:12px">
+                    <div style="font-size:0.7rem;color:#94a3b8">PATTERN LIBRARY VERSION</div>
+                    <div style="font-size:0.95rem;font-weight:700;color:#c084fc">${versions.pattern_version || 'P_v1.0.0'}</div>
+                </div>
+                <div style="border-left:1px solid rgba(255,255,255,0.1);padding-left:12px">
+                    <div style="font-size:0.7rem;color:#94a3b8">GUARDRAIL SAFETY LIMIT</div>
+                    <div style="font-size:0.95rem;font-weight:700;color:#34d399">±10% Max Shift / Cycle</div>
+                </div>
+                <div style="border-left:1px solid rgba(255,255,255,0.1);padding-left:12px">
+                    <div style="font-size:0.7rem;color:#94a3b8">OUT-OF-SAMPLE TEST</div>
+                    <div style="font-size:0.95rem;font-weight:700;color:#fbbf24">30% Held-Out Split</div>
+                </div>
+            </div>
+        `;
+
+        if (!runs.length) {
+            c.innerHTML = headerHtml + `
+                <div style="padding:14px;background:rgba(15,23,42,0.6);border-radius:6px;border-left:3px solid #6366f1;font-size:0.8rem;color:#94a3b8">
+                    ℹ️ No weekly recalibration cycles recorded yet. The self-learning guardrail engine runs every Sunday at 11:00 PM PKT, snapshotting before/after weights and evaluating held-out Brier scores.
+                </div>
+            `;
+            return;
+        }
+
+        const runsHtml = runs.map(r => {
+            const isSuccess = r.status === 'SUCCESS';
+            const statusColor = isSuccess ? '#34d399' : (r.status === 'DEGRADED' ? '#fbbf24' : '#f87171');
+            return `
+                <div style="background:#0f172a;border-radius:6px;padding:10px 14px;margin-bottom:8px;border-left:3px solid ${statusColor};font-size:0.78rem">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <strong style="color:#f8fafc">${r.id}</strong>
+                        <span style="background:${statusColor}22;color:${statusColor};border-radius:4px;padding:1px 6px;font-size:0.7rem;font-weight:700">${r.status}</span>
+                        <span style="color:#64748b;margin-left:auto">${r.completed_at ? _timeAgo(r.completed_at) : '—'}</span>
+                    </div>
+                    <div style="display:flex;gap:14px;flex-wrap:wrap;margin:6px 0;color:#94a3b8">
+                        <span>Weights: <strong style="color:#38bdf8">${r.weights_version}</strong></span>
+                        <span>Training N: <strong>${r.training_sample_count}</strong></span>
+                        <span>Held-Out N: <strong>${r.held_out_sample_count}</strong></span>
+                        <span>Clamped: <strong style="color:#fbbf24">${r.clamped_weights_count}</strong> weights</span>
+                        <span>Held-Out Brier: <strong>${r.held_out_metric_val != null ? Number(r.held_out_metric_val).toFixed(4) : '—'}</strong></span>
+                    </div>
+                    ${r.notes ? `<div style="color:#64748b;font-size:0.72rem">${r.notes}</div>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        c.innerHTML = headerHtml + `
+            <div style="font-size:0.78rem;font-weight:700;color:#94a3b8;margin:8px 0 6px">Recent Recalibration Audit Logs</div>
+            ${runsHtml}
+        `;
+    }
+
+    /* ── Empirical Calibration Reliability Diagram Panel (Stage 7.1) ──── */
+    function renderCalibrationCurvePanel(data) {
+        const c = document.getElementById('intel-calibration-curve-panel');
+        if (!c) return;
+
+        const buckets = (data && data.buckets) ? data.buckets : [];
+        const summary = (data && data.summary) ? data.summary : {};
+
+        // Update header badges
+        const eceBadge = document.getElementById('intel-ece-badge');
+        const mceBadge = document.getElementById('intel-mce-badge');
+        const brierBadge = document.getElementById('intel-brier-badge');
+
+        if (eceBadge) eceBadge.textContent = `ECE: ${(summary.ece_pct ?? (summary.ece ? (summary.ece * 100).toFixed(1) : 0))}%`;
+        if (mceBadge) mceBadge.textContent = `MCE: ${(summary.mce_pct ?? (summary.mce ? (summary.mce * 100).toFixed(1) : 0))}%`;
+        if (brierBadge) brierBadge.textContent = `Purged Brier: ${summary.overall_brier_purged != null ? Number(summary.overall_brier_purged).toFixed(4) : '—'}`;
+
+        if (!buckets.length) {
+            c.innerHTML = `
+                <div style="padding:14px;background:rgba(15,23,42,0.6);border-radius:6px;border-left:3px solid #6366f1;font-size:0.8rem;color:#94a3b8">
+                    ℹ️ Calibration curve requires evaluated predictions. Predictions are evaluated automatically 5 days post-signal.
+                </div>
+            `;
+            return;
+        }
+
+        // SVG Dimensions
+        const width = 640;
+        const height = 300;
+        const padLeft = 55;
+        const padRight = 30;
+        const padTop = 30;
+        const padBottom = 45;
+        const plotW = width - padLeft - padRight;
+        const plotH = height - padTop - padBottom;
+
+        const getX = (val) => padLeft + (val / 100) * plotW;
+        const getY = (val) => (padTop + plotH) - (val / 100) * plotH;
+
+        // Grid lines at 0, 20, 40, 60, 80, 100
+        const gridVals = [0, 20, 40, 60, 80, 100];
+        let gridLinesSvg = '';
+        gridVals.forEach(v => {
+            const x = getX(v);
+            const y = getY(v);
+            // Horizontal
+            gridLinesSvg += `<line x1="${padLeft}" y1="${y}" x2="${padLeft + plotW}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-width="1" />`;
+            gridLinesSvg += `<text x="${padLeft - 10}" y="${y + 4}" fill="#64748b" font-size="10" text-anchor="end">${v}%</text>`;
+            // Vertical
+            gridLinesSvg += `<line x1="${x}" y1="${padTop}" x2="${x}" y2="${padTop + plotH}" stroke="rgba(255,255,255,0.06)" stroke-width="1" />`;
+            gridLinesSvg += `<text x="${x}" y="${padTop + plotH + 18}" fill="#64748b" font-size="10" text-anchor="middle">${v}%</text>`;
+        });
+
+        // 45-degree ideal calibration line
+        const diagSvg = `<line x1="${getX(0)}" y1="${getY(0)}" x2="${getX(100)}" y2="${getY(100)}" stroke="#64748b" stroke-dasharray="5 5" stroke-width="1.5" />
+        <text x="${getX(92)}" y="${getY(92) - 8}" fill="#64748b" font-size="10" font-style="italic">Ideal (y=x)</text>`;
+
+        // Active data points & Wilson CI error bars
+        const activeBuckets = buckets.filter(b => b.has_data && (b.purged_n > 0 || b.total_n > 0));
+        let errorBarsSvg = '';
+        let pointsSvg = '';
+        let pathD = '';
+
+        activeBuckets.forEach((b, idx) => {
+            const x = getX(b.mean_pred);
+            const y = getY(b.purged_win_rate);
+            const yLo = getY(b.wilson_ci_low);
+            const yHi = getY(b.wilson_ci_high);
+
+            // Connecting line
+            pathD += (idx === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+
+            // Wilson CI vertical bar
+            errorBarsSvg += `
+                <line x1="${x}" y1="${yLo}" x2="${x}" y2="${yHi}" stroke="rgba(56,189,248,0.5)" stroke-width="2" />
+                <line x1="${x - 4}" y1="${yLo}" x2="${x + 4}" y2="${yLo}" stroke="rgba(56,189,248,0.7)" stroke-width="2" />
+                <line x1="${x - 4}" y1="${yHi}" x2="${x + 4}" y2="${yHi}" stroke="rgba(56,189,248,0.7)" stroke-width="2" />
+            `;
+
+            // Data point circle with tooltip
+            const titleText = `Bucket ${b.bucket_label}&#10;Mean Pred: ${b.mean_pred}%&#10;Purged Win Rate: ${b.purged_win_rate}%&#10;95% Wilson CI: [${b.wilson_ci_low}%, ${b.wilson_ci_high}%]&#10;Purged N: ${b.purged_n} (Total: ${b.total_n})&#10;Bias: ${b.bias > 0 ? '+' : ''}${b.bias}%&#10;Purged Brier: ${b.brier_purged}`;
+
+            pointsSvg += `
+                <g class="calib-point" style="cursor:pointer">
+                    <circle cx="${x}" cy="${y}" r="6" fill="#0284c7" stroke="#38bdf8" stroke-width="2">
+                        <title>${titleText}</title>
+                    </circle>
+                    <text x="${x}" y="${y - 12}" fill="#38bdf8" font-size="10" font-weight="700" text-anchor="middle">${b.purged_win_rate}%</text>
+                </g>
+            `;
+        });
+
+        const linePathSvg = pathD ? `<path d="${pathD}" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />` : '';
+
+        // Axes titles
+        const axesTitlesSvg = `
+            <text x="${padLeft + plotW / 2}" y="${height - 8}" fill="#94a3b8" font-size="11" font-weight="600" text-anchor="middle">Predicted Confidence Bucket (%)</text>
+            <text x="18" y="${padTop + plotH / 2}" fill="#94a3b8" font-size="11" font-weight="600" text-anchor="middle" transform="rotate(-90, 18, ${padTop + plotH / 2})">Actual Purged Win Rate (%)</text>
+        `;
+
+        const chartHtml = `
+            <div style="background:#0f172a;border-radius:8px;padding:16px;border:1px solid rgba(255,255,255,0.06);margin-bottom:14px;overflow-x:auto;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+                    <div style="font-size:0.78rem;font-weight:700;color:#f8fafc">
+                        Empirical Reliability Diagram (Predicted vs Purged Outcomes)
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;font-size:0.7rem;color:#94a3b8">
+                        <span style="display:inline-flex;align-items:center;gap:4px">
+                            <span style="display:inline-block;width:12px;height:2px;background:#64748b;border-top:2px dashed #64748b"></span>
+                            Ideal Calibration (y=x)
+                        </span>
+                        <span style="display:inline-flex;align-items:center;gap:4px">
+                            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0284c7;border:2px solid #38bdf8"></span>
+                            Observed Purged Rate (w/ 95% Wilson CI)
+                        </span>
+                    </div>
+                </div>
+                <svg viewBox="0 0 ${width} ${height}" style="width:100%;max-width:${width}px;height:auto;display:block;margin:0 auto;">
+                    ${gridLinesSvg}
+                    ${diagSvg}
+                    ${linePathSvg}
+                    ${errorBarsSvg}
+                    ${pointsSvg}
+                    ${axesTitlesSvg}
+                </svg>
+            </div>
+        `;
+
+        // Table Rows
+        const rowsHtml = buckets.map(b => {
+            const hasData = b.total_n > 0;
+            const hasPurged = b.purged_n > 0;
+            const biasColor = !hasPurged ? '#64748b' : (Math.abs(b.bias) <= 10 ? '#34d399' : (b.bias > 10 ? '#fbbf24' : '#60a5fa'));
+            const statusHtml = !hasData ? '<span style="color:#64748b;font-size:0.68rem">Sparse / No Signals</span>'
+                : (!hasPurged ? '<span style="color:#64748b;font-size:0.68rem">All Embargoed</span>'
+                : (b.purged_n < 10 ? `<span style="color:#fbbf24;font-size:0.68rem">⚠️ N<10 (Wide CI)</span>`
+                : (Math.abs(b.bias) <= 10 ? `<span style="color:#34d399;font-size:0.68rem">✅ Calibrated</span>`
+                : (b.bias > 10 ? `<span style="color:#f87171;font-size:0.68rem">⚠️ Overconfident (+${b.bias}%)</span>`
+                : `<span style="color:#60a5fa;font-size:0.68rem">⚠️ Underconfident (${b.bias}%)</span>`))));
+
+            return `
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.75rem;${hasPurged ? '' : 'opacity:0.6'}">
+                    <td style="padding:8px 10px;font-weight:600;color:#f8fafc">${b.bucket_label}</td>
+                    <td style="padding:8px 10px;color:#cbd5e1">${b.purged_n} <span style="color:#64748b;font-size:0.7rem">/ ${b.total_n}</span></td>
+                    <td style="padding:8px 10px;color:#38bdf8;font-weight:600">${hasData ? b.mean_pred + '%' : '—'}</td>
+                    <td style="padding:8px 10px;color:#f8fafc;font-weight:600">${hasPurged ? b.purged_win_rate + '%' : (hasData ? b.raw_win_rate + '% (raw)' : '—')}</td>
+                    <td style="padding:8px 10px;color:#94a3b8">${hasPurged ? `[${b.wilson_ci_low}%, ${b.wilson_ci_high}%]` : '—'}</td>
+                    <td style="padding:8px 10px;color:${biasColor};font-weight:600">${hasPurged ? (b.bias > 0 ? '+' : '') + b.bias + '%' : '—'}</td>
+                    <td style="padding:8px 10px;color:#cbd5e1">${hasPurged ? b.brier_purged : (hasData ? b.brier_raw : '—')}</td>
+                    <td style="padding:8px 10px">${statusHtml}</td>
+                </tr>
+            `;
+        }).join('');
+
+        const tableHtml = `
+            <div style="background:#0f172a;border-radius:8px;padding:12px;border:1px solid rgba(255,255,255,0.06);overflow-x:auto;">
+                <div style="font-size:0.78rem;font-weight:700;color:#f8fafc;margin-bottom:8px">Confidence Bucket Breakdown & Error Metrics</div>
+                <table style="width:100%;border-collapse:collapse;text-align:left;">
+                    <thead>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.1);font-size:0.7rem;color:#94a3b8;text-transform:uppercase;">
+                            <th style="padding:8px 10px">Bucket</th>
+                            <th style="padding:8px 10px">N (Purged / Tot)</th>
+                            <th style="padding:8px 10px">Mean Pred (p̄)</th>
+                            <th style="padding:8px 10px">Purged Win Rate</th>
+                            <th style="padding:8px 10px">95% Wilson CI</th>
+                            <th style="padding:8px 10px">Calibration Bias</th>
+                            <th style="padding:8px 10px">Purged Brier</th>
+                            <th style="padding:8px 10px">Audit Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                    <tfoot>
+                        <tr style="background:rgba(255,255,255,0.03);font-size:0.75rem;font-weight:700;color:#f8fafc">
+                            <td style="padding:10px">Total / Overall</td>
+                            <td style="padding:10px;color:#cbd5e1">${summary.total_purged_samples || 0} / ${summary.total_decided_samples || 0}</td>
+                            <td style="padding:10px;color:#94a3b8">—</td>
+                            <td style="padding:10px;color:#38bdf8">${summary.overall_purged_win_rate != null ? summary.overall_purged_win_rate + '%' : '—'}</td>
+                            <td style="padding:10px;color:#94a3b8">—</td>
+                            <td style="padding:10px;color:#fbbf24">ECE: ${summary.ece_pct || 0}%</td>
+                            <td style="padding:10px;color:#4ade80">${summary.overall_brier_purged != null ? summary.overall_brier_purged : '—'}</td>
+                            <td style="padding:10px;color:#38bdf8">MCE: ${summary.mce_pct || 0}%</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div style="font-size:0.65rem;color:#475569;margin-top:8px;font-style:italic;">
+                Not investment advice — informational tool based on historical pattern statistics. Calibration evaluated only on purged non-overlapping outcomes.
+            </div>
+        `;
+
+        c.innerHTML = chartHtml + tableHtml;
     }
 
     async function showEventDetail(eventId) {
@@ -10606,16 +11080,18 @@ const intelligenceTab = (() => {
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
                         <span class="intel-cause-name">${FACTOR_LABELS[cause.factor] || cause.factor}</span>
                         <span class="intel-cause-evidence-badge ev-${(cause.evidence||'weak').toLowerCase().replace(' ','-')}">${cause.evidence}</span>
-                        <span class="intel-cause-pct" style="margin-left:auto">${cause.confidence}%</span>
+                        <span class="intel-cause-pct" style="margin-left:auto" title="Lens Association Score">score ${cause.confidence}%</span>
                     </div>
                     ${_confBar(cause.confidence)}
                     ${cause.detail ? `<div class="intel-cause-detail-text">${cause.detail}</div>` : ''}
                 </div>`).join('');
             const patternHtml = pattern ? `
                 <div class="intel-detail-pattern-match">
-                    <div class="intel-detail-section-title">📚 Matched Pattern</div>
-                    <strong>${pattern.name}</strong><p style="color:#94a3b8;font-size:.8rem;margin:4px 0">${pattern.description || ''}</p>
-                    ${pattern.occurrences ? `<span class="intel-occ">${pattern.occurrences} occurrences</span>` : ''}
+                    <div class="intel-detail-section-title">📚 Matched Pattern: ${pattern.name}</div>
+                    <p style="color:#94a3b8;font-size:.8rem;margin:4px 0">${pattern.description || ''}</p>
+                    <div style="font-size:0.75rem;color:#cbd5e1;margin-top:6px;">
+                        <span>Lifetime: <strong style="color:#38bdf8;">${pattern.shrunk_win_rate_pct ?? pattern.shrunk_win_rate ?? '—'}% shrunk</strong> [${pattern.wilson_ci_low ?? (pattern.wilson_ci ? pattern.wilson_ci[0] : '0')}%, ${pattern.wilson_ci_high ?? (pattern.wilson_ci ? pattern.wilson_ci[1] : '0')}%] (N=${pattern.sample_size_n ?? pattern.occurrences ?? 0})</span>
+                    </div>
                 </div>` : '';
             let overlay = document.getElementById('intel-detail-overlay');
             if (!overlay) {

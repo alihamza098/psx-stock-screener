@@ -508,12 +508,37 @@ def _do_fetch_stocks():
             except Exception:
                 pass
             print(f"[PSX Live] Updated {len(parser.stocks)} stocks at {time.strftime('%H:%M:%S')}.")
+
+            # Stage 8.2 & 8.3: Buffer high-frequency circuit observations and record scraper health
+            try:
+                import psx_intelligence_engine as _pie
+                _eng = _pie.get_engine()
+                if _eng:
+                    _eng.record_scrape_success()
+                    _eng.record_intraday_observations(parser.stocks)
+            except Exception:
+                pass
+
             return parser.stocks
 
         else:
             print("[PSX Live] Parsed 0 stocks, keeping cached data.")
+            try:
+                import psx_intelligence_engine as _pie
+                _eng = _pie.get_engine()
+                if _eng:
+                    _eng.record_scrape_failure("Parsed 0 stocks from DPS screener")
+            except Exception:
+                pass
     except Exception as e:
         print(f"[PSX Live] Stock fetch failed: {e}")
+        try:
+            import psx_intelligence_engine as _pie
+            _eng = _pie.get_engine()
+            if _eng:
+                _eng.record_scrape_failure(str(e))
+        except Exception:
+            pass
     return stock_cache.get("data")
 
 
@@ -780,7 +805,7 @@ def _start_continuous_poller():
                         if _last_eod_tick[0] != eod_key:
                             try:
                                 stocks_snap = stock_cache.get("data") or []
-                                intelligence.end_of_day(stocks_snap)
+                                intelligence.end_of_day(stocks_snap, history_fn=fetch_stock_history)
                                 _last_eod_tick[0] = eod_key
                             except Exception as ie:
                                 print(f"[Intelligence] EOD error: {ie}")
@@ -4889,7 +4914,26 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 min_occ = int(query.get("min_occurrences", ["1"])[0])
                 engine = intel_module.get_engine()
                 patterns = engine.get_patterns_data()
-                self._send_json({"success": True, "patterns": patterns, "count": len(patterns)})
+                self._send_json({"success": True, "patterns": patterns, "count": len(patterns),
+                                 "disclaimer": "Not investment advice — informational tool based on historical pattern statistics"})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/intelligence/pattern-regimes":
+            try:
+                query = parse_qs(parsed_path.query)
+                pat_id = query.get("pattern_id", [None])[0]
+                engine = intel_module.get_engine()
+                data = engine.get_pattern_regimes_data(pattern_id=pat_id)
+                self._send_json({"success": True, **data})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/intelligence/sector-shrinkage":
+            try:
+                engine = intel_module.get_engine()
+                data = engine.get_sector_shrinkage_data()
+                self._send_json({"success": True, **data})
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
@@ -4902,6 +4946,34 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json({"success": True, "predictions": preds, "count": len(preds)})
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/intelligence/suggested-shares":
+            try:
+                query = parse_qs(parsed_path.query)
+                regime = query.get("regime", ["NEUTRAL"])[0].upper()
+                engine = intel_module.get_engine()
+                # Pass live stock data for liquidity checks
+                cached = load_file_cache(STOCK_CACHE_FILE)
+                market_stocks = cached.get("data", []) if isinstance(cached, dict) else []
+                data = engine.get_suggested_shares_data(
+                    market_stocks=market_stocks,
+                    regime=regime
+                )
+                self._send_json(data)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/intelligence/calibration-runs":
+            try:
+                query = parse_qs(parsed_path.query)
+                limit = int(query.get("limit", [20])[0])
+                engine = intel_module.get_engine()
+                data = engine.get_calibration_runs_data(limit=limit)
+                self._send_json({"success": True, **data})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+
 
         elif parsed_path.path.startswith("/api/intelligence/stock/"):
             try:
@@ -4946,6 +5018,38 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 engine = intel_module.get_engine()
                 stats = engine.db.get_learning_stats()
                 self._send_json({"success": True, "stats": stats})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/intelligence/calibration-brier":
+            try:
+                engine = intel_module.get_engine()
+                data = engine.get_calibration_brier()
+                self._send_json({"success": True, **data})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/intelligence/evaluation-audit":
+            try:
+                engine = intel_module.get_engine()
+                data = engine.get_evaluation_audit()
+                self._send_json({"success": True, **data})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/intelligence/calibration-curve":
+            try:
+                engine = intel_module.get_engine()
+                data = engine.get_calibration_curve_data()
+                self._send_json({"success": True, **data})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif parsed_path.path == "/api/intelligence/data-quality":
+            try:
+                engine = intel_module.get_engine()
+                data = engine.get_data_quality_report()
+                self._send_json({"success": True, **data})
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
