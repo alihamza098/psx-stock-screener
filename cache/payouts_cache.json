@@ -1,7 +1,55 @@
 {
-  "timestamp": 1790067357.515842,
+  "timestamp": 1790203858.367177,
   "data": {
     "dividendCalendar": [
+      {
+        "symbol": "BERG",
+        "name": "Berger Paints Pakistan Limited",
+        "sector": "CHEMICAL",
+        "dividendAmount": "50%Final Cash",
+        "announcementDate": "September 23, 2026 3:51 PM",
+        "exDividendDate": "14/10/2026",
+        "recordDate": "15/10/2026",
+        "bookClosure": "16/10/2026 - 23/10/2026",
+        "paymentDate": "06/11/2026",
+        "status": "Upcoming"
+      },
+      {
+        "symbol": "TCORPCPS",
+        "name": "Tariq Corporation Limited(Pref)",
+        "sector": "SUGAR &amp; ALLIED INDUSTRIES",
+        "dividendAmount": "10%Final Cash",
+        "announcementDate": "September 23, 2026 3:47 PM",
+        "exDividendDate": "28/09/2026",
+        "recordDate": "29/09/2026",
+        "bookClosure": "30/09/2026 - 30/09/2026",
+        "paymentDate": "14/10/2026",
+        "status": "Upcoming"
+      },
+      {
+        "symbol": "WAHN",
+        "name": "Wah Noble Chemicals Limited",
+        "sector": "CHEMICAL",
+        "dividendAmount": "50%Final Cash",
+        "announcementDate": "September 23, 2026 3:44 PM",
+        "exDividendDate": "19/10/2026",
+        "recordDate": "20/10/2026",
+        "bookClosure": "21/10/2026 - 28/10/2026",
+        "paymentDate": "11/11/2026",
+        "status": "Upcoming"
+      },
+      {
+        "symbol": "ICL",
+        "name": "Ittehad Chemicals Limted",
+        "sector": "CHEMICAL",
+        "dividendAmount": "30%Final Cash",
+        "announcementDate": "September 22, 2026 3:14 PM",
+        "exDividendDate": "19/10/2026",
+        "recordDate": "20/10/2026",
+        "bookClosure": "21/10/2026 - 28/10/2026",
+        "paymentDate": "11/11/2026",
+        "status": "Upcoming"
+      },
       {
         "symbol": "HTL",
         "name": "Hi-Tech Lubricants Limited",
@@ -288,7 +336,7 @@
         "recordDate": "21/09/2026",
         "bookClosure": "22/09/2026 - 22/09/2026",
         "paymentDate": "06/10/2026",
-        "status": "Upcoming"
+        "status": "Completed"
       },
       {
         "symbol": "BPL",
@@ -504,7 +552,7 @@
         "recordDate": "21/09/2026",
         "bookClosure": "22/09/2026 - 28/09/2026",
         "paymentDate": "12/10/2026",
-        "status": "Upcoming"
+        "status": "Completed"
       },
       {
         "symbol": "ISIL",
@@ -1068,7 +1116,7 @@
         "recordDate": "21/09/2026",
         "bookClosure": "22/09/2026 - 25/09/2026",
         "paymentDate": "09/10/2026",
-        "status": "Upcoming"
+        "status": "Completed"
       },
       {
         "symbol": "FHAM",
@@ -1153,61 +1201,13 @@
         "bookClosure": "22/10/2026 - 28/10/2026",
         "paymentDate": "11/11/2026",
         "status": "Upcoming"
-      },
-      {
-        "symbol": "HBL",
-        "name": "Habib Bank Limited",
-        "sector": "COMMERCIAL BANKS",
-        "dividendAmount": "60% 2nd Int. Cash",
-        "announcementDate": "August 4, 2026 2:44 PM",
-        "exDividendDate": "15/08/2026",
-        "recordDate": "16/08/2026",
-        "bookClosure": "17/08/2026 - 18/08/2026",
-        "paymentDate": "01/09/2026",
-        "status": "Completed"
-      },
-      {
-        "symbol": "PAKT",
-        "name": "Pakistan Tobacco Company Limited",
-        "sector": "TOBACCO",
-        "dividendAmount": "350% 3rd Int. Cash",
-        "announcementDate": "August 4, 2026 2:34 PM",
-        "exDividendDate": "15/08/2026",
-        "recordDate": "16/08/2026",
-        "bookClosure": "17/08/2026 - 19/08/2026",
-        "paymentDate": "02/09/2026",
-        "status": "Completed"
-      },
-      {
-        "symbol": "LCI",
-        "name": "Lucky Core Industries Limited",
-        "sector": "CHEMICAL",
-        "dividendAmount": "262.5% Final Cash",
-        "announcementDate": "August 4, 2026 2:31 PM",
-        "exDividendDate": "17/09/2026",
-        "recordDate": "18/09/2026",
-        "bookClosure": "19/09/2026 - 25/09/2026",
-        "paymentDate": "09/10/2026",
-        "status": "Completed"
-      },
-      {
-        "symbol": "COLG",
-        "name": "Colgate-Palmolive (Pakistan) Limited",
-        "sector": "FOOD &amp; PERSONAL CARE PRODUCTS",
-        "dividendAmount": "DIVIDEND =350% Final",
-        "announcementDate": "August 3, 2026 2:29 PM",
-        "exDividendDate": "15/09/2026",
-        "recordDate": "16/09/2026",
-        "bookClosure": "17/09/2026 - 24/09/2026",
-        "paymentDate": "08/10/2026",
-        "status": "Completed"
       }
     ],
     "source": "Pakistan Stock Exchange (dps.psx.com.pk/payouts)",
     "summary": {
       "totalCount": 100,
-      "upcomingCount": 66,
-      "completedCount": 34
+      "upcomingCount": 67,
+      "completedCount": 33
     }
   }
 }

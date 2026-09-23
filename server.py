@@ -4553,7 +4553,6 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                                 self.wfile.flush()
 
                         # 2. Circuit runners
-                        import psx_intelligence_engine as intel_module
                         intel_db = intel_module.get_engine().db
                         conn = intel_db._connect()
                         rows = conn.execute("""
@@ -4885,7 +4884,6 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         # ── QW6: Circuit Runners (Consecutive Upper Locks) ────────────────────
         elif parsed_path.path == "/api/intelligence/circuit-runners":
             try:
-                import psx_intelligence_engine as intel_module
                 intel_db = intel_module.get_engine().db
                 conn = intel_db._connect()
                 # Find stocks with 2+ UPPER_LOCK or CONSECUTIVE_UPPER_LOCK events in last 4 days

@@ -1023,6 +1023,18 @@ class IntelligenceDB:
         finally:
             conn.close()
 
+    def get_recent_predictions(self, limit: int = 20) -> List[Dict]:
+        conn = self._connect()
+        try:
+            rows = conn.execute("""
+                SELECT * FROM ai_predictions
+                ORDER BY predicted_at DESC, confidence DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
     def get_stock_memory(self, symbol: str) -> Optional[Dict]:
         conn = self._connect()
         try:
@@ -5239,6 +5251,8 @@ class SuggestedSharesEngine:
         # ── 1. Load candidate events ──
         if recent_predictions is None:
             recent_predictions = self.db.get_active_predictions(limit=200)
+            if not recent_predictions:
+                recent_predictions = self.db.get_recent_predictions(limit=200)
         if not recent_predictions:
             return {"active_ideas": [], "speculative_ideas": []}
 
@@ -5316,7 +5330,7 @@ class SuggestedSharesEngine:
                 mean_ret, q25, q75 = self._get_outcome_percentiles(pattern_id, regime)
 
                 # Entry/target/stop from prediction
-                entry = float(pred.get("entry_price", price) or price)
+                entry = float(pred.get("entry_price") or pred.get("price_at_signal") or price or 0)
                 target = float(pred.get("target_price", 0) or 0)
                 stop = float(pred.get("stop_loss", 0) or 0)
                 if entry <= 0:
@@ -5898,6 +5912,10 @@ class IntelligenceEngine:
     def get_predictions_data(self, limit: int = 20) -> List[Dict]:
         """Used by GET /api/intelligence/predictions"""
         preds = self.db.get_active_predictions(limit=limit)
+        is_active = True
+        if not preds:
+            preds = self.db.get_recent_predictions(limit=limit)
+            is_active = False
         result = []
         for p in preds:
             try:
@@ -5911,7 +5929,8 @@ class IntelligenceEngine:
                 "reasoning": reasoning,
                 "wilson_ci": reasoning.get("wilson_ci", [ci_lo, ci_hi]),
                 "wilson_ci_low": ci_lo,
-                "wilson_ci_high": ci_hi
+                "wilson_ci_high": ci_hi,
+                "is_active_pending": is_active
             })
         return result
 
@@ -5926,6 +5945,8 @@ class IntelligenceEngine:
         """
         try:
             predictions = self.db.get_active_predictions(limit=200)
+            if not predictions:
+                predictions = self.db.get_recent_predictions(limit=200)
             result = self.suggested_shares_engine.generate_suggestions(
                 recent_predictions=predictions,
                 market_stocks=market_stocks,

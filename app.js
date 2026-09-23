@@ -10771,14 +10771,15 @@ const intelligenceTab = (() => {
     }
 
     async function _fetchAll() {
+        const safeFetch = (url) => fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
         const [s, e, p, pr, ss, cr, cc] = await Promise.allSettled([
-            fetch('/api/intelligence/summary').then(r => r.json()),
-            fetch('/api/intelligence/live-events?limit=50').then(r => r.json()),
-            fetch('/api/intelligence/patterns').then(r => r.json()),
-            fetch('/api/intelligence/predictions?limit=20').then(r => r.json()),
-            fetch('/api/intelligence/suggested-shares').then(r => r.json()),
-            fetch('/api/intelligence/calibration-runs?limit=10').then(r => r.json()),
-            fetch('/api/intelligence/calibration-curve').then(r => r.json())
+            safeFetch('/api/intelligence/summary'),
+            safeFetch('/api/intelligence/live-events?limit=50'),
+            safeFetch('/api/intelligence/patterns'),
+            safeFetch('/api/intelligence/predictions?limit=20'),
+            safeFetch('/api/intelligence/suggested-shares'),
+            safeFetch('/api/intelligence/calibration-runs?limit=10'),
+            safeFetch('/api/intelligence/calibration-curve')
         ]);
         return {
             summary:          s.status  === 'fulfilled' ? s.value  : null,
@@ -10797,21 +10798,41 @@ const intelligenceTab = (() => {
         _isLoading = true;
         try {
             const { summary, events, patterns, predictions, suggestedShares, calibrationRuns, calibrationCurve } = await _fetchAll();
-            if (summary && summary.success) renderHeader(summary);
-            if (events && events.success) {
-                renderEventFeed(events.events || []);
-                renderWhyPanel(events.events || []);
-            }
-            if (patterns && patterns.success) renderPatternPanel(patterns.patterns || []);
-            if (predictions && predictions.success) renderPredictionPanel(predictions.predictions || []);
-            if (suggestedShares && suggestedShares.success) renderSuggestedSharesPanel(suggestedShares);
-            if (calibrationRuns && calibrationRuns.success) renderCalibrationGuardrailsPanel(calibrationRuns);
-            if (calibrationCurve && calibrationCurve.success) renderCalibrationCurvePanel(calibrationCurve);
+            try {
+                if (summary && summary.success) renderHeader(summary);
+            } catch (err) { console.error('[Intelligence] renderHeader error:', err); }
+
+            try {
+                if (events && events.success) {
+                    renderEventFeed(events.events || []);
+                    renderWhyPanel(events.events || []);
+                }
+            } catch (err) { console.error('[Intelligence] renderEventFeed/Why error:', err); }
+
+            try {
+                if (patterns && patterns.success) renderPatternPanel(patterns.patterns || []);
+            } catch (err) { console.error('[Intelligence] renderPatternPanel error:', err); }
+
+            try {
+                if (predictions && predictions.success) renderPredictionPanel(predictions.predictions || []);
+            } catch (err) { console.error('[Intelligence] renderPredictionPanel error:', err); }
+
+            try {
+                if (suggestedShares && suggestedShares.success) renderSuggestedSharesPanel(suggestedShares);
+            } catch (err) { console.error('[Intelligence] renderSuggestedSharesPanel error:', err); }
+
+            try {
+                if (calibrationRuns && calibrationRuns.success) renderCalibrationGuardrailsPanel(calibrationRuns);
+            } catch (err) { console.error('[Intelligence] renderCalibrationGuardrailsPanel error:', err); }
+
+            try {
+                if (calibrationCurve && calibrationCurve.success) renderCalibrationCurvePanel(calibrationCurve);
+            } catch (err) { console.error('[Intelligence] renderCalibrationCurvePanel error:', err); }
+
             _setText('intel-footer-refreshed', 'Last refreshed: ' + new Date().toLocaleTimeString('en-PK'));
         } catch (err) {
             console.error('[Intelligence] load error:', err);
         } finally {
-
             _isLoading = false;
         }
     }
@@ -10838,7 +10859,7 @@ const intelligenceTab = (() => {
         if (!c) return;
         if (ct) ct.textContent = events.length + ' events';
         if (!events.length) {
-            c.innerHTML = '<div class="intel-initializing"><div class="intel-spinner"></div><p>No events yet. Check back during market hours (9 AM–3:30 PM PKT).</p></div>';
+            c.innerHTML = '<div class="intel-initializing"><div style="font-size:1.6rem;margin-bottom:6px;">📡</div><p>No anomalies detected yet.<br><span style="color:#64748b;font-size:0.75rem;">Scans run every 5m during market hours (9:30 AM–3:30 PM PKT).</span></p></div>';
             return;
         }
         c.innerHTML = events.map(ev => {
@@ -10866,7 +10887,10 @@ const intelligenceTab = (() => {
     function renderWhyPanel(events) {
         const c = document.getElementById('intel-why-panel');
         if (!c) return;
-        if (!events.length) { c.innerHTML = '<div class="intel-initializing"><div class="intel-spinner"></div><p>Awaiting events…</p></div>'; return; }
+        if (!events.length) {
+            c.innerHTML = '<div class="intel-initializing"><div style="font-size:1.6rem;margin-bottom:6px;">🔍</div><p>Awaiting live anomalies to investigate.<br><span style="color:#64748b;font-size:0.75rem;">Cause attribution occurs on live price & volume shocks.</span></p></div>';
+            return;
+        }
         c.innerHTML = events.slice(0, 5).map(ev => {
             const et = EVENT_LABELS[ev.event_type] || { label: ev.event_type, cls: 'event-generic' };
             return `<div class="intel-why-card">
@@ -10892,7 +10916,10 @@ const intelligenceTab = (() => {
         const ct = document.getElementById('intel-pattern-count');
         if (!c) return;
         if (ct) ct.textContent = patterns.length + ' pattern' + (patterns.length !== 1 ? 's' : '');
-        if (!patterns.length) { c.innerHTML = '<div class="intel-initializing"><div class="intel-spinner"></div><p>Pattern library builds overnight.<br>Needs ≥3 occurrences per pattern.</p></div>'; return; }
+        if (!patterns.length) {
+            c.innerHTML = '<div class="intel-initializing"><div style="font-size:1.6rem;margin-bottom:6px;">📚</div><p>Pattern library builds overnight.<br><span style="color:#64748b;font-size:0.75rem;">Requires ≥3 historical occurrences per pattern.</span></p></div>';
+            return;
+        }
         c.innerHTML = patterns.map(p => {
             const n = p.sample_size_n !== undefined ? p.sample_size_n : ((p.win_count || 0) + (p.loss_count || 0));
             const rawWr = p.raw_win_rate_pct !== undefined ? p.raw_win_rate_pct : (n > 0 ? Math.round((p.win_count / n) * 1000) / 10 : null);
@@ -10989,8 +11016,12 @@ const intelligenceTab = (() => {
         const c = document.getElementById('intel-prediction-panel');
         const ct = document.getElementById('intel-pred-count');
         if (!c) return;
-        if (ct) ct.textContent = predictions.length + ' active';
-        if (!predictions.length) { c.innerHTML = '<div class="intel-initializing"><div class="intel-spinner"></div><p>No active predictions yet.</p></div>'; return; }
+        const hasPending = predictions.some(p => p.is_active_pending !== false);
+        if (ct) ct.textContent = predictions.length > 0 ? (hasPending ? `${predictions.length} active` : `${predictions.length} recent`) : '0 active';
+        if (!predictions.length) {
+            c.innerHTML = '<div class="intel-initializing"><div style="font-size:1.6rem;margin-bottom:6px;">⚠️</div><p>No active intraday warnings.<br><span style="color:#64748b;font-size:0.75rem;">Next scan will evaluate when market opens (9:30 AM PKT).</span></p></div>';
+            return;
+        }
         c.innerHTML = predictions.map(pred => {
             const sig = SIGNAL_LABELS[pred.signal] || { label: pred.signal, cls: 'signal-watch' };
             const reasoning = pred.reasoning || {};
@@ -11003,11 +11034,16 @@ const intelligenceTab = (() => {
                 ? `<div style="font-size:0.69rem;color:#94a3b8;margin:4px 0;">Historical: <strong style="color:#38bdf8;">${wr}% win rate</strong> <span style="color:#64748b;">[${ciLo}%, ${ciHi}%] (N=${n})</span></div>`
                 : `<div style="font-size:0.68rem;color:#64748b;margin:4px 0;">First occurrence (N=0) — baseline prior applied</div>`;
 
+            const sessionBadge = pred.is_active_pending === false
+                ? `<span style="font-size:0.60rem;background:rgba(100,116,139,0.25);color:#cbd5e1;padding:1px 5px;border-radius:4px;border:1px solid rgba(148,163,184,0.2);">Recent Session</span>`
+                : `<span style="font-size:0.60rem;background:rgba(34,197,94,0.15);color:#4ade80;padding:1px 5px;border-radius:4px;border:1px solid rgba(34,197,94,0.3);">⚡ Live Active</span>`;
+
             return `<div class="intel-pred-card">
                 <div class="intel-pred-header">
                     <span class="intel-event-symbol" onclick="typeof showDetail==='function'&&showDetail('${pred.symbol}')" style="cursor:pointer">${pred.symbol}</span>
                     <span class="intel-signal-badge ${sig.cls}">${sig.label}</span>
-                    <span class="intel-conf-pct" title="Calibrated Confidence">${pred.confidence}% conf</span>
+                    ${sessionBadge}
+                    <span class="intel-conf-pct" title="Calibrated Confidence" style="margin-left:auto">${pred.confidence}% conf</span>
                 </div>
                 <div class="intel-pred-meta">
                     <span>₨${pred.price_at_signal ? Number(pred.price_at_signal).toFixed(2) : '—'} at signal</span>
@@ -11129,7 +11165,7 @@ const intelligenceTab = (() => {
 
         const mainBody = active.length
             ? active.map(i => ideaCard(i, false)).join('')
-            : '<div class="intel-initializing"><div class="intel-spinner"></div><p>No qualifying ideas at this time.</p></div>';
+            : '<div class="intel-initializing" style="padding:16px;text-align:center;"><div style="font-size:1.6rem;margin-bottom:6px;">💡</div><p style="color:#94a3b8;font-size:0.82rem;margin:0;">No qualifying trade ideas meet strict Kelly criteria right now.<br><span style="color:#64748b;font-size:0.72rem;">Ideas refresh dynamically as new intraday predictions are evaluated.</span></p></div>';
 
         const disc = `<div style="font-size:.68rem;color:#475569;margin-top:10px;padding:6px 10px;background:#0f172a;border-radius:6px;border-left:3px solid #334155">⚠️ ${disclaimer}</div>`;
 

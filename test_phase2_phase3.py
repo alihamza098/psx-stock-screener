@@ -58,7 +58,7 @@ class TestPhase2Phase3(unittest.TestCase):
         actions = get_upcoming_corporate_actions()
         self.assertIsInstance(actions, list)
 
-        near, act = is_near_ex_date('MEBL', 30)
+        near, act = is_near_ex_date('OGDC', 30)
         self.assertTrue(near)
         self.assertIsNotNone(act)
 
