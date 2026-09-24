@@ -242,6 +242,7 @@ class TestDailyOpportunities(unittest.TestCase):
 
         # Candidate left TRIGGERED during server downtime
         self.db.save_candidate({
+            "date": "2026-09-22",
             "symbol": "EFERT",
             "tier": "Steady",
             "setup_type": "OVERSOLD_BOUNCE",
@@ -253,10 +254,10 @@ class TestDailyOpportunities(unittest.TestCase):
             "detected_at": "2026-09-22 10:00:00"
         })
 
-        # Run startup reconciliation after market close (e.g. at 23:00)
+        # Run startup reconciliation after market close / downtime
         sm.reconcile_on_startup(stocks_cache={"EFERT": {"price": 101.5}})
 
-        cands = self.db.get_all_today()
+        cands = self.db.get_all_today("2026-09-22")
         efert = next(c for c in cands if c["symbol"] == "EFERT")
         self.assertEqual(efert["state"], "CLOSED")
         self.assertEqual(efert["exit_type"], "TIME_EXIT")

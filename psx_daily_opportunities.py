@@ -209,15 +209,22 @@ class DailyOpportunitiesDB:
         with self._get_conn() as conn:
             conn.execute(f"UPDATE daily_candidates SET {set_clause} WHERE id = ?", values)
 
-    def get_open_candidates(self, date_str: Optional[str] = None) -> List[Dict[str, Any]]:
-        if not date_str:
-            date_str = psx_calendar.get_current_pkt_datetime().strftime("%Y-%m-%d")
+    def get_open_candidates(self, date_str: Optional[str] = None, all_dates: bool = False) -> List[Dict[str, Any]]:
         with self._get_conn() as conn:
-            rows = conn.execute("""
-                SELECT * FROM daily_candidates
-                WHERE date = ? AND state IN ('WATCHING', 'TRIGGERED')
-                ORDER BY id DESC
-            """, (date_str,)).fetchall()
+            if all_dates:
+                rows = conn.execute("""
+                    SELECT * FROM daily_candidates
+                    WHERE state IN ('WATCHING', 'TRIGGERED')
+                    ORDER BY id DESC
+                """).fetchall()
+            else:
+                if not date_str:
+                    date_str = psx_calendar.get_current_pkt_datetime().strftime("%Y-%m-%d")
+                rows = conn.execute("""
+                    SELECT * FROM daily_candidates
+                    WHERE date = ? AND state IN ('WATCHING', 'TRIGGERED')
+                    ORDER BY id DESC
+                """, (date_str,)).fetchall()
             return [dict(r) for r in rows]
 
     def get_all_today(self, date_str: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -229,6 +236,15 @@ class DailyOpportunitiesDB:
                 WHERE date = ?
                 ORDER BY id DESC
             """, (date_str,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_recent_candidates(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self._get_conn() as conn:
+            rows = conn.execute("""
+                SELECT * FROM daily_candidates
+                ORDER BY date DESC, id DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
             return [dict(r) for r in rows]
 
     def log_tier_transition(self, symbol: str, from_tier: str, to_tier: str, rvol: float, atr_pct: float, circuit_room: float):
@@ -770,16 +786,19 @@ class LifecycleStateMachine:
         dt = psx_calendar.get_current_pkt_datetime()
         today_str = dt.strftime("%Y-%m-%d")
         schedule = get_session_schedule(dt)
-        open_cands = self.db.get_open_candidates(today_str)
+        open_cands = self.db.get_open_candidates(all_dates=True)
 
         cur_mins = dt.hour * 60 + dt.minute
         time_exit_mins = schedule.get("time_exit_mins", 915)
-        is_past_exit = cur_mins >= time_exit_mins or not schedule.get("is_in_trading_hours", False)
+        is_today_past_exit = cur_mins >= time_exit_mins or not schedule.get("is_in_trading_hours", False)
 
         for c in open_cands:
             sym = c["symbol"]
             cid = c["id"]
             state = c["state"]
+            c_date = c.get("date", today_str)
+            is_past_exit = True if c_date < today_str else is_today_past_exit
+
             px = c.get("current_price") or c.get("entry_price") or 10.0
             if stocks_cache and sym in stocks_cache:
                 px = float(stocks_cache[sym].get("price", px))

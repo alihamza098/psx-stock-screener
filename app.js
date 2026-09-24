@@ -2558,9 +2558,15 @@ let _dailyOppsState = {
 async function fetchDailyOpportunities() {
     try {
         const res = await fetch('/api/daily-opportunities/live');
-        if (!res.ok) return;
+        if (!res.ok) {
+            renderDailyOpportunities();
+            return;
+        }
         const data = await res.json();
-        if (!data.success) return;
+        if (!data.success) {
+            renderDailyOpportunities();
+            return;
+        }
 
         _dailyOppsState.candidates = data.candidates || [];
         _dailyOppsState.stats = data.stats || {};
@@ -2602,6 +2608,7 @@ async function fetchDailyOpportunities() {
         renderDailyOpportunities();
     } catch (e) {
         console.error("Error fetching daily opportunities:", e);
+        renderDailyOpportunities();
     }
 }
 

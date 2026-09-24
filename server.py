@@ -46,6 +46,7 @@ import psx_intelligence_engine as intel_module
 import psx_calibration_engine as calib_module
 import psx_longterm_engine as lt_module
 import psx_daily_opportunities as daily_opps_module
+import shared_trading_utils
 
 
 PORT = int(os.environ.get('PORT', 3000))
@@ -855,7 +856,7 @@ def _start_continuous_poller():
                                     pass
                             opps_scanner.scan_universe(
                                 stocks=stocks_snap,
-                                history_provider=fetch_stock_history,
+                                history_provider=fetch_cached_stock_history,
                                 market_regime=regime_name,
                                 circuit_anomalies=circ_anomalies
                             )
@@ -1823,6 +1824,30 @@ def audit_upper_lock_predictions(stocks, current_predicted=None):
 HISTORY_CACHE_DIR = Path(__file__).parent / "cache" / "history"
 HISTORY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 _STOCK_HISTORY_CACHE = {}
+
+def fetch_cached_stock_history(symbol):
+    """Fast non-blocking history lookup checking memory and disk cache without external HTTP requests."""
+    if not symbol:
+        return []
+    symbol = symbol.upper()
+    now = time.time()
+    if symbol in _STOCK_HISTORY_CACHE:
+        _, h_data = _STOCK_HISTORY_CACHE[symbol]
+        if h_data:
+            return h_data
+    h_file = HISTORY_CACHE_DIR / f"{symbol}.json"
+    if h_file.exists():
+        try:
+            with open(h_file, "r") as f:
+                disk_obj = json.load(f)
+                if isinstance(disk_obj, dict):
+                    days = disk_obj.get("days", [])
+                    if days:
+                        _STOCK_HISTORY_CACHE[symbol] = (now, days)
+                        return days
+        except Exception:
+            pass
+    return []
 
 def fetch_stock_history(symbol):
     """Fetch historical end-of-day data from PSX timeseries API with memory+disk caching and synthetic fallback."""
@@ -5098,6 +5123,37 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 now_pkt = psx_calendar.get_current_pkt_datetime()
                 today_str = now_pkt.strftime("%Y-%m-%d")
                 cands = opps_scanner.db.get_all_today(today_str)
+                # If no candidates yet today, run an instant fast scan on live stock data
+                if not cands:
+                    stocks_snap = stock_cache.get("data") or []
+                    if stocks_snap:
+                        circ_anomalies = []
+                        try:
+                            intel = intel_module.get_engine()
+                            if intel and hasattr(intel, "detector") and hasattr(intel.detector, "_intraday_circuit_buffer"):
+                                with intel.detector._circuit_lock:
+                                    circ_anomalies = list(intel.detector._intraday_circuit_buffer.keys())
+                        except Exception:
+                            pass
+                        regime_name = "Neutral"
+                        try:
+                            intel = intel_module.get_engine()
+                            if intel and hasattr(intel, "regime_engine") and intel.regime_engine:
+                                regime_name = intel.regime_engine.get_current_regime().get("regime", "Neutral")
+                        except Exception:
+                            pass
+                        opps_scanner.scan_universe(
+                            stocks=stocks_snap,
+                            history_provider=fetch_cached_stock_history,
+                            market_regime=regime_name,
+                            circuit_anomalies=circ_anomalies
+                        )
+                        cands = opps_scanner.db.get_all_today(today_str)
+
+                # If still empty (e.g. off-hours before open), fallback to recent candidates
+                if not cands:
+                    cands = opps_scanner.db.get_recent_candidates(limit=50)
+
                 sched = shared_trading_utils.get_session_schedule(now_pkt)
                 cur_mins = now_pkt.hour * 60 + now_pkt.minute
                 time_exit_mins = sched.get("time_exit_mins", 915)
@@ -5824,7 +5880,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._handle_company(symbol)
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 400)
-        elif self.path == "/api/daily-opportunities/scan-now":
+        elif self.path.split('?')[0] == "/api/daily-opportunities/scan-now":
             try:
                 opps_scanner = daily_opps_module.get_scanner()
                 stocks_snap = stock_cache.get("data") or []
@@ -5843,7 +5899,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                     pass
                 res = opps_scanner.scan_universe(
                     stocks=stocks_snap,
-                    history_provider=fetch_stock_history,
+                    history_provider=fetch_cached_stock_history,
                     market_regime=regime_name,
                     circuit_anomalies=circ_anomalies
                 )
