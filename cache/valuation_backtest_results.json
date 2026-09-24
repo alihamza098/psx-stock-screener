@@ -1,0 +1,96 @@
+{
+  "success": true,
+  "eval_date": "2026-07-20",
+  "end_date": "2026-09-23",
+  "forward_days": 45,
+  "embargo_days": 30,
+  "total_evaluated_stocks": 113,
+  "cohorts": {
+    "undervalued": {
+      "count": 4,
+      "mean_return_pct": -9.34,
+      "median_return_pct": -7.84,
+      "win_rate_pct": 0.0,
+      "std_dev_pct": 6.17,
+      "max_drawdown_pct": 11.61,
+      "sharpe_proxy": -1.85
+    },
+    "possibly_undervalued": {
+      "count": 30,
+      "mean_return_pct": 0.76,
+      "median_return_pct": 0.0,
+      "win_rate_pct": 46.67,
+      "std_dev_pct": 18.8,
+      "max_drawdown_pct": 14.39,
+      "sharpe_proxy": -0.07
+    },
+    "fairly_valued": {
+      "count": 25,
+      "mean_return_pct": 7.84,
+      "median_return_pct": 0.0,
+      "win_rate_pct": 48.0,
+      "std_dev_pct": 23.5,
+      "max_drawdown_pct": 13.92,
+      "sharpe_proxy": 0.25
+    },
+    "overvalued": {
+      "count": 4,
+      "mean_return_pct": -2.63,
+      "median_return_pct": 0.0,
+      "win_rate_pct": 0.0,
+      "std_dev_pct": 2.78,
+      "max_drawdown_pct": 9.51,
+      "sharpe_proxy": -1.69
+    },
+    "market_benchmark": {
+      "count": 113,
+      "mean_return_pct": 3.63,
+      "median_return_pct": 0.0,
+      "win_rate_pct": 26.55,
+      "std_dev_pct": 25.13,
+      "max_drawdown_pct": 9.1,
+      "sharpe_proxy": 0.06
+    }
+  },
+  "performance_spread": {
+    "long_short_alpha_pct": -6.71,
+    "alpha_vs_market_pct": -12.97,
+    "spread_positive": false
+  },
+  "top_performers": [
+    {
+      "symbol": "CYAN",
+      "sector": "Inv. Banks / Securities Cos.",
+      "price_eval": 41.91,
+      "price_end": 41.91,
+      "return_pct": 0.0,
+      "mos_pct": 40.14
+    },
+    {
+      "symbol": "INDU",
+      "sector": "Automobile Assembler",
+      "price_eval": 1937.1,
+      "price_end": 1785.17,
+      "return_pct": -7.84,
+      "mos_pct": 16.92
+    },
+    {
+      "symbol": "LOTCHEM",
+      "sector": "Chemical",
+      "price_eval": 29.65,
+      "price_end": 25.7,
+      "return_pct": -13.32,
+      "mos_pct": 66.03
+    },
+    {
+      "symbol": "NBP",
+      "sector": "Commercial Banks",
+      "price_eval": 203.53,
+      "price_end": 170.57,
+      "return_pct": -16.19,
+      "mos_pct": 55.37
+    }
+  ],
+  "calibrated_at": "2026-09-24T11:44:11.028670+00:00",
+  "disclaimer": "This is a data-driven valuation screen, not investment advice. Verify earnings quality, governance, and recent company announcements before acting. Past dividend patterns and analyst forecasts are not guarantees of future performance."
+}

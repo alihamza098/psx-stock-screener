@@ -12749,10 +12749,12 @@ function applyUndervaluedFilters() {
     const methodSelect = document.getElementById("uv-method-filter");
     const sortSelect = document.getElementById("uv-sort-select");
     const searchInput = document.getElementById("uv-search-input");
+    const synergySelect = document.getElementById("uv-synergy-filter");
 
     uvCurrentSector = secSelect ? secSelect.value : "ALL";
     uvCurrentMethod = methodSelect ? methodSelect.value : "ALL";
     uvCurrentSort = sortSelect ? sortSelect.value : "mos_desc";
+    const uvCurrentSynergy = synergySelect ? synergySelect.value : "ALL";
     const query = searchInput ? searchInput.value.trim().toUpperCase() : "";
 
     let filtered = uvStocksData.filter(item => {
@@ -12760,6 +12762,11 @@ function applyUndervaluedFilters() {
         if (uvCurrentVerdict !== "ALL" && item.verdict !== uvCurrentVerdict) return false;
         // Sector filter
         if (uvCurrentSector !== "ALL" && item.sector !== uvCurrentSector) return false;
+        // Synergy filter
+        if (uvCurrentSynergy !== "ALL") {
+            const tags = item.synergy_tags || [];
+            if (!tags.some(t => t.tag === uvCurrentSynergy || t.badge === uvCurrentSynergy)) return false;
+        }
         // Model filter
         if (uvCurrentMethod !== "ALL") {
             const m = item.intrinsic_valuation ? item.intrinsic_valuation.method_used : "";
@@ -12922,6 +12929,7 @@ function renderUndervaluedCards(items) {
             </div>
 
             <div class="uv-flags-row">
+                ${(stock.synergy_tags || []).map(t => `<span class="uv-flag-chip" style="background:${t.severity === 'danger' ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)'}; border:1px solid ${t.severity === 'danger' ? '#ef4444' : '#10b981'}; color:${t.severity === 'danger' ? '#f87171' : '#34d399'}; font-weight:700;" title="${t.description}">⚡ ${t.badge}</span>`).join("")}
                 ${flags.map(f => `<span class="uv-flag-chip" title="${f}">⚠️ ${f.length > 28 ? f.substring(0, 26) + '...' : f}</span>`).join("")}
             </div>
 
@@ -13092,6 +13100,21 @@ async function openUndervaluedDetailModal(symbol) {
                     <div style="font-size:0.82rem; color:#34d399;">✅ All quality & liquidity gates passed. No red flags detected for this security.</div>
                 `}
             </div>
+
+            <!-- Cross-Engine Synergy Badges -->
+            ${(s.synergy_tags && s.synergy_tags.length > 0) ? `
+            <div style="background:rgba(15,23,42,0.7); border:1px solid rgba(56,189,248,0.3); border-radius:8px; padding:14px; margin-bottom:16px;">
+                <div class="uv-modal-section-title" style="color:#38bdf8;">⚡ Cross-Engine Synergy Signals (Valuation + Technical Intelligence)</div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    ${s.synergy_tags.map(t => `
+                        <div style="display:flex; align-items:center; gap:10px; font-size:0.82rem; background:${t.severity === 'danger' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)'}; border:1px solid ${t.severity === 'danger' ? 'rgba(239,68,68,0.4)' : 'rgba(16,185,129,0.4)'}; border-radius:6px; padding:8px 12px;">
+                            <span style="font-weight:900; color:${t.severity === 'danger' ? '#f87171' : '#34d399'}; font-size:0.75rem; letter-spacing:0.04em;">${t.badge}</span>
+                            <span style="color:var(--text-secondary);">${t.description}</span>
+                        </div>
+                    `).join("")}
+                </div>
+            </div>
+            ` : ''}
 
             <!-- Raw JSON Output View -->
             <div style="margin-bottom:14px;">

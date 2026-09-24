@@ -611,23 +611,63 @@ def inject_live_price(item: Dict[str, Any], symbol_key: str = "symbol", price_ke
     return item
 
 
+_LAST_UNDERVALUED_RESCAN_TIME = 0.0
+_UNDERVALUED_RESCAN_COOLDOWN_SEC = 60.0
+
+
 def patch_undervalued_item(item: Dict[str, Any]) -> Dict[str, Any]:
-    """Applies live price and dynamically recalculates margin_of_safety_pct against fair value."""
+    """Applies live price and dynamically recalculates margin_of_safety_pct against fair value with Guard 0.7."""
     if not isinstance(item, dict):
         return item
-    inject_live_price(item, symbol_key="symbol", price_keys=["price", "current_price"])
-    live_p = item.get("price")
-    iv = item.get("intrinsic_valuation")
-    if isinstance(iv, dict) and live_p:
-        fv = iv.get("fair_value_per_share")
-        if fv and float(fv) > 0:
-            iv["current_price"] = live_p
-            try:
-                mos = round(((float(fv) - float(live_p)) / float(fv)) * 100.0, 1)
-                iv["margin_of_safety_pct"] = mos
-                item["margin_of_safety_pct"] = mos
-            except Exception:
-                pass
+    sym = (item.get("symbol") or item.get("ticker") or "").upper().strip()
+    live = get_live_stock_info(sym) if sym else None
+
+    # Guard 0.7: Suspended/halted or missing live quote check
+    is_halted = False
+    if not live:
+        is_halted = True
+    else:
+        vol = float(live.get("volume", 0) or 0)
+        is_nc = bool(live.get("isNC", False))
+        px = live.get("price")
+        if is_nc or vol == 0 or px is None or float(px) <= 0:
+            is_halted = True
+
+    if is_halted:
+        item["_price_sync"] = "STALE_SNAPSHOT"
+        item["_price_note"] = "price unavailable or trading halted, showing last known snapshot"
+    else:
+        inject_live_price(item, symbol_key="symbol", price_keys=["price", "current_price"])
+        live_p = item.get("price")
+        iv = item.get("intrinsic_valuation")
+        if isinstance(iv, dict) and live_p:
+            fv = iv.get("fair_value_per_share")
+            if fv and float(fv) > 0:
+                iv["current_price"] = live_p
+                try:
+                    mos = round(((float(fv) - float(live_p)) / float(fv)) * 100.0, 1)
+                    iv["margin_of_safety_pct"] = mos
+                    item["margin_of_safety_pct"] = mos
+                except Exception:
+                    pass
+        item["_price_sync"] = "LIVE_DPS"
+
+    # Ensure required compliance & quality indicators are present
+    if "confidence" not in item or not item["confidence"]:
+        item["confidence"] = "Medium"
+    if "synergy_tags" not in item:
+        try:
+            import psx_undervalued_engine as uve
+            item["synergy_tags"] = uve.get_cross_engine_synergy_tags(sym, item)
+        except Exception:
+            item["synergy_tags"] = []
+    if "disclaimer" not in item or not item["disclaimer"]:
+        try:
+            import psx_undervalued_engine as uve
+            item["disclaimer"] = uve.DISCLAIMER_TEXT
+        except Exception:
+            item["disclaimer"] = "For educational purposes only. Not investment advice."
+
     return item
 
 
@@ -5706,29 +5746,94 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
 
 
 
-        elif parsed_path.path == "/api/undervalued/stocks":
+        elif parsed_path.path in ["/api/undervalued/stocks", "/api/undervalued/export"]:
+            global _LAST_UNDERVALUED_RESCAN_TIME
             import psx_undervalued_engine as uve
+            import time
             query = parse_qs(parsed_path.query)
             verdict = query.get("verdict", ["ALL"])[0]
             sector = query.get("sector", ["ALL"])[0]
+            synergy = query.get("synergy", ["ALL"])[0]
             limit = int(query.get("limit", ["150"])[0])
             force = query.get("force", ["0"])[0] in ["1", "true"]
+            fmt = query.get("format", ["json"])[0].lower()
+
+            now_t = time.time()
+            if force:
+                if (now_t - _LAST_UNDERVALUED_RESCAN_TIME) < _UNDERVALUED_RESCAN_COOLDOWN_SEC:
+                    force = False  # Skip forced rescan if cooldown active
+                else:
+                    _LAST_UNDERVALUED_RESCAN_TIME = now_t
 
             # Ensure data is populated
             existing = uve.get_undervalued_stocks(limit=1)
             if force or not existing:
                 stocks, _ = fetch_stock_data(force=force)
                 uve.run_full_undervalued_scan(stocks)
+                _LAST_UNDERVALUED_RESCAN_TIME = now_t
 
-            items = uve.get_undervalued_stocks(verdict_filter=verdict, sector_filter=sector, limit=limit)
+            if parsed_path.path == "/api/undervalued/export" and "limit" not in query:
+                limit = 1000
+
+            items = uve.get_undervalued_stocks(verdict_filter=verdict, sector_filter=sector, synergy_filter=synergy, limit=limit)
             for it in items:
                 patch_undervalued_item(it)
             macro = uve.get_macro_inputs()
+
+            if fmt == "csv" or (parsed_path.path == "/api/undervalued/export" and fmt == "csv"):
+                import csv
+                import io
+                output = io.StringIO()
+                writer = csv.writer(output)
+                writer.writerow([
+                    "Symbol", "Name", "Sector", "Price", "Verdict", "Confidence", "MarginOfSafetyPct",
+                    "FairValue", "IntrinsicMethod", "HurdleRatePct", "RelativeScore", "PE", "PB",
+                    "DivYieldPct", "EV_EBITDA", "PiotroskiScore", "SynergyBadges", "Flags", "DataGaps", "Disclaimer"
+                ])
+                for it in items:
+                    iv = it.get("intrinsic_valuation") or {}
+                    rm = it.get("relative_metrics") or {}
+                    pio = it.get("piotroski") or {}
+                    badges = "; ".join([t.get("badge", "") for t in it.get("synergy_tags", []) if t.get("badge")])
+                    flags_str = "; ".join(it.get("flags", []))
+                    gaps_str = "; ".join(it.get("data_gaps", []))
+                    writer.writerow([
+                        it.get("ticker") or it.get("symbol", ""),
+                        it.get("name", ""),
+                        it.get("sector", ""),
+                        it.get("price", ""),
+                        it.get("verdict", ""),
+                        it.get("confidence", "Medium"),
+                        iv.get("margin_of_safety_pct", ""),
+                        iv.get("fair_value_per_share", ""),
+                        iv.get("method_used", ""),
+                        iv.get("hurdle_rate_pct", ""),
+                        it.get("relative_score", ""),
+                        rm.get("pe", ""),
+                        rm.get("pb", ""),
+                        rm.get("div_yield_pct", ""),
+                        rm.get("ev_ebitda", ""),
+                        pio.get("f_score", "") if isinstance(pio, dict) else "",
+                        badges,
+                        flags_str,
+                        gaps_str,
+                        it.get("disclaimer", uve.DISCLAIMER_TEXT)
+                    ])
+                csv_bytes = output.getvalue().encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/csv; charset=utf-8")
+                self.send_header("Content-Disposition", 'attachment; filename="psx_undervalued_stocks_export.csv"')
+                self.send_header("Content-Length", str(len(csv_bytes)))
+                self.end_headers()
+                self.wfile.write(csv_bytes)
+                return
+
             self._send_json({
                 "success": True,
                 "stocks": items,
                 "count": len(items),
-                "macro": macro
+                "macro": macro,
+                "disclaimer": uve.DISCLAIMER_TEXT
             })
 
         elif parsed_path.path == "/api/undervalued/stock":
@@ -5748,6 +5853,33 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json({"success": True, "data": stock_val})
             else:
                 self._send_json({"success": False, "error": "Stock not found in valuation engine."}, 404)
+
+        elif parsed_path.path == "/api/undervalued/macro":
+            import psx_undervalued_engine as uve
+            macro = uve.get_macro_inputs()
+            self._send_json({"success": True, "macro": macro})
+
+        elif parsed_path.path == "/api/undervalued/history":
+            import psx_undervalued_engine as uve
+            query = parse_qs(parsed_path.query)
+            symbol = query.get("symbol", [""])[0]
+            if not symbol:
+                self._send_json({"success": False, "error": "Symbol parameter required."}, 400)
+                return
+            limit = int(query.get("limit", ["50"])[0])
+            history = uve.get_stock_valuation_history(symbol, limit=limit)
+            self._send_json({"success": True, "symbol": symbol.upper(), "history": history, "count": len(history)})
+
+        elif parsed_path.path == "/api/undervalued/backtest":
+            try:
+                import valuation_backtester as vb
+                query = parse_qs(parsed_path.query)
+                force = query.get("force", ["0"])[0] in ["1", "true"]
+                fwd_days = int(query.get("forward_days", ["45"])[0])
+                res = vb.run_purged_backtest(forward_days=fwd_days, use_cache=not force)
+                self._send_json(res)
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 500)
 
         elif parsed_path.path == "/api/tabs/status":
 
@@ -6119,10 +6251,22 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 print(f"[WeeklyScan] Error during rescan: {e}")
         elif self.path in ["/api/undervalued/rescan", "/api/undervalued/scan"]:
+            global _LAST_UNDERVALUED_RESCAN_TIME
+            now_t = time.time()
+            if (now_t - _LAST_UNDERVALUED_RESCAN_TIME) < _UNDERVALUED_RESCAN_COOLDOWN_SEC:
+                remaining = int(_UNDERVALUED_RESCAN_COOLDOWN_SEC - (now_t - _LAST_UNDERVALUED_RESCAN_TIME))
+                self._send_json({
+                    "success": False,
+                    "error": f"Rate limit active: Valuation rescan is allowed once every 60 seconds. Please retry in {remaining} seconds.",
+                    "cooldown_remaining_sec": remaining
+                }, 429)
+                return
+
             try:
                 import psx_undervalued_engine as uve
                 stocks, _ = fetch_stock_data(force=True)
                 results, summary = uve.run_full_undervalued_scan(stocks)
+                _LAST_UNDERVALUED_RESCAN_TIME = time.time()
                 self._send_json({
                     "success": True,
                     "count": len(results),
@@ -6131,6 +6275,15 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 })
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif self.path == "/api/undervalued/macro":
+            try:
+                import psx_undervalued_engine as uve
+                body = json.loads(post_data.decode("utf-8")) if post_data else {}
+                macro = uve.update_macro_anchors(body)
+                self._send_json({"success": True, "macro": macro, "message": "Macro anchors updated successfully."})
+            except Exception as e:
+                self._send_json({"success": False, "error": str(e)}, 400)
 
         elif self.path.startswith("/api/weekly-scan/candidates/") and self.path.endswith("/status"):
 

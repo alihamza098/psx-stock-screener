@@ -82,9 +82,10 @@ def calculate_piotroski_fscore(symbol: str) -> Dict[str, Any]:
         points["positive_cfo"] = 1
         rationales.append("Strong operational cash flow indicated by dividend payout / solid ROE")
 
-    # 3. ROA Expansion
-    # Check multi-year revenue from financials.json
+    # 3. ROA Expansion & Efficiency (YoY components)
     rev_years = sorted(list(fin_history.keys())) if isinstance(fin_history, dict) else []
+    is_new_listing = len(rev_years) < 2 or stock_info.get("is_new_listing", False)
+
     if len(rev_years) >= 2:
         latest_rev = float(fin_history.get(rev_years[-1], 0) or 0)
         prev_rev = float(fin_history.get(rev_years[-2], 0) or 0)
@@ -109,24 +110,40 @@ def calculate_piotroski_fscore(symbol: str) -> Dict[str, Any]:
 
     total_score = sum(points.values())
 
-    if total_score >= 7:
-        verdict = "STRONG_VALUE"
-        label = "High Fundamental Quality (Safe)"
-        color = "green"
-    elif total_score >= 4:
-        verdict = "MODERATE_QUALITY"
-        label = "Average Quality (Neutral)"
-        color = "yellow"
+    if is_new_listing:
+        # Normalized Denominator for newly-listed companies (< 2 years history)
+        # 3 YoY factors (margin_expansion, turnover_expansion, roa_expansion YoY) are skipped
+        max_score = 6
+        pct = (total_score / max_score) * 100.0
+        if pct >= 66.0:
+            verdict = "NEW_LISTING_HEALTHY"
+            label = f"Newly Listed — Healthy Accounting ({total_score}/{max_score})"
+            color = "green"
+        else:
+            verdict = "NEW_LISTING_INSUFFICIENT_HISTORY"
+            label = f"Newly Listed (< 2 Yrs History — Score {total_score}/{max_score})"
+            color = "blue"
     else:
-        verdict = "VALUE_TRAP"
-        label = "Value Trap Warning (Weak Accounting Health)"
-        color = "red"
+        max_score = 9
+        if total_score >= 7:
+            verdict = "STRONG_VALUE"
+            label = "High Fundamental Quality (Safe)"
+            color = "green"
+        elif total_score >= 4:
+            verdict = "MODERATE_QUALITY"
+            label = "Average Quality (Neutral)"
+            color = "yellow"
+        else:
+            verdict = "VALUE_TRAP"
+            label = "Value Trap Warning (Weak Accounting Health)"
+            color = "red"
 
     return {
         "symbol": sym_u,
         "f_score": total_score,
         "score": total_score,
-        "max_score": 9,
+        "max_score": max_score,
+        "is_new_listing": is_new_listing,
         "verdict": verdict,
         "label": label,
         "color": color,

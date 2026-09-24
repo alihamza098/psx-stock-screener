@@ -1522,6 +1522,12 @@
                     <span class="uv-meta-text" id="uv-last-scanned-text">Updated automatically</span>
                 </div>
                 <div class="uv-action-right">
+                    <a href="/api/undervalued/export?format=csv" target="_blank" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px; gap:6px; text-decoration:none;" title="Download full dataset with sub-scores as CSV">
+                        <span>📥 Export CSV</span>
+                    </a>
+                    <a href="/api/undervalued/export?format=json" target="_blank" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px; gap:6px; text-decoration:none;" title="View raw unstripped valuation JSON">
+                        <span>📋 Export JSON</span>
+                    </a>
                     <button class="btn btn-secondary" onclick="openUndervaluedMethodologyModal()" style="font-size:0.8rem; padding:6px 12px; gap:6px;">
                         <span>📘 Valuation Methodology</span>
                     </button>
@@ -1576,6 +1582,16 @@
                         <label>Sector:</label>
                         <select id="uv-sector-filter" onchange="applyUndervaluedFilters()">
                             <option value="ALL">All Sectors</option>
+                        </select>
+                    </div>
+                    <div class="uv-filter-group">
+                        <label>Synergy:</label>
+                        <select id="uv-synergy-filter" onchange="applyUndervaluedFilters()">
+                            <option value="ALL">All Synergy Signals</option>
+                            <option value="PRIME_COMPOUNDER">⭐ Prime Compounder</option>
+                            <option value="HIGH_CONVICTION">🎯 High Conviction</option>
+                            <option value="VALUE_TRAP_CAUTION">⚠️ Value Trap Caution</option>
+                            <option value="OVERVALUED_MOMENTUM_TRAP">🚨 Momentum Trap Risk</option>
                         </select>
                     </div>
                     <div class="uv-filter-group">
