@@ -5296,6 +5296,71 @@ body {
     border: 1px solid rgba(96, 165, 250, 0.3);
 }
 
+.live-float-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: var(--radius-full);
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Dedicated Key Fundamentals & Free Float Strip */
+.live-float-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+.float-stat-item {
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.float-stat-item:hover {
+    border-color: rgba(56, 189, 248, 0.4);
+    transform: translateY(-1px);
+}
+
+.float-stat-item.highlight-float {
+    background: linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(15, 23, 42, 0.7) 100%);
+    border-color: rgba(56, 189, 248, 0.4);
+}
+
+.float-stat-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.float-stat-value {
+    font-size: 1.15rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.float-stat-sub {
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+}
+
 .live-company-name {
     font-size: 1rem;
     color: var(--text-secondary);
@@ -11300,7 +11365,7 @@ body {
 /* Metrics Mini Grid */
 .uv-metrics-mini {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 8px;
     margin-bottom: 12px;
 }
@@ -12760,7 +12825,7 @@ body {
 
 .daily-opp-pricing {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 8px;
     background: rgba(15, 23, 42, 0.6);
     border-radius: 6px;

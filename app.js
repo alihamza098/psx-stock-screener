@@ -155,6 +155,53 @@ function formatChange(val) {
     return prefix + val.toFixed(2) + "%";
 }
 
+function getStockFreeFloatInfo(stock) {
+    if (!stock) return { shares: 0, pct: 0, formattedShares: "—", formattedPct: "—", mcapFloat: 0, formattedMcapFloat: "—", totalShares: 0, formattedTotalShares: "—" };
+    
+    // Look up in STOCKS cache if stock is only partial (e.g. from a sub-engine or ticker symbol)
+    let baseStock = stock;
+    const sym = stock.symbol || stock.ticker;
+    if ((!stock.freeFloat || !stock.mcap) && sym && typeof STOCKS !== "undefined" && Array.isArray(STOCKS)) {
+        const found = STOCKS.find(s => s.symbol === sym);
+        if (found) {
+            baseStock = { ...found, ...stock };
+        }
+    }
+    
+    const ffShares = Number(baseStock.freeFloat || baseStock.free_float || baseStock.free_float_shares) || 0;
+    const price = Number(baseStock.price || baseStock.current_price) || 0;
+    const mcap = Number(baseStock.mcap || baseStock.market_cap) || 0;
+    
+    let totalShares = 0;
+    if (baseStock.shares_outstanding && Number(baseStock.shares_outstanding) > 0) {
+        totalShares = Number(baseStock.shares_outstanding);
+    } else if (mcap > 0 && price > 0) {
+        totalShares = mcap / price;
+    }
+    
+    let pct = 0;
+    if (baseStock.free_float_pct !== undefined && baseStock.free_float_pct !== null && Number(baseStock.free_float_pct) > 0) {
+        pct = Number(baseStock.free_float_pct);
+    } else if (totalShares > 0 && ffShares > 0) {
+        pct = (ffShares / totalShares) * 100;
+    }
+    
+    if (pct > 100) pct = 100;
+    
+    const mcapFloat = (ffShares > 0 && price > 0) ? (ffShares * price) : (mcap > 0 && pct > 0 ? (mcap * pct / 100) : 0);
+    
+    return {
+        shares: ffShares,
+        pct: pct,
+        formattedShares: ffShares > 0 ? formatVolume(ffShares) : "—",
+        formattedPct: pct > 0 ? pct.toFixed(1) + "%" : "—",
+        mcapFloat: mcapFloat,
+        formattedMcapFloat: mcapFloat > 0 ? ("₨" + formatMcap(mcapFloat)) : "—",
+        totalShares: totalShares,
+        formattedTotalShares: totalShares > 0 ? formatVolume(totalShares) : "—"
+    };
+}
+
 // ─── Data Fetching ───
 async function fetchLiveData(isAutoRefresh = false, isForce = false) {
     if (isLoading) return;
@@ -554,8 +601,10 @@ function sortStocks(stocks) {
         let valA = a[key];
         let valB = b[key];
         if (key === "symbol") {
-            return direction === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            return direction === "asc" ? (valA || "").localeCompare(valB || "") : (valB || "").localeCompare(valA || "");
         }
+        valA = (valA !== undefined && valA !== null) ? Number(valA) : -Infinity;
+        valB = (valB !== undefined && valB !== null) ? Number(valB) : -Infinity;
         return direction === "asc" ? valA - valB : valB - valA;
     });
 }
@@ -564,7 +613,7 @@ function sortStocks(stocks) {
 function renderTable(stocks) {
     const tbody = document.getElementById("table-body");
     if (stocks.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:48px; color:var(--text-tertiary);">No stocks match your criteria. Try adjusting filters.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding:48px; color:var(--text-tertiary);">No stocks match your criteria. Try adjusting filters.</td></tr>`;
         return;
     }
 
@@ -573,6 +622,7 @@ function renderTable(stocks) {
         const yearChangeClass = stock.yearChange >= 0 ? "positive" : "negative";
         const scoreClass = getScoreClass(stock.score);
         const isWatched = watchlist.has(stock.symbol);
+        const ffInfo = getStockFreeFloatInfo(stock);
 
         return `
         <tr class="row-animate" style="animation-delay:${Math.min(i * 0.02, 1)}s" data-symbol="${stock.symbol}">
@@ -585,6 +635,7 @@ function renderTable(stocks) {
 
             <td class="cell-change ${yearChangeClass}">${formatChange(stock.yearChange)}</td>
             <td class="cell-mcap">${formatMcap(stock.mcap)}</td>
+            <td class="cell-metric" title="Free Float: ${ffInfo.formattedShares} shares (${ffInfo.formattedPct} of total shares) • Float Cap: ${ffInfo.formattedMcapFloat}">${ffInfo.formattedShares} <small style="color:var(--text-tertiary); font-size:0.7rem;">(${ffInfo.formattedPct})</small></td>
             <td class="cell-metric">${stock.pe > 0 ? stock.pe.toFixed(1) : '—'}</td>
             <td class="cell-metric ${stock.divYield >= 5 ? "positive" : ""}">${stock.divYield > 0 ? stock.divYield.toFixed(1) + '%' : '—'}</td>
             <td class="cell-volume">${formatVolume(stock.volume)}</td>
@@ -604,6 +655,7 @@ function renderCards(stocks) {
         const changeClass = stock.change >= 0 ? "positive" : "negative";
         const scoreClass = getScoreClass(stock.score);
         const isWatched = watchlist.has(stock.symbol);
+        const ffInfo = getStockFreeFloatInfo(stock);
         const scoreColor = scoreClass === "excellent" ? "var(--accent-emerald)" :
                           scoreClass === "good" ? "var(--accent-cyan)" :
                           scoreClass === "average" ? "var(--accent-amber)" : "var(--accent-rose)";
@@ -644,7 +696,7 @@ function renderCards(stocks) {
                 </div>
                 <div class="card-metric">
                     <div class="card-metric-label">Free Float</div>
-                    <div class="card-metric-value">${formatVolume(stock.freeFloat)}</div>
+                    <div class="card-metric-value" title="Free Float: ${ffInfo.formattedShares} (${ffInfo.formattedPct}) • Val: ${ffInfo.formattedMcapFloat}">${ffInfo.formattedShares} <small style="font-size:0.68rem; color:var(--text-tertiary);">(${ffInfo.formattedPct})</small></div>
                 </div>
             </div>
             <div class="card-footer">
@@ -736,6 +788,7 @@ async function showDetail(symbol) {
     const breakdown = getScoreBreakdown(stock);
     const scoreClass = getScoreClass(score);
     const changeClass = stock.change >= 0 ? "positive" : "negative";
+    const ffInfo = getStockFreeFloatInfo(stock);
 
     const barColor = scoreClass === "excellent" ? "var(--accent-emerald)" :
                     scoreClass === "good" ? "var(--accent-cyan)" :
@@ -786,7 +839,11 @@ async function showDetail(symbol) {
                 </div>
                 <div class="detail-metric">
                     <div class="detail-metric-label">Free Float</div>
-                    <div class="detail-metric-value">${formatVolume(stock.freeFloat)}</div>
+                    <div class="detail-metric-value" title="${ffInfo.formattedShares} shares (${ffInfo.formattedPct})">${ffInfo.formattedShares} <span style="font-size:0.75rem; color:var(--text-tertiary);">(${ffInfo.formattedPct})</span></div>
+                </div>
+                <div class="detail-metric">
+                    <div class="detail-metric-label">Float Market Value</div>
+                    <div class="detail-metric-value" style="color:#38bdf8;">${ffInfo.formattedMcapFloat}</div>
                 </div>
             </div>
         </div>
@@ -2671,6 +2728,7 @@ function renderDailyOpportunities() {
         const target = parseFloat(c.target_price || 0).toFixed(2);
         const stop = parseFloat(c.stop_loss || 0).toFixed(2);
         const curPx = parseFloat(c.current_price || entry).toFixed(2);
+        const ffInfo = getStockFreeFloatInfo(c);
 
         // PnL display
         let pnlHtml = "";
@@ -2717,6 +2775,10 @@ function renderDailyOpportunities() {
                     <div class="opp-price-col">
                         <span class="opp-price-label">Stop</span>
                         <span class="opp-price-val stop">₨${stop}</span>
+                    </div>
+                    <div class="opp-price-col">
+                        <span class="opp-price-label">Float</span>
+                        <span class="opp-price-val" style="color:#38bdf8;" title="Free Float: ${ffInfo.formattedShares} (${ffInfo.formattedPct})">${ffInfo.formattedShares}</span>
                     </div>
                 </div>
 
@@ -5686,6 +5748,8 @@ function renderLiveTrading(data) {
         else mtfBadgeCls = "mtf-summary-neutral";
     }
 
+    const ffInfo = getStockFreeFloatInfo(stock);
+
     let html = `
     <!-- Top Hero Section: Stock Quote + Recommendation Badge -->
     <div class="live-hero-card">
@@ -5694,6 +5758,7 @@ function renderLiveTrading(data) {
                 <span class="live-symbol">${stock.symbol}</span>
                 <span class="live-sector-badge">${stock.sector}</span>
                 ${stock.isKSE100 ? '<span class="kse100-badge">KSE-100</span>' : ''}
+                <span class="live-float-badge" title="Free Float: ${ffInfo.formattedShares} shares (${ffInfo.formattedPct} of total shares) • Float Cap: ${ffInfo.formattedMcapFloat}">🌊 Float: ${ffInfo.formattedShares} (${ffInfo.formattedPct})</span>
                 ${psxIntel && psxIntel.sector_context && psxIntel.sector_context.peer_count > 0 ? `
                     <span class="live-sector-alpha-badge ${psxIntel.sector_context.relative_strength >= 1.0 ? 'alpha-pos' : (psxIntel.sector_context.relative_strength <= -1.0 ? 'alpha-neg' : 'alpha-neu')}" title="${psxIntel.sector_context.tag || ''}">
                         ${psxIntel.sector_context.relative_strength >= 1.0 ? '🚀 +' : (psxIntel.sector_context.relative_strength <= -1.0 ? '🔻 ' : '⚖️ ')}${psxIntel.sector_context.relative_strength >= 0 ? '+' : ''}${parseFloat(psxIntel.sector_context.relative_strength || 0).toFixed(2)}% vs ${stock.sector || 'Sector'}
@@ -5741,6 +5806,60 @@ function renderLiveTrading(data) {
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                 <span>${rec.recommendation.includes('SELL') ? 'Execute Paper Sell' : 'Execute Paper Buy'}</span>
             </button>
+        </div>
+    </div>
+
+    <!-- Dedicated Key Fundamentals & Free Float Metrics Strip -->
+    <div class="live-float-strip">
+        <div class="float-stat-item highlight-float">
+            <div class="float-stat-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                <span>Free Float (Shares)</span>
+            </div>
+            <div class="float-stat-value" style="color:#38bdf8;">${ffInfo.formattedShares}</div>
+            <div class="float-stat-sub">${ffInfo.formattedPct} of total shares</div>
+        </div>
+
+        <div class="float-stat-item">
+            <div class="float-stat-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+                <span>Float Market Value</span>
+            </div>
+            <div class="float-stat-value" style="color:#38bdf8;">${ffInfo.formattedMcapFloat}</div>
+            <div class="float-stat-sub">Tradable float capital</div>
+        </div>
+
+        <div class="float-stat-item">
+            <div class="float-stat-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                <span>Total Market Cap</span>
+            </div>
+            <div class="float-stat-value">₨${formatMcap(stock.mcap)}</div>
+            <div class="float-stat-sub">${ffInfo.formattedTotalShares} total shares</div>
+        </div>
+
+        <div class="float-stat-item">
+            <div class="float-stat-label">
+                <span>P/E Ratio (TTM)</span>
+            </div>
+            <div class="float-stat-value">${stock.pe > 0 ? stock.pe.toFixed(1) + 'x' : '—'}</div>
+            <div class="float-stat-sub">${stock.pe > 0 ? (stock.pe < 8.5 ? 'Value multiple' : 'Growth multiple') : 'Negative/N/A'}</div>
+        </div>
+
+        <div class="float-stat-item">
+            <div class="float-stat-label">
+                <span>Dividend Yield</span>
+            </div>
+            <div class="float-stat-value ${stock.divYield >= 5 ? 'positive' : ''}">${stock.divYield > 0 ? stock.divYield.toFixed(1) + '%' : '0.0%'}</div>
+            <div class="float-stat-sub">${stock.divYield >= 8.0 ? 'High cash payout' : 'Annual distribution'}</div>
+        </div>
+
+        <div class="float-stat-item">
+            <div class="float-stat-label">
+                <span>30D Avg Volume</span>
+            </div>
+            <div class="float-stat-value">${formatVolume(stock.volume)}</div>
+            <div class="float-stat-sub">${stock.volume > 0 && ffInfo.shares > 0 ? (stock.volume / ffInfo.shares * 100).toFixed(2) + '% of float/day' : 'Turnover'}</div>
         </div>
     </div>
 
@@ -10150,6 +10269,7 @@ function filterAndRenderWeeklyCandidates() {
 
         // Live Stock Quote for Buy Zone check
         const liveStock = (typeof STOCKS !== "undefined" && STOCKS) ? STOCKS.find(s => s.symbol === c.symbol) : null;
+        const ffInfo = getStockFreeFloatInfo(liveStock || c);
         const currentLivePrice = liveStock ? liveStock.price : entry;
         let zoneBadgeHtml = `<span class="zone-status-badge in-buy">🟢 IN BUY ZONE</span>`;
         if (currentLivePrice > entryMax) {
@@ -10182,7 +10302,7 @@ function filterAndRenderWeeklyCandidates() {
                 <div class="candidate-symbol-block">
                     <button class="star-btn ${isWatched ? 'active' : ''}" data-star="${c.symbol}" title="Watchlist">${isWatched ? '★' : '☆'}</button>
                     <div class="candidate-symbol" onclick="showDetail('${c.symbol}')" style="cursor: pointer;">${c.symbol}</div>
-                    <div class="candidate-sector">${c.sector}</div>
+                    <div class="candidate-sector">${c.sector} • <span style="color:#38bdf8;" title="Free Float: ${ffInfo.formattedShares} shares (${ffInfo.formattedPct})">Float: ${ffInfo.formattedShares} (${ffInfo.formattedPct})</span></div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                     ${shariahBadge}
@@ -10243,6 +10363,7 @@ function filterAndRenderWeeklyCandidates() {
                 </div>
                 <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #94a3b8;">
                     <span>Position Size: <strong style="color: #fff;">${sizing.recommendedShares.toLocaleString()} Shares</strong></span>
+                    <span>Free Float: <strong style="color: #38bdf8;">${ffInfo.formattedShares}</strong> <small style="color: #64748b;">(${ffInfo.formattedPct})</small></span>
                     <span title="Expected execution duration">Exit Speed: <strong style="color: #38bdf8;">${sizing.exitTimeEst}</strong></span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; background: rgba(0,0,0,0.25); padding: 4px 8px; border-radius: 4px;">
@@ -12863,6 +12984,7 @@ function renderUndervaluedCards(items) {
         const iv = stock.intrinsic_valuation || {};
         const rm = stock.relative_metrics || {};
         const vs = rm.vs_sector || {};
+        const ffInfo = getStockFreeFloatInfo(stock);
 
         const priceFmt = stock.price ? `₨${stock.price.toFixed(2)}` : "—";
         const fvFmt = (iv.fair_value_per_share && iv.fair_value_per_share > 0) ? `₨${iv.fair_value_per_share.toFixed(2)}` : "—";
@@ -12916,6 +13038,10 @@ function renderUndervaluedCards(items) {
                     <span class="uv-m-lbl">Dividend Yield</span>
                     <span class="uv-m-val" style="color:#10b981;">${dyFmt}</span>
                 </div>
+                <div class="uv-metric-col">
+                    <span class="uv-m-lbl">Free Float</span>
+                    <span class="uv-m-val" style="color:#38bdf8;">${ffInfo.formattedShares} <small style="font-size:0.65rem; color:var(--text-tertiary);">(${ffInfo.formattedPct})</small></span>
+                </div>
             </div>
 
             <div class="uv-score-section">
@@ -12951,7 +13077,7 @@ function renderUndervaluedTable(items) {
     if (!tbody) return;
 
     if (items.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:32px;">No stocks match your filter criteria.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:32px;">No stocks match your filter criteria.</td></tr>`;
         return;
     }
 
@@ -12959,6 +13085,7 @@ function renderUndervaluedTable(items) {
         const iv = stock.intrinsic_valuation || {};
         const rm = stock.relative_metrics || {};
         const vs = rm.vs_sector || {};
+        const ffInfo = getStockFreeFloatInfo(stock);
 
         const priceFmt = stock.price ? `₨${stock.price.toFixed(2)}` : "—";
         const fvFmt = (iv.fair_value_per_share && iv.fair_value_per_share > 0) ? `₨${iv.fair_value_per_share.toFixed(2)}` : "—";
@@ -12977,6 +13104,7 @@ function renderUndervaluedTable(items) {
             <td><span style="font-size:0.75rem; color:var(--text-tertiary);">${getModelPrettyName(iv.method_used)}</span></td>
             <td>${rm.pe ? `${rm.pe.toFixed(1)}x` : '—'}</td>
             <td style="color:#10b981; font-weight:700;">${rm.div_yield_pct ? `${rm.div_yield_pct.toFixed(1)}%` : '0.0%'}</td>
+            <td class="cell-metric">${ffInfo.formattedShares} <small>(${ffInfo.formattedPct})</small></td>
             <td>${getVerdictBadgeHTML(stock.verdict)}</td>
             <td>
                 <button class="btn btn-ghost btn-sm" onclick="openUndervaluedDetailModal('${stock.ticker}')" style="font-size:0.75rem; padding:4px 8px;">
@@ -13033,6 +13161,7 @@ async function openUndervaluedDetailModal(symbol) {
             const iv = s.intrinsic_valuation || {};
             const rm = s.relative_metrics || {};
             const vs = rm.vs_sector || {};
+            const ffInfo = getStockFreeFloatInfo(s);
 
             if (title) title.textContent = `${s.ticker} (${s.name || s.ticker}) — Valuation Audit`;
             if (subtitle) subtitle.innerHTML = `${s.sector} | Market Price: <strong style="color:#38bdf8;">₨${(s.price || 0).toFixed(2)}</strong> <span style="display:inline-flex; align-items:center; gap:4px; font-size:0.7rem; padding:2px 6px; border-radius:4px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); margin-left:6px;"><span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#10b981;"></span>LIVE DPS SYNC</span>`;
@@ -13071,6 +13200,8 @@ async function openUndervaluedDetailModal(symbol) {
                         <tr><td>P/B Ratio</td><td>${rm.pb ? `${rm.pb.toFixed(2)}x` : '—'}</td></tr>
                         <tr><td>Dividend Yield</td><td style="color:#10b981;">${rm.div_yield_pct ? `${rm.div_yield_pct.toFixed(2)}%` : '0.0%'}</td></tr>
                         <tr><td>EV / EBITDA</td><td>${rm.ev_ebitda ? `${rm.ev_ebitda.toFixed(2)}x` : '—'}</td></tr>
+                        <tr><td>Free Float</td><td style="color:#38bdf8; font-weight:700;">${ffInfo.formattedShares} (${ffInfo.formattedPct})</td></tr>
+                        <tr><td>Float Mkt Value</td><td style="color:#38bdf8;">${ffInfo.formattedMcapFloat}</td></tr>
                         <tr><td>Relative Value Score</td><td style="color:#34d399; font-weight:900;">${s.relative_score || 0} / 100</td></tr>
                     </table>
                 </div>

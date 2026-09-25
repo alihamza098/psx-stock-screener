@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=2.4">
+    <link rel="stylesheet" href="styles.css?v=2.6">
 </head>
 <body>
     <!-- Animated background -->
@@ -516,6 +516,7 @@
                             <th class="sortable" data-sort="change">Change % <span class="sort-icon">⇅</span></th>
                             <th class="sortable" data-sort="yearChange">1Y Ch. % <span class="sort-icon">⇅</span></th>
                             <th class="sortable" data-sort="mcap">Market Cap <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort="freeFloat">Free Float <span class="sort-icon">⇅</span></th>
                             <th class="sortable" data-sort="pe">P/E <span class="sort-icon">⇅</span></th>
                             <th class="sortable" data-sort="divYield">Div Yield <span class="sort-icon">⇅</span></th>
                             <th class="sortable" data-sort="volume">30D Vol <span class="sort-icon">⇅</span></th>
@@ -523,7 +524,7 @@
                         </tr>
                     </thead>
                     <tbody id="table-body">
-                        <tr><td colspan="12" style="text-align:center; padding:48px; color:var(--text-tertiary);">Loading live data...</td></tr>
+                        <tr><td colspan="13" style="text-align:center; padding:48px; color:var(--text-tertiary);">Loading live data...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -1651,12 +1652,13 @@
                             <th>Valuation Model</th>
                             <th>P/E vs Sector</th>
                             <th>Div Yield</th>
+                            <th>Free Float</th>
                             <th>Verdict</th>
                             <th>Analysis</th>
                         </tr>
                     </thead>
                     <tbody id="uv-table-body">
-                        <tr><td colspan="11" style="text-align:center; padding:32px;">Loading data...</td></tr>
+                        <tr><td colspan="12" style="text-align:center; padding:32px;">Loading data...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -2979,7 +2981,7 @@
     </div>
 
     <script src="lightweight-charts.standalone.production.js"></script>
-    <script src="app.js?v=3.8"></script>
+    <script src="app.js?v=4.0"></script>
     <!-- Real-Time SSE Intraday Alert Toasts Container -->
     <div id="sse-toast-container" class="sse-toast-container"></div>
 
