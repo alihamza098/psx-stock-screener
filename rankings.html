@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Long-term Rankings — PSX Screener</title>
+<style>
+  :root {
+    --bg: #0b0f19; --panel: #111827; --panel-2: #0f172a; --border: #1f2937;
+    --text: #e5e7eb; --muted: #94a3b8; --accent: #34d399; --pass: #22c55e; --fail: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+  a { color: var(--accent); }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .sub { color: var(--muted); margin: 0 0 20px; max-width: 800px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .kpi { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .kpi .l { color: var(--muted); font-size: 12px; } .kpi .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: rgba(52,211,153,.12); color: var(--accent); border-radius: 999px; padding: 3px 10px; font-weight: 600; font-size: 13px; }
+  button { background: var(--accent); color: #052e1c; border: 0; border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; }
+  input[type=search] { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 10px; min-width: 200px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; font-size: 13px; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; cursor: default; }
+  th.l, td.l { text-align: left; }
+  tr.pick td { background: rgba(52,211,153,.06); }
+  .bar { display: inline-block; height: 6px; border-radius: 3px; background: var(--accent); vertical-align: middle; margin-left: 6px; }
+  .pos { color: var(--pass); } .neg { color: var(--fail); }
+  .empty { color: var(--muted); padding: 16px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row">
+    <div>
+      <h1>Long-term Rankings</h1>
+      <p class="sub">Every liquid stock ranked by a Quality-Value-Momentum (QVM) score. Each column is a 0–100 percentile against the other stocks.
+        Earnings yield is compared within the stock's own sector. Stocks with missing or loss-making results are left out rather than guessed.
+        The highlighted rows are this month's model portfolio. Check the Strategy Lab verdict before relying on it.</p>
+    </div>
+    <div style="text-align:right">
+      <button onclick="refreshFundamentals()">Refresh fundamentals</button>
+      <div class="muted" id="fund-status"></div>
+      <div class="muted"><a href="/desk">Trade Desk →</a> · <a href="/research">Strategy Lab →</a></div>
+    </div>
+  </div>
+  <div id="content"><div class="card empty">Loading…</div></div>
+  <p class="muted"><a href="/">← Back to screener</a> · Educational tool, not investment advice.</p>
+</div>
+<script>
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = (v, d = 1) => (v === null || v === undefined || isNaN(v)) ? "—" : Number(v).toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+const pctTxt = (v) => (v === null || v === undefined) ? "—" : `<span class="${v > 0 ? "pos" : v < 0 ? "neg" : ""}">${v > 0 ? "+" : ""}${num(v * 100, 1)}%</span>`;
+const FAC = [["value_earnings_yield", "Value"], ["quality_consistency", "Consistency"], ["quality_stability", "Stability"],
+             ["growth_sales", "Sales growth"], ["growth_eps", "EPS growth"], ["momentum_12_1", "Momentum"]];
+let DATA = null;
+
+function rows(filter) {
+  const picks = new Set(DATA.model_portfolio || []);
+  const q = (filter || "").trim().toUpperCase();
+  return DATA.rankings.filter(r => !q || r.symbol.includes(q) || (r.sector || "").toUpperCase().includes(q) || (r.name || "").toUpperCase().includes(q))
+    .map(r => `<tr class="${picks.has(r.symbol) ? "pick" : ""}">
+      <td>${r.rank}</td><td class="l"><b>${esc(r.symbol)}</b><div class="muted">${esc(r.name || "")}</div></td><td class="l muted">${esc(r.sector)}</td>
+      <td><b>${num(r.score)}</b><span class="bar" style="width:${Math.round(r.score / 2)}px"></span></td>
+      ${FAC.map(([k]) => `<td>${r.percentiles[k] === undefined ? "—" : num(r.percentiles[k], 0)}</td>`).join("")}
+      <td>${num(r.price, 2)}</td><td>FY${esc(r.fiscal_year)} · ${num(r.eps, 2)}</td><td>${pctTxt(r.raw.value_earnings_yield)}</td>
+      <td>${pctTxt(r.raw.momentum_12_1)}</td><td>${num(r.coverage_pct, 0)}%</td></tr>`).join("");
+}
+
+function render() {
+  const el = document.getElementById("content");
+  if (!DATA || !DATA.success) {
+    el.innerHTML = `<div class="card empty">${esc(DATA && DATA.error ? DATA.error : "No rankings yet.")} Rankings are rebuilt after every market close. If fundamentals have never been fetched, press “Refresh fundamentals” first.</div>`;
+    return;
+  }
+  const w = DATA.weights || {};
+  el.innerHTML = `
+    <div class="card"><div class="kpis">
+      <div class="kpi"><div class="l">As of close</div><div class="v">${esc(DATA.as_of)}</div></div>
+      <div class="kpi"><div class="l">Ranked / universe</div><div class="v">${DATA.ranked} / ${DATA.universe}</div></div>
+      <div class="kpi"><div class="l">Model portfolio</div><div class="v">top ${DATA.portfolio_rules.top_n}, ≤ ${DATA.portfolio_rules.max_per_sector} per sector</div></div>
+      <div class="kpi"><div class="l">Shariah only</div><div class="v">${DATA.shariah_only ? "Yes" : "No"}</div></div>
+    </div>
+    <p class="muted">Weights: ${FAC.map(([k, l]) => `${l} ${Math.round((w[k] || 0) * 100)}%`).join(" · ")}. ${esc(DATA.availability_rule)} — no look-ahead.</p></div>
+    <div class="card"><h2>This month's model portfolio</h2>
+      <div class="chips">${(DATA.model_portfolio || []).map(s => `<span class="chip">${esc(s)}</span>`).join("") || '<span class="muted">No stock qualifies.</span>'}</div>
+      <p class="muted">Equal weight (≈ PKR ${num(500000 / (DATA.portfolio_rules.top_n || 10), 0)} each on PKR 5 lakh). It rebalances on the first trading day of each month, and a holding is sold once it drops out of the top ${DATA.portfolio_rules.keep_n}. Orders appear on the Trade Desk.</p></div>
+    <div class="card"><div class="row"><h2>All ranked stocks</h2><input type="search" id="q" placeholder="Filter symbol, name or sector" oninput="document.getElementById('tb').innerHTML = rows(this.value)"></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>#</th><th class="l">Stock</th><th class="l">Sector</th><th>QVM score</th>${FAC.map(([, l]) => `<th>${l}</th>`).join("")}
+          <th>Price</th><th>Latest EPS</th><th>Earnings yield</th><th>12-1 return</th><th>Data</th></tr></thead>
+        <tbody id="tb">${rows("")}</tbody>
+      </table></div></div>`;
+}
+
+async function load() {
+  try { DATA = await (await fetch("/api/longterm/rankings")).json(); } catch (e) { DATA = { success: false, error: String(e) }; }
+  const f = DATA.fundamentals_refresh || {};
+  document.getElementById("fund-status").textContent = f.running ? `Refreshing… ${f.progress || ""}` :
+    (f.result ? (f.result.error ? `Last refresh failed: ${f.result.error}` : `Last refresh: ${f.result.symbols} stocks, ${f.result.failed} failed`) : "Auto-refresh every Sunday.");
+  render();
+}
+
+async function refreshFundamentals() {
+  let secret = sessionStorage.getItem("psx_admin_secret") || prompt("Admin secret:") || "";
+  if (!secret) return;
+  const res = await fetch("/api/longterm/refresh-fundamentals", { method: "POST", headers: { "X-Admin-Secret": secret } });
+  if (res.status === 401) { sessionStorage.removeItem("psx_admin_secret"); alert("Wrong admin secret."); return; }
+  sessionStorage.setItem("psx_admin_secret", secret);
+  const b = await res.json().catch(() => ({}));
+  if (!b.success) alert(b.error || "Could not start.");
+  load();
+}
+load();
+</script>
+</body>
+</html>

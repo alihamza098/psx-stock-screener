@@ -130,6 +130,7 @@ class Strategy:
     description = ""
     horizon = "swing"
     warmup = 60
+    max_positions: Optional[int] = None  # overrides settings["max_positions"] when set
 
     def prepare(self, symbol: str, bars: List[Dict[str, Any]]) -> Dict[str, Any]:
         closes = [b["close"] for b in bars]
@@ -311,7 +312,67 @@ class LiveEngineV2(Strategy):
                 "max_hold": 10, "score": float(res.get("confidence") or 0)}
 
 
+class QualityValueMomentum(Strategy):
+    """Long-term model portfolio: monthly rebalance into the top QVM-ranked stocks (psx_fundamentals)."""
+    name = "qvm_monthly"
+    description = ("Each month hold the top 10 stocks by Quality-Value-Momentum score (point-in-time annual "
+                   "EPS/sales + 12-1 momentum), max 3 per sector; sell when a holding drops out of the top 20.")
+    horizon = "position"
+    warmup = 252
+
+    def __init__(self, store=None, sectors: Optional[Dict[str, str]] = None, cfg: Optional[Dict[str, Any]] = None):
+        import psx_fundamentals as pf
+        self.pf = pf
+        self.cfg = cfg or pf.load_config()
+        self.store = store or pf.get_store()
+        self.sectors = sectors if sectors is not None else pf.sector_map()
+        self.top_n = int(self.cfg["portfolio"]["top_n"])
+        self.keep_n = int(self.cfg["portfolio"]["keep_n"])
+        self.max_positions = self.top_n
+        self._month: Dict[str, Dict[str, Any]] = {}
+
+    def prepare(self, symbol, bars):
+        st = super().prepare(symbol, bars)
+        st["dates"] = [b["date"] for b in bars]
+        return st
+
+    @staticmethod
+    def _month_start(st, i):
+        return i > 0 and st["dates"][i][:7] != st["dates"][i - 1][:7]
+
+    def begin_day(self, date, views):
+        month = date[:7]
+        if month in self._month or not any(self._month_start(st, i) for i, _, st in views.values()):
+            return
+        snaps = {}
+        for sym, (i, bars, st) in views.items():
+            snaps[sym] = {"price": bars[i]["close"], "avg_daily_value": self.pf.avg_daily_value(bars, i),
+                          "mom_12_1": self.pf.momentum_12_1(st["closes"], i),
+                          "sector": self.sectors.get(sym, "Other"),
+                          "annual": self.store.as_of(sym, date, self.cfg["availability_month_day"])}
+        ranked = self.pf.score_universe(snaps, self.cfg, date)
+        self._month[month] = {"rank": {r["symbol"]: r["rank"] for r in ranked},
+                              "target": [r["symbol"] for r in self.pf.select_portfolio(ranked, self.cfg)]}
+
+    def entry(self, symbol, i, bars, st):
+        if not self._month_start(st, i):
+            return None
+        m = self._month.get(st["dates"][i][:7])
+        if not m or symbol not in m["target"]:
+            return None
+        return {"side": "long", "stop": st["closes"][i] * 0.75, "target": None, "max_hold": 400,
+                "score": -m["target"].index(symbol), "weight_pct": 100.0 / self.top_n}
+
+    def exit(self, symbol, i, bars, st, pos):
+        if not self._month_start(st, i):
+            return False
+        m = self._month.get(st["dates"][i][:7])
+        rank = m["rank"].get(symbol) if m else None
+        return rank is None or rank > self.keep_n
+
+
 STRATEGIES: Dict[str, Callable[[], Strategy]] = {
+    "qvm_monthly": QualityValueMomentum,
     "live_engine_v2": LiveEngineV2,
     "breakout_20d": Breakout20,
     "pullback_rsi2": PullbackRsi2,
@@ -364,6 +425,7 @@ def simulate(strategy: Strategy, data: Dict[str, List[Dict[str, Any]]],
     """
     cfg = dict(DEFAULT_SETTINGS, **(settings or {}))
     costs = costs or get_cost_model()
+    max_pos = strategy.max_positions or cfg["max_positions"]
 
     idx: Dict[str, Dict[str, int]] = {}
     states: Dict[str, Dict[str, Any]] = {}
@@ -439,7 +501,7 @@ def simulate(strategy: Strategy, data: Dict[str, List[Dict[str, Any]]],
 
         eq = equity_at(dates[di - 1]) if di else cash
         for sym, sig in pending_entries:
-            if len(positions) >= cfg["max_positions"] or sym in positions:
+            if len(positions) >= max_pos or sym in positions:
                 continue
             j = idx[sym].get(d)
             if j is None or j == 0:
@@ -545,7 +607,7 @@ def simulate(strategy: Strategy, data: Dict[str, List[Dict[str, Any]]],
                 "metrics": compute_metrics(trades, equity_curve, cfg, costs, exposure_days, total_costs),
                 "as_of": last_d, "equity": round(eq, 2), "cash": round(cash, 2),
                 "unsettled": round(sum(a for _, a in unsettled), 2),
-                "open_positions": open_book, "planned_entries": plan[: max(0, cfg["max_positions"] - len(positions) + len(pending_exits))]}
+                "open_positions": open_book, "planned_entries": plan[: max(0, max_pos - len(positions) + len(pending_exits))]}
 
     # mark open positions to market at the end (no exit costs assumed beyond one side)
     if dates:

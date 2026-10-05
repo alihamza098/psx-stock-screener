@@ -48,7 +48,7 @@ LIVE, PAPER, DISABLED = "LIVE", "PAPER", "DISABLED"
 _DEFAULTS: Dict[str, Any] = {
     "capital_pkr": 500000,
     "alerts": {"telegram": True, "force_live": [], "disabled": []},
-    "swing": {"strategies": ["breakout_20d", "pullback_rsi2", "momentum_12_1_monthly", "live_engine_v2"],
+    "swing": {"strategies": ["qvm_monthly", "momentum_12_1_monthly", "breakout_20d", "pullback_rsi2", "live_engine_v2"],
               "risk_per_trade_pct": 1.0, "max_position_pct": 20.0, "max_positions": 5,
               "limit_buffer_pct": 1.0, "universe_size": 100},
     "intraday": {"enabled": True, "strategies": ["orb", "vwap_reclaim"], "universe_size": 30,

@@ -31,3 +31,4 @@ cache/market_data.db
 cache/research_report.json
 cache/trade_desk.db
 cache/trade_desk_swing.json
+cache/longterm_rankings.json

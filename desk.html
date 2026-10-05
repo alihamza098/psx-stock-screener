@@ -61,7 +61,7 @@
     <div style="text-align:right">
       <button id="eod-btn" onclick="runEod()">Rebuild order plan</button>
       <div class="muted" id="eod-status"></div>
-      <div class="muted"><a href="/research">Strategy Lab →</a></div>
+      <div class="muted"><a href="/research">Strategy Lab →</a> · <a href="/rankings">Long-term rankings →</a></div>
     </div>
   </div>
   <div id="content"><div class="card empty">Loading…</div></div>
@@ -75,6 +75,7 @@ const signed = (v, d = 0, suf = "") => (v === null || v === undefined) ? "—" :
 const badge = (s) => `<span class="badge ${esc(s)}">${esc(s)}</span>`;
 const NAMES = { orb: "Opening-range breakout", vwap_reclaim: "VWAP reclaim", breakout_20d: "20-day breakout",
   pullback_rsi2: "Pullback in uptrend (RSI-2)", momentum_12_1_monthly: "12-1 momentum, monthly (long-term)",
+  qvm_monthly: "Quality-Value-Momentum portfolio (long-term)",
   live_engine_v2: "Live Trading engine (current)", ema_trend_baseline: "EMA trend (baseline)" };
 const nm = (k) => NAMES[k] || k;
 

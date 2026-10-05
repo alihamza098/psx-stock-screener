@@ -520,6 +520,12 @@ def start_research_job(symbols=None, strategies=None):
                 _research_job["progress"] = f"downloaded {done[0]}/{len(syms)} ({sym})"
 
             data = bt.load_universe(syms, fetch_url, progress=on_symbol)
+            import psx_fundamentals as pf
+            missing = [x for x in data if not pf.get_store().annual(x)]
+            if missing:
+                _research_job["stage"] = "fundamentals"
+                pf.refresh_fundamentals(missing, fetch_url, progress=lambda x: _research_job.update(
+                    progress=f"fundamentals {x}"))
             _research_job["stage"] = "simulating"
             report = bt.run_research(data, strategies,
                                      progress=lambda n: _research_job.update(progress=f"simulating {n}"))
@@ -536,6 +542,31 @@ def start_research_job(symbols=None, strategies=None):
     return True
 
 
+_fund_job = {"running": False, "progress": "", "result": None}
+
+
+def start_fundamentals_refresh(symbols=None):
+    """Re-scrape annual/quarterly Sales & EPS from DPS company pages (background, ~1 request/second)."""
+    if _fund_job["running"]:
+        return False
+    _fund_job.update(running=True, progress="", result=None)
+
+    def worker():
+        try:
+            import psx_backtester as bt
+            import psx_fundamentals as pf
+            syms = symbols or bt.default_universe(stock_cache.get("data") or [], 150)
+            _fund_job["result"] = pf.refresh_fundamentals(
+                syms, fetch_url, progress=lambda x: _fund_job.update(progress=x))
+        except Exception as e:
+            _fund_job["result"] = {"error": str(e)}
+        finally:
+            _fund_job["running"] = False
+
+    threading.Thread(target=worker, daemon=True, name="FundamentalsRefresh").start()
+    return True
+
+
 _desk_state = {"last_intraday": 0.0, "eod_running": False, "last_eod_error": None,
                "last_eod_day": "", "last_eod_attempt": 0.0}
 
@@ -549,7 +580,16 @@ def run_trade_desk_eod():
     def worker():
         try:
             import psx_trade_desk as desk
-            res = desk.run_swing_eod(fetch_url, stock_cache.get("data") or [])
+            import psx_backtester as bt
+            import psx_fundamentals as pf
+            stocks = stock_cache.get("data") or []
+            universe = bt.default_universe(stocks, int(desk.load_config()["swing"]["universe_size"]))
+            data = bt.load_universe(universe, fetch_url, pause_s=0.2)
+            res = desk.run_swing_eod(data=data)
+            try:
+                pf.build_rankings(data, stocks)
+            except Exception as re_err:
+                print(f"[LongTerm] rankings error: {re_err}")
             today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=5))).strftime("%Y-%m-%d")
             if res.get("success") and res.get("as_of") == today:
                 _desk_state["last_eod_day"] = today  # today's close is in: done for the day
@@ -937,6 +977,7 @@ def _start_continuous_poller():
         _last_preweek_rpt    = [""]  # Sunday 8 PM pre-week intelligence report
         _last_weekly_scan    = [""]  # Sunday 6 PM scheduled weekly options scan
         _last_research       = [""]  # Saturday 10 AM strategy research run
+        _last_fund_refresh   = [""]  # Sunday 8 AM fundamentals refresh
 
         # Import learner once at startup
         try:
@@ -976,6 +1017,13 @@ def _start_continuous_poller():
                 _do_fetch_indices()
                 _record_market_data()
                 _trade_desk_tick(now_pkt)
+
+                # Weekly fundamentals refresh for the long-term model (Sunday morning PKT)
+                if weekday == 6 and 8 <= now_pkt.hour < 12:
+                    fkey = now_pkt.strftime("%Y-%m-%d")
+                    if _last_fund_refresh[0] != fkey:
+                        _last_fund_refresh[0] = fkey
+                        start_fundamentals_refresh()
 
                 # Weekly strategy research (Saturday late morning PKT, market closed)
                 if weekday == 5 and 10 <= now_pkt.hour < 12:
@@ -4569,6 +4617,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         "/admin.html": "/admin.html",
         "/research.html": "/research.html",
         "/desk.html": "/desk.html",
+        "/rankings.html": "/rankings.html",
         "/app.js": "/app.js",
         "/styles.css": "/styles.css",
         "/sw.js": "/sw.js",
@@ -4898,6 +4947,18 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             snap["eod_running"] = _desk_state["eod_running"]
             snap["last_eod_error"] = _desk_state["last_eod_error"]
             self._send_json(snap)
+        elif parsed_path.path == "/api/longterm/rankings":
+            import psx_fundamentals as pf
+            r = pf.load_rankings()
+            if r is None:
+                self._send_json({"success": False, "error": "No rankings yet — they are built after each market close."}, 404)
+            else:
+                r["fundamentals_refresh"] = {"running": _fund_job["running"], "progress": _fund_job["progress"],
+                                             "result": _fund_job["result"]}
+                self._send_json(r)
+        elif parsed_path.path == "/rankings":
+            self.path = "/rankings.html"
+            self._serve_static()
         elif parsed_path.path == "/desk":
             self.path = "/desk.html"
             self._serve_static()
@@ -6098,7 +6159,14 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         content_length = int(self.headers.get('Content-Length', 0))
         post_data = self.rfile.read(content_length)
         
-        if self.path == "/api/desk/run-eod":
+        if self.path == "/api/longterm/refresh-fundamentals":
+            if not verify_admin_secret(self.headers.get("X-Admin-Secret", "")):
+                self._send_json({"success": False, "error": "Unauthorized"}, 401)
+                return
+            started = start_fundamentals_refresh()
+            self._send_json({"success": started, "error": None if started else "Already running."},
+                            200 if started else 409)
+        elif self.path == "/api/desk/run-eod":
             if not verify_admin_secret(self.headers.get("X-Admin-Secret", "")):
                 self._send_json({"success": False, "error": "Unauthorized"}, 401)
                 return

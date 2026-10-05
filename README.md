@@ -48,6 +48,14 @@ KTrade-ready orders for PKR 5 lakh (`config/trade_desk.json`):
 - Old unvalidated alerts (weekly scan, intelligence, old intraday picks) are off unless
   `"legacy_signal_alerts": true`. Add short-eligible symbols in `config/costs.json` to enable short setups.
 
+## Long-term model (`/rankings`)
+Quality-Value-Momentum score for every liquid stock (`config/longterm_model.json`): earnings yield
+(vs sector), EPS consistency & stability, sales/EPS growth and 12-1 momentum, each a 0–100 percentile.
+Annual results for fiscal year Y are used only from 30 April of Y+1 (no look-ahead); stale, missing or
+loss-making results exclude a stock instead of earning default points. The monthly model portfolio
+(top 10, max 3 per sector) is backtested in the Strategy Lab (`qvm_monthly`) and forward-tested on the
+Trade Desk. Fundamentals are re-scraped from DPS company pages every Sunday.
+
 ## Deploy to Render
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
 

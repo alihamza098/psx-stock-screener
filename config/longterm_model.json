@@ -1,0 +1,23 @@
+{
+  "_comment": "Long-term Quality-Value-Momentum (QVM) model. Every factor is a cross-sectional percentile (0-100); missing data never earns points. Annual results for fiscal year Y are only used from availability_month_day of year Y+1 (conservative, avoids look-ahead).",
+  "weights": {
+    "value_earnings_yield": 0.30,
+    "quality_consistency": 0.15,
+    "quality_stability": 0.10,
+    "growth_sales": 0.10,
+    "growth_eps": 0.05,
+    "momentum_12_1": 0.30
+  },
+  "availability_month_day": "04-30",
+  "min_annual_years": 3,
+  "max_results_age_years": 2,
+  "min_price_pkr": 5.0,
+  "min_avg_daily_value_pkr": 5000000,
+  "sector_relative_value_min_members": 5,
+  "portfolio": {
+    "top_n": 10,
+    "keep_n": 20,
+    "max_per_sector": 3
+  },
+  "shariah_only": false
+}
