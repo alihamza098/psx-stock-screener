@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strategy Lab — PSX Screener</title>
+<style>
+  :root {
+    --bg: #0b0f19; --panel: #111827; --panel-2: #0f172a; --border: #1f2937;
+    --text: #e5e7eb; --muted: #94a3b8; --accent: #34d399;
+    --pass: #22c55e; --fail: #ef4444; --warn: #f59e0b; --err: #a855f7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+  a { color: var(--accent); }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); font-weight: 600;
+       text-transform: uppercase; letter-spacing: .04em; }
+  .sub { color: var(--muted); margin: 0 0 20px; max-width: 760px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+          padding: 16px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .kpi { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .kpi .l { color: var(--muted); font-size: 12px; }
+  .kpi .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  button { background: var(--accent); color: #052e1c; border: 0; border-radius: 8px; padding: 9px 16px;
+           font-weight: 600; cursor: pointer; }
+  button[disabled] { opacity: .5; cursor: default; }
+  .status { color: var(--muted); font-size: 13px; }
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  th:first-child, td:first-child { text-align: left; }
+  tr.strat { cursor: pointer; }
+  tr.strat:hover td { background: var(--panel-2); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .PASS { background: rgba(34,197,94,.15); color: var(--pass); }
+  .FAIL { background: rgba(239,68,68,.15); color: var(--fail); }
+  .INSUFFICIENT_DATA { background: rgba(245,158,11,.15); color: var(--warn); }
+  .ERROR { background: rgba(168,85,247,.15); color: var(--err); }
+  .pos { color: var(--pass); } .neg { color: var(--fail); }
+  .reason { color: var(--muted); font-size: 12px; white-space: normal; text-align: left; }
+  .detail td { background: var(--panel-2); text-align: left; white-space: normal; }
+  .detail table th, .detail table td { font-size: 12px; padding: 4px 8px; text-align: left; }
+  ul.lim { margin: 0; padding-left: 18px; color: var(--muted); }
+  .empty { color: var(--muted); padding: 24px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row">
+    <div>
+      <h1>Strategy Lab</h1>
+      <p class="sub">Every strategy is replayed on real PSX daily history with KTrade costs, circuit locks and T+2
+        settlement. It is judged on the most recent 30% of the period, which it never saw while being designed.
+        Only strategies marked <span class="badge PASS">PASS</span> should be trusted with alerts.</p>
+    </div>
+    <div style="text-align:right">
+      <button id="run-btn" onclick="startRun()">Run research</button>
+      <div class="status" id="run-status"></div>
+    </div>
+  </div>
+
+  <div id="content"><div class="card empty">Loading report…</div></div>
+  <p class="status"><a href="/">← Back to screener</a></p>
+</div>
+
+<script>
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = (v, d = 2) => (v === null || v === undefined || isNaN(v)) ? "—" : Number(v).toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+const signed = (v, d = 2, suffix = "") => `<span class="${v > 0 ? "pos" : v < 0 ? "neg" : ""}">${v > 0 ? "+" : ""}${num(v, d)}${suffix}</span>`;
+const LABELS = {
+  live_engine_v2: "Live Trading engine (current)",
+  breakout_20d: "20-day breakout",
+  pullback_rsi2: "Pullback in uptrend (RSI-2)",
+  momentum_12_1_monthly: "12-1 momentum, monthly (long-term)",
+  ema_trend_baseline: "EMA trend (baseline)",
+};
+
+function render(r) {
+  const el = document.getElementById("content");
+  if (!r || !r.success) {
+    el.innerHTML = `<div class="card empty">${esc(r && r.error ? r.error : "No report yet — press “Run research”. Downloading history for ~100 stocks takes a few minutes.")}</div>`;
+    return;
+  }
+  const bh = r.baselines.out_of_sample, bhIs = r.baselines.in_sample, rt = r.round_trip_cost_pct_example || {};
+  const rows = r.strategies.map((s, i) => {
+    const o = s.out_of_sample || {}, is = s.in_sample || {};
+    const trades = (s.recent_trades || []).map(t => `<tr><td>${esc(t.symbol)}</td><td>${esc(t.entry_date)}</td><td>${esc(t.exit_date)}</td>
+      <td>${num(t.entry)}</td><td>${num(t.exit)}</td><td>${num(t.qty, 0)}</td><td>${signed(t.net_pnl, 0)}</td>
+      <td>${signed(t.ret_pct, 2, "%")}</td><td>${esc(t.exit_reason)}</td></tr>`).join("");
+    return `<tr class="strat" onclick="toggle(${i})">
+        <td><b>${esc(LABELS[s.name] || s.name)}</b><div class="reason">${esc(s.description || "")}</div></td>
+        <td><span class="badge ${esc(s.verdict)}">${esc(s.verdict.replace("_", " "))}</span><div class="reason">${esc(s.reason)}</div></td>
+        <td>${num(o.trades, 0)}</td>
+        <td>${num(o.win_rate_pct, 1)}%<div class="reason">${o.win_rate_ci95 ? esc(o.win_rate_ci95.join("–")) + "%" : ""}</div></td>
+        <td>${signed(o.avg_net_return_pct, 2, "%")}</td>
+        <td>${signed(o.expectancy_pkr, 0)}</td>
+        <td>${num(o.profit_factor)}</td>
+        <td>${signed(o.total_return_pct, 1, "%")}</td>
+        <td>${num(o.max_drawdown_pct, 1)}%</td>
+        <td>${num(o.sharpe)}</td>
+        <td>${signed(is.total_return_pct, 1, "%")}</td>
+      </tr>
+      <tr class="detail" id="d${i}" style="display:none"><td colspan="11">
+        Out-of-sample: costs paid PKR ${num(o.costs_paid_pkr, 0)} · est. CGT PKR ${num(o.cgt_estimate_pkr, 0)} ·
+        net after CGT ${signed(o.net_after_cgt_pkr, 0)} PKR · avg hold ${num(o.avg_hold_days, 1)} days ·
+        time in market ${num(o.exposure_pct, 0)}% · exits ${esc(JSON.stringify(o.exit_reasons || {}))}
+        ${trades ? `<div class="tbl-wrap" style="margin-top:8px"><table><tr><th>Symbol</th><th>Entry</th><th>Exit</th><th>Buy</th><th>Sell</th><th>Qty</th><th>Net PKR</th><th>Net %</th><th>Why</th></tr>${trades}</table></div>` : ""}
+      </td></tr>`;
+  }).join("");
+
+  el.innerHTML = `
+    <div class="card">
+      <h2>Test setup</h2>
+      <div class="kpis">
+        <div class="kpi"><div class="l">Period</div><div class="v">${esc(r.first_date)} → ${esc(r.last_date)}</div></div>
+        <div class="kpi"><div class="l">Out-of-sample from</div><div class="v">${esc(r.split_date)}</div></div>
+        <div class="kpi"><div class="l">Universe</div><div class="v">${num(r.universe_size, 0)} stocks</div></div>
+        <div class="kpi"><div class="l">Capital</div><div class="v">PKR ${num(r.settings.capital_pkr, 0)}</div></div>
+        <div class="kpi"><div class="l">Risk / trade · max positions</div><div class="v">${num(r.settings.risk_per_trade_pct, 1)}% · ${num(r.settings.max_positions, 0)}</div></div>
+        <div class="kpi"><div class="l">Round trip cost (Rs 100 stock)</div><div class="v">${num(rt.price_100_qty_1000_swing, 2)}%</div></div>
+        <div class="kpi"><div class="l">Bars with real high/low</div><div class="v">${num(r.hl_real_bar_pct, 1)}%</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Benchmark — equal-weight buy &amp; hold of the same stocks</h2>
+      <div class="kpis">
+        <div class="kpi"><div class="l">Out-of-sample return</div><div class="v">${signed(bh.total_return_pct, 1, "%")}</div></div>
+        <div class="kpi"><div class="l">Out-of-sample Sharpe</div><div class="v">${num(bh.sharpe)}</div></div>
+        <div class="kpi"><div class="l">Out-of-sample max drawdown</div><div class="v">${num(bh.max_drawdown_pct, 1)}%</div></div>
+        <div class="kpi"><div class="l">In-sample return</div><div class="v">${signed(bhIs.total_return_pct, 1, "%")}</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Strategies — out-of-sample results (click a row for trades)</h2>
+      <div class="tbl-wrap"><table>
+        <tr><th>Strategy</th><th>Verdict</th><th>Trades</th><th>Win rate (95% CI)</th><th>Avg net / trade</th>
+            <th>Expectancy PKR</th><th>Profit factor</th><th>Return</th><th>Max DD</th><th>Sharpe</th><th>In-sample return</th></tr>
+        ${rows}
+      </table></div>
+    </div>
+    <div class="card"><h2>Limitations</h2><ul class="lim">${(r.limitations || []).map(l => `<li>${esc(l)}</li>`).join("")}</ul>
+      <p class="status">Generated ${esc(new Date(r.generated_at).toLocaleString())}. Educational research, not investment advice.</p></div>`;
+}
+
+function toggle(i) {
+  const d = document.getElementById("d" + i);
+  d.style.display = d.style.display === "none" ? "" : "none";
+}
+
+async function loadReport() {
+  try {
+    const res = await fetch("/api/research/report");
+    render(await res.json());
+  } catch (e) { render({ success: false, error: "Could not load report: " + e }); }
+}
+
+let polling = null;
+async function pollStatus() {
+  try {
+    const s = await (await fetch("/api/research/status")).json();
+    const btn = document.getElementById("run-btn"), st = document.getElementById("run-status");
+    btn.disabled = !!s.running;
+    if (s.running) {
+      st.textContent = `Running: ${s.progress || s.stage}…`;
+      if (!polling) polling = setInterval(pollStatus, 3000);
+    } else {
+      if (polling) { clearInterval(polling); polling = null; loadReport(); }
+      st.textContent = s.error ? `Last run failed: ${s.error}` : (s.finished_at ? `Last run finished ${new Date(s.finished_at * 1000).toLocaleString()}` : "Runs automatically every Saturday.");
+    }
+  } catch (e) { /* offline */ }
+}
+
+async function startRun() {
+  let secret = sessionStorage.getItem("psx_admin_secret") || "";
+  if (!secret) {
+    secret = prompt("Admin secret (needed to start a run):") || "";
+    if (!secret) return;
+  }
+  const res = await fetch("/api/research/run", { method: "POST", headers: { "X-Admin-Secret": secret, "Content-Type": "application/json" }, body: "{}" });
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 401) { sessionStorage.removeItem("psx_admin_secret"); alert("Wrong admin secret."); return; }
+  sessionStorage.setItem("psx_admin_secret", secret);
+  if (!body.success) alert(body.error || "Could not start research run.");
+  pollStatus();
+}
+
+loadReport();
+pollStatus();
+</script>
+</body>
+</html>

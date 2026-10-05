@@ -9397,7 +9397,7 @@ function updateCalcMetrics() {
     const sym = sel.value;
     const stock = stockList.find(s => s.symbol === sym) || { price: 20 };
     const price = stock.price || 20;
-    const capital = parseFloat(capitalInput.value) || 100000;
+    const capital = parseFloat(capitalInput.value) || 500000;
     const commPerShare = parseFloat(commInput.value) || 0.15;
 
     const shares = Math.floor(capital / price);

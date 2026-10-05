@@ -496,6 +496,46 @@ def fetch_url(url, timeout=FETCH_TIMEOUT, retries=FETCH_RETRIES):
 
 
 
+_research_job = {"running": False, "stage": "idle", "progress": "", "started_at": None,
+                 "finished_at": None, "error": None}
+_research_lock = threading.Lock()
+
+
+def start_research_job(symbols=None, strategies=None):
+    """Run the Phase 1 strategy research in the background (DPS download + backtests)."""
+    import psx_backtester as bt
+    with _research_lock:
+        if _research_job["running"]:
+            return False
+        _research_job.update(running=True, stage="loading", progress="", error=None,
+                             started_at=time.time(), finished_at=None)
+
+    def worker():
+        try:
+            syms = symbols or bt.default_universe(stock_cache.get("data") or [])
+            done = [0]
+
+            def on_symbol(sym):
+                done[0] += 1
+                _research_job["progress"] = f"downloaded {done[0]}/{len(syms)} ({sym})"
+
+            data = bt.load_universe(syms, fetch_url, progress=on_symbol)
+            _research_job["stage"] = "simulating"
+            report = bt.run_research(data, strategies,
+                                     progress=lambda n: _research_job.update(progress=f"simulating {n}"))
+            if report.get("success"):
+                bt.save_report(report)
+            else:
+                _research_job["error"] = report.get("error")  # keep the last good report
+        except Exception as e:
+            _research_job["error"] = str(e)
+        finally:
+            _research_job.update(running=False, stage="done", finished_at=time.time())
+
+    threading.Thread(target=worker, daemon=True, name="PSXResearch").start()
+    return True
+
+
 _md_state = {"last_mw": 0.0, "last_prune_day": "", "last_price": {}}
 
 
@@ -847,6 +887,7 @@ def _start_continuous_poller():
         _last_rotation_rpt   = [""]  # Friday 3:30 PM rotation report
         _last_preweek_rpt    = [""]  # Sunday 8 PM pre-week intelligence report
         _last_weekly_scan    = [""]  # Sunday 6 PM scheduled weekly options scan
+        _last_research       = [""]  # Saturday 10 AM strategy research run
 
         # Import learner once at startup
         try:
@@ -885,6 +926,13 @@ def _start_continuous_poller():
                 _do_fetch_stocks()
                 _do_fetch_indices()
                 _record_market_data()
+
+                # Weekly strategy research (Saturday late morning PKT, market closed)
+                if weekday == 5 and 10 <= now_pkt.hour < 12:
+                    research_key = now_pkt.strftime("%Y-%m-%d")
+                    if _last_research[0] != research_key:
+                        _last_research[0] = research_key
+                        start_research_job()
 
                 # ── Intelligence Engine Ticks ────────────────────────────────
                 if intelligence:
@@ -4469,6 +4517,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         "/": "/index.html",
         "/index.html": "/index.html",
         "/admin.html": "/admin.html",
+        "/research.html": "/research.html",
         "/app.js": "/app.js",
         "/styles.css": "/styles.css",
         "/sw.js": "/sw.js",
@@ -4785,6 +4834,18 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed_path.path.startswith('/api/stock-history/'):
             symbol = parsed_path.path.split('/')[-1]
             self._handle_stock_history(symbol)
+        elif parsed_path.path == "/api/research/report":
+            import psx_backtester as bt
+            report = bt.load_report()
+            if report is None:
+                self._send_json({"success": False, "error": "No research report yet. Start a run from /research.html."}, 404)
+            else:
+                self._send_json(report)
+        elif parsed_path.path == "/api/research/status":
+            self._send_json({"success": True, **_research_job})
+        elif parsed_path.path == "/research":
+            self.path = "/research.html"
+            self._serve_static()
         elif parsed_path.path == "/api/chart-data":
             query = parse_qs(parsed_path.query)
             symbol = query.get("symbol", ["OGDC"])[0]
@@ -5977,7 +6038,20 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         content_length = int(self.headers.get('Content-Length', 0))
         post_data = self.rfile.read(content_length)
         
-        if self.path == "/api/company":
+        if self.path == "/api/research/run":
+            if not verify_admin_secret(self.headers.get("X-Admin-Secret", "")):
+                self._send_json({"success": False, "error": "Unauthorized"}, 401)
+                return
+            try:
+                body = json.loads(post_data.decode("utf-8") or "{}")
+            except Exception:
+                body = {}
+            syms = [x.strip().upper() for x in (body.get("symbols") or []) if str(x).strip()] or None
+            started = start_research_job(syms, body.get("strategies") or None)
+            self._send_json({"success": started, "status": _research_job,
+                             "error": None if started else "A research run is already in progress."},
+                            200 if started else 409)
+        elif self.path == "/api/company":
             try:
                 body = json.loads(post_data.decode('utf-8'))
                 symbol = body.get('symbol', '')

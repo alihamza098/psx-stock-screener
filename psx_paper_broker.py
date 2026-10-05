@@ -20,9 +20,9 @@ DATA_DIR = Path(__file__).parent / "cache"
 DATA_DIR.mkdir(exist_ok=True)
 ACCOUNT_FILE = DATA_DIR / "paper_account.json"
 
-DEFAULT_INITIAL_CASH = 1000000.0  # 1 Million PKR Starting Virtual Capital
-SLIPPAGE_PCT = 0.0010             # 0.10% slippage on entry & exit
-COMMISSION_PCT = 0.0015           # 0.15% broker commission + taxes
+DEFAULT_INITIAL_CASH = 500000.0  # PKR 5 lakh starting virtual capital
+# Slippage, KTrade commission, SST and levies come from config/costs.json (psx_costs.CostModel)
+from psx_costs import get_cost_model
 
 
 class BrokerAdapterBase:
@@ -177,10 +177,10 @@ class PaperTradingBrokerAdapter(BrokerAdapterBase):
         if shares <= 0:
             return {"success": False, "error": "Shares must be greater than 0"}
 
-        # Apply slippage (+0.10% on entry fill)
-        fill_price = round(price * (1.0 + SLIPPAGE_PCT), 2)
+        costs = get_cost_model()
+        fill_price = round(costs.fill_price(price, "buy"), 2)
         gross_cost = round(shares * fill_price, 2)
-        commission = round(gross_cost * COMMISSION_PCT, 2)
+        commission = round(costs.side_cost(fill_price, shares), 2)
         total_cost = round(gross_cost + commission, 2)
 
         if total_cost > self.data["cash"]:
@@ -246,14 +246,18 @@ class PaperTradingBrokerAdapter(BrokerAdapterBase):
         cur_shares = pos["shares"]
         close_shares = cur_shares if shares_to_close is None else min(cur_shares, shares_to_close)
 
-        # Apply slippage (-0.10% on exit fill)
-        fill_price = round(current_price * (1.0 - SLIPPAGE_PCT), 2)
+        costs = get_cost_model()
+        fill_price = round(costs.fill_price(current_price, "sell"), 2)
         gross_proceeds = round(close_shares * fill_price, 2)
-        commission = round(gross_proceeds * COMMISSION_PCT, 2)
+        # Same-day round trip: KTrade charges commission on one side only
+        day_trade = (pos.get("entry_time") or "")[:10] == time.strftime("%Y-%m-%d")
+        commission = round(costs.side_cost(fill_price, close_shares,
+                                           charge_commission=not (day_trade and costs.day_one_side)), 2)
         net_proceeds = round(gross_proceeds - commission, 2)
 
-        # Cost basis of sold shares
-        cost_basis = round(close_shares * pos["entry_price"], 2)
+        # Cost basis of sold shares, including their share of the buy-side commission
+        entry_fee_share = pos.get("commission_paid", 0.0) * close_shares / max(1, cur_shares)
+        cost_basis = round(close_shares * pos["entry_price"] + entry_fee_share, 2)
         realized_pnl = round(net_proceeds - cost_basis, 2)
         realized_pnl_pct = round((realized_pnl / cost_basis * 100.0), 2) if cost_basis > 0 else 0.0
 
@@ -286,6 +290,7 @@ class PaperTradingBrokerAdapter(BrokerAdapterBase):
         else:
             # Partial close (e.g. TP1 trim)
             pos["shares"] -= close_shares
+            pos["commission_paid"] = round(pos.get("commission_paid", 0.0) - entry_fee_share, 2)
 
         self._save()
         print(f"[PAPER BROKER] 🏁 SOLD {close_shares:,} {symbol} @ PKR {fill_price:.2f} | P&L: PKR {realized_pnl:+,.2f} ({realized_pnl_pct:+.2f}%) [{reason}]")
