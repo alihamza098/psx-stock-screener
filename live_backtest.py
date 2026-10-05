@@ -131,7 +131,7 @@ def run_v2_backtest(
         )
 
         rec = rec_res["recommendation"]
-        brackets = rec_res.get("tradeBrackets") or {}
+        brackets = rec_res.get("trade_brackets") or {}
         entry_price = float(bars[i + 1].get("open", current_bar["close"]))  # Enter at next bar's open
         target_price = float(brackets.get("target", entry_price * 1.05))
         stop_price = float(brackets.get("stop", entry_price * 0.95))

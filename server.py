@@ -496,6 +496,10 @@ def fetch_url(url, timeout=FETCH_TIMEOUT, retries=FETCH_RETRIES):
 
 
 
+# Weekly scan evaluates real daily history (oldest first) instead of a synthesised series
+weekly_engine.set_history_provider(lambda sym: list(reversed(fetch_stock_history(sym) or [])))
+
+
 _research_job = {"running": False, "stage": "idle", "progress": "", "started_at": None,
                  "finished_at": None, "error": None}
 _research_lock = threading.Lock()
