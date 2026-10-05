@@ -5,6 +5,11 @@ Fetches live data from dps.psx.com.pk and serves it as JSON API.
 Uses only Python standard library — no pip install needed!
 """
 
+# Must run before any module touches cache/: with PSX_DATA_DIR set, cache/ and the root runtime
+# files are redirected to that persistent directory (see psx_storage.py).
+import psx_storage
+STORAGE_STATUS = psx_storage.init_persistent_storage()
+
 import http.server
 import json
 import os
@@ -332,6 +337,7 @@ class PSXScreenerParser(HTMLParser):
             "freeFloat": free_float,
             "volume": volume_30d,       # NOTE: DPS screener column is the 30-day AVERAGE volume
             "avgVolume30d": volume_30d,
+            "todayVolume": None,        # set from market-watch / company quote when available
             "isNC": cells[0].get("has_nc_tag", False),
             "isKSE100": "KSE100" in listed_in,
             "isKSE30": "KSE30" in listed_in,
@@ -1465,7 +1471,7 @@ def update_live_stock_quote(symbol: str, quote: dict):
             s["price"] = quote["price"]
             if "change" in quote: s["change"] = quote["change"]
             if "changePercent" in quote: s["changePercent"] = quote["changePercent"]
-            if "volume" in quote and quote["volume"] is not None: s["volume"] = quote["volume"]
+            if "volume" in quote and quote["volume"] is not None: s["todayVolume"] = quote["volume"]
             if "open" in quote: s["open"] = quote["open"]
             if "high" in quote: s["high"] = quote["high"]
             if "low" in quote: s["low"] = quote["low"]

@@ -33,6 +33,7 @@ from shared_trading_utils import (
     compute_trade_brackets,
     check_liquidity_gate,
     compute_rvol_today,
+    today_volume_of,
     compute_circuit_room,
     get_session_schedule
 )
@@ -1021,7 +1022,7 @@ class DailyOpportunitiesScanner:
             try:
                 px = float(s.get("price", s.get("current", 0)) or 0)
                 chg = float(s.get("change", 0) or 0)
-                vol = float(s.get("volume", 0) or 0)
+                vol = today_volume_of(s) or 0.0  # unknown today → no RVOL-based tier upgrade
                 open_px = float(s.get("open", px) or px)
                 ldcp = float(s.get("ldcp", px) or px)
                 low_px = float(s.get("low", px) or px)

@@ -16,3 +16,10 @@ services:
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
+      # Persistent storage (needs a paid plan with a disk). Uncomment both blocks:
+      # - key: PSX_DATA_DIR
+      #   value: /var/data
+    # disk:
+    #   name: psx-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

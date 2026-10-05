@@ -2039,7 +2039,8 @@ class StockMemoryBuilder:
             conn.close()
 
         current_price = float(stock.get("price", closes[-1] if closes else 0) or 0)
-        current_volume = float(stock.get("volume", 0) or 0)
+        from shared_trading_utils import today_volume_of
+        current_volume = today_volume_of(stock) or 0.0  # unknown today → RVOL 0 (no surge claimed)
         avg_turnover = avg_daily_volume * (current_price if current_price > 0 else 1)
         med_turnover = med_vol * (current_price if current_price > 0 else 1)
 
@@ -2226,7 +2227,8 @@ class AnomalyDetector:
 
         price = float(stock.get("price", 0) or 0)
         change_pct = float(stock.get("change", 0) or 0)
-        volume = float(stock.get("volume", 0) or 0)
+        from shared_trading_utils import today_volume_of
+        volume = today_volume_of(stock) or 0.0  # screener "volume" is a 30-day average, not today's
         sector = stock.get("sector", "Other")
 
         if price <= 0:

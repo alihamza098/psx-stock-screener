@@ -23,7 +23,7 @@ Open http://localhost:3000
 |---|---|
 | `ADMIN_SECRET` | Enables the admin panel (`/admin`) and Strategy Lab runs. Admin is disabled when unset. |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram alerts. |
-| `PSX_DATA_DIR` | Where recorded ticks / session ranges are stored (default `cache/`). |
+| `PSX_DATA_DIR` | Persistent disk path (e.g. `/var/data`). At startup `cache/` and the licence/trial/feedback files are redirected there, so recorded prices, paper trades and every database survive restarts. |
 | `PSX_STRICT_TLS` | `1` refuses PSX connections whose certificate cannot be verified (default: logged fallback for PSX hosts only). |
 
 Trading costs (KTrade commission, SST, SECP levy, CGT, slippage) and PSX rules (circuit limits,

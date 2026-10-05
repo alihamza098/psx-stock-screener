@@ -235,14 +235,16 @@ def _score(stock: Dict, kse_chg: float,
     """
     price  = float(stock.get("price", 0) or 0)
     change = float(stock.get("change", 0) or 0)
-    volume = float(stock.get("volume", 0) or 0)
+    from shared_trading_utils import today_volume_of
+    today_vol = today_volume_of(stock)
+    volume = today_vol or 0.0
     sector = stock.get("sector", "Other")
 
     if price < MIN_PRICE_PKR or change < MIN_ALLOWED_CHANGE or change > MAX_ALLOWED_CHANGE:
         return 0
 
     # True Relative Volume Pace based on Time of Day
-    if avg_vol > 0:
+    if avg_vol > 0 and today_vol is not None:
         expected_vol = max(avg_vol * _get_time_of_day_fraction(), 1000.0)
         rvol = volume / expected_vol
     else:
