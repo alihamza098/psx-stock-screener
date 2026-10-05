@@ -108,19 +108,12 @@ def save_file_cache(filepath, data, timestamp):
         print(f"[PSX] Could not save file cache {filepath.name}: {e}")
 
 
+# Shown only until the first successful index fetch: no invented index levels or volumes.
 DEFAULT_INDEX_FALLBACK = {
-    "indices": [
-        {"name": "KSE 100", "value": 78210.45, "change": 420.35, "changePercent": 0.54, "isPositive": True},
-        {"name": "ALL SHAR", "value": 51240.10, "change": 180.20, "changePercent": 0.35, "isPositive": True},
-        {"name": "KSE 30", "value": 25110.80, "change": -45.10, "changePercent": -0.18, "isPositive": False},
-        {"name": "KMI 30", "value": 132450.60, "change": 610.75, "changePercent": 0.46, "isPositive": True}
-    ],
-    "market": {
-        "state": "Closed",
-        "volume": 358420000,
-        "value": 36700000000.0
-    },
-    "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    "indices": [],
+    "market": {"state": "Unavailable", "volume": 0, "value": 0},
+    "fetchedAt": None,
+    "unavailable": True,
 }
 
 # Load caches on startup — try file cache first, then bundled snapshot as fallback
@@ -459,17 +452,6 @@ def parse_index_data(html):
 
     return indices, market_state, market_volume, market_value
 
-
-DEFAULT_INDEX_FALLBACK = {
-    "indices": [
-        {"name": "KSE100", "value": 111500.0, "change": 0.0, "percentChange": 0.0},
-        {"name": "ALLSHR", "value": 70000.0,  "change": 0.0, "percentChange": 0.0},
-        {"name": "KSE30",  "value": 36500.0,  "change": 0.0, "percentChange": 0.0},
-        {"name": "KMI30",  "value": 185000.0, "change": 0.0, "percentChange": 0.0},
-    ],
-    "market": {"state": "CLOSED", "volume": "0", "value": "0.00"},
-    "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-}
 
 
 def fetch_url(url, timeout=FETCH_TIMEOUT, retries=FETCH_RETRIES):

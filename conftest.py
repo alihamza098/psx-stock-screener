@@ -1,6 +1,5 @@
 """pytest configuration.
 
-- Scratch scripts named test_*.py that hit the live PSX site at import time are not collected.
 - Several engines write to tracked files under cache/ and config/ (SQLite DBs, suggested
   weights). Tests snapshot those files before the session and restore them afterwards so a
   test run never leaves changes in git.
@@ -9,14 +8,6 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-
-# Network-only exploration scripts (not unit tests)
-collect_ignore = [
-    "test_async_scraper.py",
-    "test_threadpool.py",
-    "test_company.py",
-    "test_financials.py",
-]
 
 
 def _tracked_runtime_files():

@@ -24,6 +24,7 @@ Open http://localhost:3000
 | `ADMIN_SECRET` | Enables the admin panel (`/admin`) and Strategy Lab runs. Admin is disabled when unset. |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram alerts. |
 | `PSX_DATA_DIR` | Where recorded ticks / session ranges are stored (default `cache/`). |
+| `PSX_STRICT_TLS` | `1` refuses PSX connections whose certificate cannot be verified (default: logged fallback for PSX hosts only). |
 
 Trading costs (KTrade commission, SST, SECP levy, CGT, slippage) and PSX rules (circuit limits,
 T+2, short-eligible symbols) live in `config/costs.json` — check them against your contract notes.
@@ -55,6 +56,11 @@ Annual results for fiscal year Y are used only from 30 April of Y+1 (no look-ahe
 loss-making results exclude a stock instead of earning default points. The monthly model portfolio
 (top 10, max 3 per sector) is backtested in the Strategy Lab (`qvm_monthly`) and forward-tested on the
 Trade Desk. Fundamentals are re-scraped from DPS company pages every Sunday.
+
+## Tests
+```bash
+pip install pytest && python3 -m pytest -q    # fully offline; also runs on every push (GitHub Actions)
+```
 
 ## Deploy to Render
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
