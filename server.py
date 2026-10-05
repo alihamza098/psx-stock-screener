@@ -323,7 +323,8 @@ class PSXScreenerParser(HTMLParser):
             "pe": pe_ratio,
             "divYield": div_yield,
             "freeFloat": free_float,
-            "volume": volume_30d,
+            "volume": volume_30d,       # NOTE: DPS screener column is the 30-day AVERAGE volume
+            "avgVolume30d": volume_30d,
             "isNC": cells[0].get("has_nc_tag", False),
             "isKSE100": "KSE100" in listed_in,
             "isKSE30": "KSE30" in listed_in,
@@ -493,6 +494,53 @@ def fetch_url(url, timeout=FETCH_TIMEOUT, retries=FETCH_RETRIES):
                 time.sleep(1.0 * attempt)
     raise last_error
 
+
+
+_md_state = {"last_mw": 0.0, "last_prune_day": "", "last_price": {}}
+
+
+def _record_market_data():
+    """Persist what we actually observed this poll (real ticks / real session ranges).
+
+    Runs only during the PSX session. Screener prices are stored only when they change, and
+    the all-symbol market-watch table (real open/high/low/volume) is polled once a minute.
+    """
+    try:
+        import psx_market_data as md
+        sess = shared_trading_utils.get_session_schedule()
+        if not sess.get("is_in_trading_hours"):
+            return
+        store = md.get_store()
+        now = time.time()
+        last = _md_state["last_price"]
+        changed = []
+        for s in (stock_cache.get("data") or []):
+            sym, px = s.get("symbol"), s.get("price")
+            if sym and px and last.get(sym) != px:
+                last[sym] = px
+                changed.append({"symbol": sym, "price": px})
+        if changed:
+            store.record_snapshot(changed, ts=now, source="screener")
+
+        if now - _md_state["last_mw"] >= 60:
+            _md_state["last_mw"] = now
+            rows = md.poll_market_watch(fetch_url, store)
+            if rows:
+                by_sym = {r["symbol"]: r for r in rows}
+                for s in (stock_cache.get("data") or []):
+                    r = by_sym.get((s.get("symbol") or "").upper())
+                    if r:
+                        s["todayVolume"] = r["volume"]
+                        s["open"], s["high"], s["low"] = r["open"], r["high"], r["low"]
+                        if r.get("ldcp"):
+                            s["ldcp"] = r["ldcp"]
+
+        today = md.pkt_date(now)
+        if _md_state["last_prune_day"] != today:
+            _md_state["last_prune_day"] = today
+            store.prune()
+    except Exception as e:
+        print(f"[MarketData] record error (non-fatal): {e}")
 
 
 def _do_fetch_stocks():
@@ -836,6 +884,7 @@ def _start_continuous_poller():
 
                 _do_fetch_stocks()
                 _do_fetch_indices()
+                _record_market_data()
 
                 # ── Intelligence Engine Ticks ────────────────────────────────
                 if intelligence:
@@ -1232,6 +1281,20 @@ def update_live_stock_quote(symbol: str, quote: dict):
     if not symbol or not quote or "price" not in quote:
         return
     sym = symbol.upper().strip()
+    try:
+        import psx_market_data as md
+        sess = shared_trading_utils.get_session_schedule()
+        now_pkt = datetime.datetime.now(md.PKT)
+        session_started = sess.get("is_trading_day") and \
+            (now_pkt.hour * 60 + now_pkt.minute) >= sess.get("session_open_mins", 572)
+        # Before the open / on holidays the page still shows the previous session's range
+        if session_started and quote.get("high") and quote.get("low"):
+            md.get_store().upsert_daily_observation(
+                sym, md.pkt_date(time.time()), open_=quote.get("open"), high=quote.get("high"),
+                low=quote.get("low"), close=quote.get("price"), volume=quote.get("volume"),
+                ldcp=quote.get("ldcp"), source="company")
+    except Exception as e:
+        print(f"[MarketData] quote record error (non-fatal): {e}")
     stocks = stock_cache.get("data") or []
     matched = False
     for s in stocks:
@@ -1892,7 +1955,7 @@ def fetch_cached_stock_history(symbol):
     return []
 
 def fetch_stock_history(symbol):
-    """Fetch historical end-of-day data from PSX timeseries API with memory+disk caching and synthetic fallback."""
+    """Fetch historical end-of-day data from PSX timeseries API with memory+disk caching (newest first)."""
     if not symbol:
         return None
     symbol = symbol.upper()
@@ -1924,23 +1987,33 @@ def fetch_stock_history(symbol):
         html = fetch_url(url, timeout=12, retries=2)
         raw = json.loads(html)
         if raw.get('status') == 1 and raw.get('data'):
+            import psx_market_data as md
+            real = md.get_store().get_daily_bars(symbol)
+            rows = sorted(raw['data'], key=lambda x: x[0], reverse=True)[:101]  # newest first
             days = []
-            for entry in raw['data'][:100]:
-                ts, close, volume, open_price = entry
-                date_str = time.strftime('%Y-%m-%d', time.localtime(ts))
-                day_name = time.strftime('%A', time.localtime(ts))
-                change = close - open_price
-                change_pct = (change / open_price * 100) if open_price > 0 else 0
+            for i, entry in enumerate(rows[:100]):
+                ts, close, volume, open_price = entry[:4]
+                date_str = md.pkt_date(ts)  # PSX dates are PKT, regardless of server timezone
+                prev_close = rows[i + 1][1] if i + 1 < len(rows) else None
+                ref = prev_close if prev_close else open_price
+                change = close - ref
+                change_pct = (change / ref * 100) if ref and ref > 0 else 0
+                rb = real.get(date_str)
+                if rb and rb.get('high') and rb.get('low'):
+                    hi, lo, est = max(rb['high'], open_price, close), min(rb['low'], open_price, close), False
+                else:
+                    hi, lo, est = max(open_price, close), min(open_price, close), True
                 days.append({
                     'date': date_str,
-                    'day': day_name,
+                    'day': datetime.datetime.strptime(date_str, '%Y-%m-%d').strftime('%A'),
                     'open': round(open_price, 2),
                     'close': round(close, 2),
-                    'high': round(max(open_price, close), 2),
-                    'low': round(min(open_price, close), 2),
+                    'high': round(hi, 2),
+                    'low': round(lo, 2),
                     'volume': volume,
                     'change': round(change, 2),
-                    'changePct': round(change_pct, 2)
+                    'changePct': round(change_pct, 2),
+                    'hlEstimated': est
                 })
             _STOCK_HISTORY_CACHE[symbol] = (now, days)
             try:
@@ -1963,38 +2036,7 @@ def fetch_stock_history(symbol):
         except Exception:
             pass
 
-    # Reliable fallback: synthesize 30-day realistic candlestick history from screener quote
-    try:
-        stocks, _ = fetch_stock_data()
-        stock = next((s for s in stocks if s.get("symbol") == symbol), None)
-        if stock:
-            cur_price = stock.get("price", 10.0)
-            cur_vol = stock.get("volume", 50000)
-            cur_chg = stock.get("change", 0.0)
-            syn_days = []
-            for i in range(25):
-                t_day = now - (i * 86400)
-                d_str = time.strftime('%Y-%m-%d', time.localtime(t_day))
-                d_name = time.strftime('%A', time.localtime(t_day))
-                factor = 1.0 - (i * 0.003 * (1 if cur_chg >= 0 else -1))
-                c_pr = round(max(0.01, cur_price * factor), 2)
-                o_pr = round(max(0.01, c_pr - (cur_chg * 0.5)), 2)
-                syn_days.append({
-                    'date': d_str,
-                    'day': d_name,
-                    'open': o_pr,
-                    'close': c_pr,
-                    'high': round(max(o_pr, c_pr) * 1.01, 2),
-                    'low': round(min(o_pr, c_pr) * 0.99, 2),
-                    'volume': int(cur_vol * (0.8 + (i % 5) * 0.1)),
-                    'change': round(c_pr - o_pr, 2),
-                    'changePct': round(((c_pr - o_pr) / o_pr * 100) if o_pr > 0 else 0, 2)
-                })
-            _STOCK_HISTORY_CACHE[symbol] = (now - 1500, syn_days)
-            return syn_days
-    except Exception as e:
-        print(f"[PSX] Error generating synthetic history for {symbol}: {e}")
-
+    # No data is better than invented data: callers must handle None.
     return None
 
 
@@ -2003,248 +2045,143 @@ _DPS_TIMESERIES_CACHE = {}  # { symbol: (timestamp, raw_data) }
 
 def fetch_stock_timeframe_series(symbol, timeframe="4H", limit=150):
     """
-    Fetch and aggregate PSX OHLCV candle series for a symbol on selected timeframe:
-    '1D', '4H', '1H', '15M', '1W'.
-    Features session-aware 4H bucket aggregation aligned to PSX market open:
-    - Mon-Thu: Bar 1 (09:32 - 13:32), Bar 2 (13:32 - 15:30 close).
-    - Friday: Bar 1 (09:17 - 12:00 morning session), Bar 2 (14:32 - 16:30 afternoon session).
-      Midday Friday gap (12:00 to 14:32 PKT) is strictly excluded and never bridged.
+    PSX OHLCV candles for a symbol: '1D', '1W' (from DPS EOD + recorded real session ranges)
+    and '4H', '1H', '30M', '15M', '5M', '1M' (aggregated from actually observed ticks).
+
+    Nothing is synthesised. The DPS EOD feed has no high/low, so daily candles use the real
+    session range when we recorded it (market-watch / company quote) and otherwise fall back
+    to max/min(open, close) with "hlEstimated": True. Intraday timeframes only contain periods
+    we observed; with no recorded ticks the result is an empty list.
     """
+    import psx_market_data as md
     sym = symbol.upper()
-    now_ts = time.time()
-    raw_data = None
-
-    cached = _DPS_TIMESERIES_CACHE.get(sym)
-    if cached and (now_ts - cached[0] < 60) and cached[1]:
-        raw_data = cached[1]
-    else:
-        url = f"https://dps.psx.com.pk/timeseries/eod/{sym}"
-        try:
-            html = fetch_url(url)
-            raw = json.loads(html)
-            if raw.get('status') == 1 and raw.get('data'):
-                raw_data = raw['data']
-                _DPS_TIMESERIES_CACHE[sym] = (now_ts, raw_data)
-        except Exception as e:
-            print(f"[PSX Chart] Error fetching timeseries for {sym}: {e}")
-
-    if not raw_data:
-        return []
-
+    timeframe = (timeframe or "4H").upper().strip()
     try:
-        # Sort chronologically (oldest to newest)
-        sorted_raw = sorted(raw_data, key=lambda x: x[0])
-        
-        # Build base daily candles with high/low estimations if not present
-        daily_candles = []
-        for entry in sorted_raw:
-            ts, close, volume, open_price = entry
-            dt_pkt = datetime.datetime.fromtimestamp(ts, datetime.timezone(datetime.timedelta(hours=5)))
-            
-            # Intraday fluctuation range estimation
-            body = abs(close - open_price)
-            wick_high = max(open_price, close) + max(body * 0.4, close * 0.006)
-            wick_low = min(open_price, close) - max(body * 0.35, close * 0.005)
-            high_price = round(wick_high, 2)
-            low_price = round(max(0.01, wick_low), 2)
-            
-            daily_candles.append({
-                "timestamp": ts,
-                "datetime": dt_pkt,
-                "date": dt_pkt.strftime("%Y-%m-%d"),
-                "day": dt_pkt.strftime("%A"),
-                "weekday": dt_pkt.weekday(), # 0=Mon, 4=Fri
-                "open": round(open_price, 2),
-                "high": high_price,
-                "low": low_price,
-                "close": round(close, 2),
-                "volume": volume
-            })
-            
-        timeframe = (timeframe or "4H").upper().strip()
-        candles = []
-        
-        if timeframe == "1D":
-            for d in daily_candles:
+        if timeframe in md.TIMEFRAME_MINUTES:
+            md.refresh_intraday(sym, fetch_url)
+            days = max(2, min(60, int((limit or 150) * md.TIMEFRAME_MINUTES[timeframe] / 300) + 2))
+            bars = md.get_store().build_bars(sym, timeframe, days=days)
+            candles = []
+            for b in bars:
+                dt = datetime.datetime.fromtimestamp(b["timestamp"], md.PKT)
                 candles.append({
-                    "timestamp": d["timestamp"],
-                    "timeStr": f"{d['date']} 15:30",
-                    "dateStr": d["date"],
-                    "day": d["day"][:3],
-                    "open": d["open"],
-                    "high": d["high"],
-                    "low": d["low"],
-                    "close": d["close"],
-                    "volume": d["volume"]
+                    "timestamp": b["timestamp"],
+                    "timeStr": f"{b['date']} {b['time']}",
+                    "dateStr": b["date"],
+                    "day": dt.strftime("%a"),
+                    "open": round(b["open"], 2),
+                    "high": round(b["high"], 2),
+                    "low": round(b["low"], 2),
+                    "close": round(b["close"], 2),
+                    "volume": int(b["volume"]),
+                    "ticks": b["ticks"],
+                    "hlEstimated": False,
                 })
-                
-        elif timeframe == "1W":
-            # Group by ISO year and calendar week
-            weekly_groups = {}
-            for d in daily_candles:
-                year, week, _ = d["datetime"].isocalendar()
-                key = f"{year}-W{week:02d}"
-                if key not in weekly_groups:
-                    weekly_groups[key] = []
-                weekly_groups[key].append(d)
-                
-            for k in sorted(weekly_groups.keys()):
-                group = weekly_groups[k]
-                if not group:
-                    continue
-                w_open = group[0]["open"]
-                w_close = group[-1]["close"]
-                w_high = max(g["high"] for g in group)
-                w_low = min(g["low"] for g in group)
-                w_vol = sum(g["volume"] for g in group)
-                w_ts = group[-1]["timestamp"]
-                candles.append({
-                    "timestamp": w_ts,
-                    "timeStr": f"{group[-1]['date']} (Week)",
-                    "dateStr": group[-1]["date"],
-                    "day": "Wk",
-                    "open": w_open,
-                    "high": w_high,
-                    "low": w_low,
-                    "close": w_close,
-                    "volume": w_vol
-                })
-                
-        elif timeframe == "4H":
-            # PSX Session-Aware 4H Aggregation:
-            # Mon-Thu: 09:32 - 13:32 (4H), 13:32 - 15:30 (Session close)
-            # Friday: 09:17 - 12:00 (Morning session), 14:32 - 16:30 (Afternoon session)
-            for d in daily_candles:
-                is_friday = (d["weekday"] == 4)
-                d_date = d["date"]
-                day_short = d["day"][:3]
-                
-                # Bar 1 mid-close estimation
-                b1_weight = 0.52 if not is_friday else 0.48
-                b1_close = round(d["open"] + (d["close"] - d["open"]) * b1_weight, 2)
-                b1_high = round(max(d["open"], b1_close) + abs(d["close"] - d["open"]) * 0.25 + d["close"] * 0.003, 2)
-                b1_low = round(min(d["open"], b1_close) - abs(d["close"] - d["open"]) * 0.2 - d["close"] * 0.002, 2)
-                
-                # Bar 2 completes the day
-                b2_open = b1_close
-                b2_close = d["close"]
-                b2_high = round(max(d["high"], b2_open, b2_close), 2)
-                b2_low = round(min(d["low"], b2_open, b2_close), 2)
-                
-                b1_vol = int(d["volume"] * (0.55 if not is_friday else 0.46))
-                b2_vol = max(0, d["volume"] - b1_vol)
-                
-                if not is_friday:
-                    # Monday - Thursday (09:32 to 15:30 PKT)
-                    # 4H Bar 1: 09:32 - 13:32
+            intraday = True
+        else:
+            daily = _real_daily_candles(sym)
+            intraday = False
+            if timeframe == "1W":
+                groups = {}
+                for d in daily:
+                    y, w, _ = datetime.datetime.strptime(d["dateStr"], "%Y-%m-%d").isocalendar()
+                    groups.setdefault((y, w), []).append(d)
+                candles = []
+                for k in sorted(groups):
+                    g = groups[k]
                     candles.append({
-                        "timestamp": d["timestamp"] - 7200,
-                        "timeStr": f"{d_date} 13:32 (4H-S1)",
-                        "dateStr": d_date,
-                        "day": day_short,
-                        "session": "Mon-Thu Morning (09:32-13:32)",
-                        "open": d["open"],
-                        "high": b1_high,
-                        "low": b1_low,
-                        "close": b1_close,
-                        "volume": b1_vol
+                        "timestamp": g[-1]["timestamp"],
+                        "timeStr": f"{g[-1]['dateStr']} (Week)",
+                        "dateStr": g[-1]["dateStr"],
+                        "day": "Wk",
+                        "open": g[0]["open"],
+                        "high": max(x["high"] for x in g),
+                        "low": min(x["low"] for x in g),
+                        "close": g[-1]["close"],
+                        "volume": sum(x["volume"] for x in g),
+                        "hlEstimated": any(x["hlEstimated"] for x in g),
                     })
-                    # 4H Bar 2: 13:32 - 15:30 (Session Close partial bar)
-                    candles.append({
-                        "timestamp": d["timestamp"],
-                        "timeStr": f"{d_date} 15:30 (4H-S2)",
-                        "dateStr": d_date,
-                        "day": day_short,
-                        "session": "Mon-Thu Afternoon (13:32-15:30)",
-                        "open": b2_open,
-                        "high": b2_high,
-                        "low": b2_low,
-                        "close": b2_close,
-                        "volume": b2_vol
-                    })
-                else:
-                    # Friday: Split into 2 distinct partial 4H session bars without bridging gap
-                    # Friday Morning Bar: 09:17 - 12:00 PKT (2h 43m)
-                    candles.append({
-                        "timestamp": d["timestamp"] - 14400,
-                        "timeStr": f"{d_date} 12:00 (Fri-S1)",
-                        "dateStr": d_date,
-                        "day": "Fri",
-                        "session": "Friday Morning (09:17-12:00)",
-                        "open": d["open"],
-                        "high": b1_high,
-                        "low": b1_low,
-                        "close": b1_close,
-                        "volume": b1_vol
-                    })
-                    # Midday gap (12:00 - 14:32) is unbridged
-                    # Friday Afternoon Bar: 14:32 - 16:30 PKT (1h 58m)
-                    candles.append({
-                        "timestamp": d["timestamp"],
-                        "timeStr": f"{d_date} 16:30 (Fri-S2)",
-                        "dateStr": d_date,
-                        "day": "Fri",
-                        "session": "Friday Afternoon (14:32-16:30)",
-                        "open": b2_open,
-                        "high": b2_high,
-                        "low": b2_low,
-                        "close": b2_close,
-                        "volume": b2_vol
-                    })
-                    
-        elif timeframe in ["1H", "15M"]:
-            # Intraday hourly subdivision
-            for d in daily_candles:
-                is_friday = (d["weekday"] == 4)
-                d_date = d["date"]
-                day_short = d["day"][:3]
-                hours = 4 if is_friday else 6
-                step = (d["close"] - d["open"]) / hours
-                cur_o = d["open"]
-                vol_per_h = max(1, int(d["volume"] / hours))
-                
-                for h_idx in range(hours):
-                    cur_c = round(cur_o + step + ((h_idx % 2 - 0.5) * step * 0.3), 2)
-                    if h_idx == hours - 1:
-                        cur_c = d["close"]
-                    h_high = round(max(cur_o, cur_c) + abs(step) * 0.4 + d["close"] * 0.002, 2)
-                    h_low = round(min(cur_o, cur_c) - abs(step) * 0.3 - d["close"] * 0.002, 2)
-                    time_label = f"{9 + h_idx + 1:02d}:30"
-                    candles.append({
-                        "timestamp": d["timestamp"] - (hours - h_idx) * 3600,
-                        "timeStr": f"{d_date} {time_label}",
-                        "dateStr": d_date,
-                        "day": day_short,
-                        "open": round(cur_o, 2),
-                        "high": h_high,
-                        "low": h_low,
-                        "close": cur_c,
-                        "volume": vol_per_h
-                    })
-                    cur_o = cur_c
-                    
-        # Calculate VWAP and PSX Circuit Bands (+/- 7.5% or min Rs 1.00)
-        cum_vol = 0
-        cum_vol_price = 0.0
+            else:
+                candles = daily
+
+        # VWAP (reset each session for intraday) and PSX circuit bands (+/- 7.5% or min Rs 1.00)
+        cum_vol = 0.0
+        cum_vp = 0.0
         prev_c = None
+        cur_day = None
         for c in candles:
+            if intraday and c["dateStr"] != cur_day:
+                cur_day, cum_vol, cum_vp = c["dateStr"], 0.0, 0.0
             typ_p = (c["high"] + c["low"] + c["close"]) / 3.0
-            vol = max(1, int(c.get("volume", 1) or 1))
+            vol = float(c.get("volume") or 0)
             cum_vol += vol
-            cum_vol_price += typ_p * vol
-            c["vwap"] = round(cum_vol_price / cum_vol, 2)
-            
+            cum_vp += typ_p * vol
+            c["vwap"] = round(cum_vp / cum_vol, 2) if cum_vol > 0 else None
             ref_p = prev_c if prev_c is not None else c["open"]
             band_spread = max(1.00, ref_p * 0.075)
             c["circuit_upper"] = round(ref_p + band_spread, 2)
             c["circuit_lower"] = round(max(0.01, ref_p - band_spread), 2)
             prev_c = c["close"]
 
-        # Return requested limit (latest N candles)
         return candles[-limit:] if limit and len(candles) > limit else candles
     except Exception as e:
         print(f"[PSX] Error fetching timeframe series for {symbol}: {e}")
         return []
+
+
+def _real_daily_candles(sym):
+    """Daily candles oldest-first: DPS EOD (close/volume/open) merged with recorded real ranges."""
+    import psx_market_data as md
+    now_ts = time.time()
+    raw_data = None
+    cached = _DPS_TIMESERIES_CACHE.get(sym)
+    if cached and (now_ts - cached[0] < 60) and cached[1]:
+        raw_data = cached[1]
+    else:
+        try:
+            raw = json.loads(fetch_url(f"https://dps.psx.com.pk/timeseries/eod/{sym}"))
+            if raw.get("status") == 1 and raw.get("data"):
+                raw_data = raw["data"]
+                _DPS_TIMESERIES_CACHE[sym] = (now_ts, raw_data)
+        except Exception as e:
+            print(f"[PSX Chart] Error fetching timeseries for {sym}: {e}")
+
+    real = md.get_store().get_daily_bars(sym)
+    by_date = {}
+    for entry in sorted(raw_data or [], key=lambda x: x[0]):
+        ts, close, volume, open_price = entry[:4]
+        date = md.pkt_date(ts)
+        by_date[date] = {"timestamp": int(ts), "open": float(open_price), "close": float(close),
+                         "volume": float(volume or 0)}
+    # Sessions we recorded live but the EOD feed doesn't have yet (e.g. today)
+    for date, rb in real.items():
+        if date not in by_date and rb.get("close"):
+            d0 = datetime.datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=md.PKT)
+            by_date[date] = {"timestamp": int(d0.timestamp()), "open": rb["open"] or rb["close"],
+                             "close": rb["close"], "volume": rb.get("volume") or 0}
+
+    out = []
+    for date in sorted(by_date):
+        d = by_date[date]
+        rb = real.get(date)
+        o, c = d["open"], d["close"]
+        if rb and rb.get("high") and rb.get("low"):
+            hi, lo, est = max(rb["high"], o, c), min(rb["low"], o, c), False
+        else:
+            hi, lo, est = max(o, c), min(o, c), True
+        out.append({
+            "timestamp": d["timestamp"],
+            "timeStr": f"{date} 15:30",
+            "dateStr": date,
+            "day": datetime.datetime.strptime(date, "%Y-%m-%d").strftime("%a"),
+            "open": round(o, 2),
+            "high": round(hi, 2),
+            "low": round(lo, 2),
+            "close": round(c, 2),
+            "volume": d["volume"],
+            "hlEstimated": est,
+        })
+    return out
 
 
 def get_psx_market_status():

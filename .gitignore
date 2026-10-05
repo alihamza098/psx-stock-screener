@@ -27,3 +27,4 @@ feedback.json
 cache/telegram_config.json
 cache/paper_account.json
 .env
+cache/market_data.db
