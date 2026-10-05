@@ -58,9 +58,18 @@ class TestPhase2Phase3(unittest.TestCase):
         actions = get_upcoming_corporate_actions()
         self.assertIsInstance(actions, list)
 
-        near, act = is_near_ex_date('OGDC', 30)
-        self.assertTrue(near)
-        self.assertIsNotNone(act)
+        # Fixture dated relative to today so the test doesn't expire with the seed data
+        import datetime
+        from unittest import mock
+        ex = (datetime.date.today() + datetime.timedelta(days=10)).isoformat()
+        fixture = [{"symbol": "OGDC", "action_type": "DIVIDEND", "payout_pkr": 4.0, "bonus_pct": 0,
+                    "ex_date": ex, "book_closure_start": ex, "book_closure_end": ex,
+                    "announcement_date": datetime.date.today().isoformat()}]
+        with mock.patch("psx_corporate_actions._load_actions", return_value=fixture):
+            near, act = is_near_ex_date('OGDC', 30)
+            self.assertTrue(near)
+            self.assertIsNotNone(act)
+            self.assertFalse(is_near_ex_date('OGDC', 5)[0])
 
         # Check drop adjustment detection
         is_adj, note = check_ex_date_stop_adjustment(
