@@ -30,8 +30,22 @@ try:
     SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 except Exception:
     SSL_CONTEXT = ssl.create_default_context()
-SSL_CONTEXT.check_hostname = False
-SSL_CONTEXT.verify_mode = ssl.CERT_NONE
+# Certificates are verified. PSX hosts have at times served an incomplete chain; for those hosts
+# only, a failed verification falls back to an unverified connection with a loud warning
+# (set PSX_STRICT_TLS=1 to disable the fallback entirely). Every other host must verify.
+INSECURE_TLS_FALLBACK_HOSTS = {"dps.psx.com.pk", "www.psx.com.pk", "psx.com.pk"}
+_INSECURE_SSL_CONTEXT = ssl.create_default_context()
+_INSECURE_SSL_CONTEXT.check_hostname = False
+_INSECURE_SSL_CONTEXT.verify_mode = ssl.CERT_NONE
+TLS_STATUS = {"insecure_fallback_used": False, "last_error": None}
+
+
+def _tls_context_for(url, verified_failed=False):
+    from urllib.parse import urlparse
+    host = (urlparse(url).hostname or "").lower()
+    if verified_failed and host in INSECURE_TLS_FALLBACK_HOSTS and os.environ.get("PSX_STRICT_TLS") != "1":
+        return _INSECURE_SSL_CONTEXT
+    return SSL_CONTEXT
 
 
 # ─── PSX AI Trading Engine Modules (Phase 1 to 4) ───
@@ -471,9 +485,16 @@ def fetch_url(url, timeout=FETCH_TIMEOUT, retries=FETCH_RETRIES):
     req = urllib.request.Request(url, headers=headers)
     last_error = None
 
-    for attempt in range(1, retries + 1):
+    verify_failed = False
+    fallback_retry = False
+    attempt = 0
+    while attempt < retries or fallback_retry:
+        if not fallback_retry:
+            attempt += 1
+        fallback_retry = False
         try:
-            with urllib.request.urlopen(req, timeout=timeout, context=SSL_CONTEXT) as response:
+            ctx = _tls_context_for(url, verify_failed)
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as response:
                 raw = response.read()
                 enc = response.info().get("Content-Encoding", "").lower()
                 if "gzip" in enc or (len(raw) > 2 and raw[:2] == b"\x1f\x8b"):
@@ -489,6 +510,16 @@ def fetch_url(url, timeout=FETCH_TIMEOUT, retries=FETCH_RETRIES):
                 return raw.decode("utf-8", errors="ignore")
         except Exception as e:
             last_error = e
+            reason = getattr(e, "reason", e)
+            if isinstance(reason, ssl.SSLCertVerificationError) and not verify_failed:
+                verify_failed = True
+                if _tls_context_for(url, True) is _INSECURE_SSL_CONTEXT:
+                    if not TLS_STATUS["insecure_fallback_used"]:
+                        print(f"[PSX] WARNING: certificate verification failed for {url} ({reason}); "
+                              f"falling back to an unverified connection for PSX hosts. Set PSX_STRICT_TLS=1 to refuse.")
+                    TLS_STATUS.update(insecure_fallback_used=True, last_error=str(reason))
+                    fallback_retry = True  # retry now without verification; not counted as an attempt
+                    continue
             print(f"[PSX] Fetch error (attempt {attempt}/{retries}) for {url}: {e}")
             if attempt < retries:
                 time.sleep(1.0 * attempt)
@@ -3121,7 +3152,8 @@ def get_corporate_actions_and_dividends():
     try:
         data = urllib.parse.urlencode({"symbol": "", "count": 100, "offset": 0}).encode("utf-8")
         req = urllib.request.Request("https://dps.psx.com.pk/payouts", data=data, headers=headers)
-        with urllib.request.urlopen(req, timeout=12, context=SSL_CONTEXT) as r:
+        with urllib.request.urlopen(req, timeout=12, context=_tls_context_for(
+                "https://dps.psx.com.pk/payouts", TLS_STATUS["insecure_fallback_used"])) as r:
             html = r.read().decode("utf-8", errors="ignore")
 
 
