@@ -7932,7 +7932,9 @@ function fetchFinancialStatements(symbol) {
         })
         .then(res => {
             if (loading) loading.style.display = "none";
-            if (res.success && res.data) {
+            if (res.success && res.data && res.data.statementsAvailable === false) {
+                renderReportedFinancials(res.data);
+            } else if (res.success && res.data) {
                 const ratios = calculate10FinancialRatios(res.data);
                 renderFinancialStatementsWorkspace(res.data, ratios);
             } else {
@@ -7945,6 +7947,46 @@ function fetchFinancialStatements(symbol) {
                 workspace.innerHTML = `<div class="upper-lock-empty"><p>Error loading financials: ${err.message}</p></div>`;
             }
         });
+}
+
+// Reported figures only: DPS publishes Sales and EPS (annual & quarterly); balance sheet and
+// cash flow are not available there, so they are linked rather than estimated.
+function renderReportedFinancials(fin) {
+    const workspace = document.getElementById("fin-workspace");
+    if (!workspace) return;
+    const esc = escapeHtml;
+    const num = (v, d = 2) => (v === null || v === undefined || isNaN(Number(v))) ? "—" : Number(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+    const pct = (v) => (v === null || v === undefined) ? "—" : `<span class="${v >= 0 ? "positive" : "negative"}">${v > 0 ? "+" : ""}${num(v, 1)}%</span>`;
+    const table = (rows, title, growthLabel) => `
+        <div class="stmt-card">
+            <h4>${title}</h4>
+            ${rows.length ? `<table class="stmt-table">
+                <tr class="row-bold"><td>Period</td><td>Sales (PKR '000)</td><td>${growthLabel}</td><td>EPS (PKR)</td><td>${growthLabel}</td></tr>
+                ${rows.map(r => `<tr><td>${esc(r.period)}</td><td>${num(r.sales, 0)}</td><td>${pct(r.sales_growth_pct)}</td>
+                    <td>${num(r.eps)}</td><td>${r.eps_growth_pct != null ? pct(r.eps_growth_pct) : esc(r.eps_change || "—")}</td></tr>`).join("")}
+            </table>` : `<p class="muted">No published figures found yet.</p>`}
+        </div>`;
+    workspace.innerHTML = `
+    <div class="fin-statements-section">
+        <h3 class="fin-sec-title">${esc(fin.symbol)} — Reported Financials (${esc(fin.name || "")})</h3>
+        <div class="stmt-grid">
+            <div class="stmt-card">
+                <h4>Valuation (live)</h4>
+                <table class="stmt-table">
+                    <tr><td>Price</td><td>₨${num(fin.price)}</td></tr>
+                    <tr><td>Market cap</td><td>₨${formatFinVal(fin.mcap)}</td></tr>
+                    <tr><td>P/E</td><td>${num(fin.pe, 1)}</td></tr>
+                    <tr><td>Earnings yield (latest annual EPS / price)</td><td>${fin.earningsYieldPct == null ? "—" : num(fin.earningsYieldPct, 1) + "%"}</td></tr>
+                    <tr><td>Dividend yield</td><td>${num(fin.divYield, 1)}%</td></tr>
+                </table>
+            </div>
+            ${table(fin.annual || [], "Annual results", "vs prior year")}
+            ${table(fin.quarterly || [], "Quarterly results", "vs same qtr last year")}
+        </div>
+        <p class="muted" style="margin-top:12px">Source: ${esc(fin.source)}.
+            For the full balance sheet and cash flow statement, open the company's published reports on
+            <a href="${esc(fin.reportsUrl)}" target="_blank" rel="noopener">PSX Data Portal</a>.</p>
+    </div>`;
 }
 
 function safeNum(val, defaultVal = 0) {

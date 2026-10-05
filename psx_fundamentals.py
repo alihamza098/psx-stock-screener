@@ -183,8 +183,8 @@ def raw_factors(annual: List[Dict[str, Any]], price: float, mom_12_1: Optional[f
         if mean > 0:
             cv = statistics.pstdev(last3) / mean
             f["quality_stability"] = 1.0 - min(1.0, cv)
-    if len(eps) >= 2 and eps[1] not in (0, None):
-        f["growth_eps"] = max(-1.0, min(2.0, (eps[0] - eps[1]) / abs(eps[1])))
+    if len(eps) >= 2 and eps[0] > 0 and eps[1] > 0:  # growth across losses is meaningless
+        f["growth_eps"] = max(-1.0, min(2.0, eps[0] / eps[1] - 1.0))
     span = min(3, len(sales) - 1)
     if span >= 2 and sales[0] > 0 and sales[span] > 0:
         f["growth_sales"] = (sales[0] / sales[span]) ** (1.0 / span) - 1.0
