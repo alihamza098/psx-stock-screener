@@ -606,6 +606,10 @@ def run_trade_desk_eod():
             import psx_backtester as bt
             import psx_fundamentals as pf
             stocks = stock_cache.get("data") or []
+            try:
+                get_corporate_actions_and_dividends()  # refresh DPS payouts → ex-dates for stop adjustments
+            except Exception as pe:
+                print(f"[TradeDesk] payouts refresh failed: {pe}")
             universe = bt.default_universe(stocks, int(desk.load_config()["swing"]["universe_size"]))
             data = bt.load_universe(universe, fetch_url, pause_s=0.2)
             res = desk.run_swing_eod(data=data)

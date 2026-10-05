@@ -12,70 +12,83 @@ import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
-DB_PATH = Path(__file__).parent / "cache" / "corporate_actions.json"
+import re
 
-# Curated seed of confirmed active corporate actions & dividend book closures
-SAMPLE_ACTIONS = [
-    {
-        "symbol": "MEBL",
-        "action_type": "DIVIDEND",
-        "payout_pkr": 7.00,
-        "bonus_pct": 0,
-        "ex_date": "2026-09-22",
-        "book_closure_start": "2026-09-23",
-        "book_closure_end": "2026-09-30",
-        "announcement_date": "2026-09-02"
-    },
-    {
-        "symbol": "OGDC",
-        "action_type": "DIVIDEND",
-        "payout_pkr": 4.00,
-        "bonus_pct": 0,
-        "ex_date": "2026-09-25",
-        "book_closure_start": "2026-09-26",
-        "book_closure_end": "2026-10-02",
-        "announcement_date": "2026-09-04"
-    },
-    {
-        "symbol": "HUBC",
-        "action_type": "DIVIDEND",
-        "payout_pkr": 8.50,
-        "bonus_pct": 0,
-        "ex_date": "2026-09-28",
-        "book_closure_start": "2026-09-29",
-        "book_closure_end": "2026-10-06",
-        "announcement_date": "2026-09-05"
-    },
-    {
-        "symbol": "LUCK",
-        "action_type": "DIVIDEND",
-        "payout_pkr": 18.00,
-        "bonus_pct": 0,
-        "ex_date": "2026-10-02",
-        "book_closure_start": "2026-10-03",
-        "book_closure_end": "2026-10-10",
-        "announcement_date": "2026-09-08"
-    },
-    {
-        "symbol": "SYS",
-        "action_type": "BONUS",
-        "payout_pkr": 0.0,
-        "bonus_pct": 10.0,
-        "ex_date": "2026-10-05",
-        "book_closure_start": "2026-10-06",
-        "book_closure_end": "2026-10-12",
-        "announcement_date": "2026-09-09"
+DB_PATH = Path(__file__).parent / "cache" / "corporate_actions.json"   # optional manual additions
+PAYOUTS_PATH = Path(__file__).parent / "cache" / "payouts_cache.json"   # written by server.py from DPS /payouts
+
+# DPS quotes payouts as a % of face value. Almost all PSX shares have Rs 10 face value; the
+# assumption is recorded on every derived action so it is never mistaken for a reported figure.
+FACE_VALUE_ASSUMED = 10.0
+
+
+def _dmy(s: str) -> Optional[str]:
+    m = re.match(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})", s or "")
+    return f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}" if m else None
+
+
+def parse_payout_entry(e: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Convert one DPS payouts row (e.g. dividendAmount "50%Final Cash") into an action record."""
+    sym = (e.get("symbol") or "").strip().upper()
+    ex = _dmy(e.get("exDividendDate", ""))
+    text = e.get("dividendAmount") or ""
+    if not sym or not ex:
+        return None
+    cash_pkr: Optional[float] = None
+    bonus_pct = 0.0
+    has_cash = has_bonus = False
+    for seg in re.split(r"\s+-\s+", text):
+        low = seg.lower()
+        rs = re.search(r"rs\.?\s*(\d+(?:\.\d+)?)", low)
+        pct = re.search(r"(\d+(?:\.\d+)?)\s*%", seg)
+        if "bonus" in low:
+            has_bonus = True
+            if pct:
+                bonus_pct = max(bonus_pct, float(pct.group(1)))
+        elif "cash" in low and cash_pkr is None:  # first cash component only (DPS sometimes repeats it)
+            has_cash = True
+            if rs:
+                cash_pkr = float(rs.group(1))
+            elif pct:
+                cash_pkr = round(float(pct.group(1)) / 100.0 * FACE_VALUE_ASSUMED, 4)
+    if not has_cash and not has_bonus:
+        return None  # rights issues etc. are not handled here
+    closure = [_dmy(x) for x in (e.get("bookClosure") or "").split("-")]
+    return {
+        "symbol": sym,
+        "action_type": "DIVIDEND" if has_cash else "BONUS",
+        "payout_pkr": cash_pkr if has_cash else 0.0,   # None when the cash amount could not be parsed
+        "bonus_pct": bonus_pct,
+        "ex_date": ex,
+        "book_closure_start": closure[0] if closure else None,
+        "book_closure_end": closure[1] if len(closure) > 1 else None,
+        "announcement_date": e.get("announcementDate"),
+        "raw": text,
+        "face_value_assumed": FACE_VALUE_ASSUMED,
+        "source": "dps.psx.com.pk/payouts",
     }
-]
+
 
 def _load_actions() -> List[Dict[str, Any]]:
+    """Real payouts from the DPS payouts cache, plus any manual entries in corporate_actions.json.
+    Returns [] when neither exists — never sample data."""
+    actions: List[Dict[str, Any]] = []
+    try:
+        with open(PAYOUTS_PATH, "r", encoding="utf-8") as f:
+            cal = (json.load(f).get("data") or {}).get("dividendCalendar") or []
+        actions = [a for a in (parse_payout_entry(e) for e in cal) if a]
+    except Exception:
+        pass
     if DB_PATH.exists():
         try:
             with open(DB_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
+                manual = json.load(f)
+            seen = {(a["symbol"], a["ex_date"]) for a in actions}
+            actions += [m for m in manual if (m.get("symbol"), m.get("ex_date")) not in seen
+                        and m.get("source") == "manual"]
         except Exception:
             pass
-    return SAMPLE_ACTIONS
+    return actions
 
 def _save_actions(actions: List[Dict[str, Any]]) -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -125,7 +138,7 @@ def check_ex_date_stop_adjustment(symbol: str, entry_price: float, drop_pct: flo
                 ex_dt = datetime.date.fromisoformat(a.get("ex_date"))
                 days_diff = abs((today - ex_dt).days)
                 if days_diff <= 2:  # within 2 days of ex-date
-                    payout = a.get("payout_pkr", 0.0)
+                    payout = a.get("payout_pkr") or 0.0
                     if payout > 0 and entry_price > 0:
                         expected_div_drop_pct = (payout / entry_price) * 100
                         # If actual drop is within +/- 3% of dividend payout
@@ -136,7 +149,6 @@ def check_ex_date_stop_adjustment(symbol: str, entry_price: float, drop_pct: flo
     return False, ""
 
 if __name__ == "__main__":
-    _save_actions(SAMPLE_ACTIONS)
-    print("Upcoming actions:", len(get_upcoming_corporate_actions()))
+    print("Upcoming actions:", get_upcoming_corporate_actions())
     near, act = is_near_ex_date("MEBL", 10)
     print("Is MEBL near ex-date?", near, act)
