@@ -37,6 +37,17 @@ python3 psx_backtester.py --symbols OGDC,PPL,LUCK --strategies breakout_20d
 ```
 Only strategies with a **PASS** verdict should drive alerts.
 
+## Trade Desk (`/desk`)
+KTrade-ready orders for PKR 5 lakh (`config/trade_desk.json`):
+- **Swing / long-term** — after each close every Strategy Lab strategy is forward-tested from its
+  go-live date and tomorrow's orders (entries with limit, stop, target, size; exits at the open) are listed.
+- **Day trading** — opening-range breakout and VWAP reclaim on recorded real ticks, with a risk guard
+  (0.5% risk/trade, max 3 trades/day, 1.5% daily loss lock, no entries after 14:30, forced exit at 15:15).
+- Only **LIVE** strategies are sent to Telegram: swing ones need a Strategy Lab PASS, intraday ones need
+  40+ profitable forward-test trades. Everything else is tracked as **PAPER**.
+- Old unvalidated alerts (weekly scan, intelligence, old intraday picks) are off unless
+  `"legacy_signal_alerts": true`. Add short-eligible symbols in `config/costs.json` to enable short setups.
+
 ## Deploy to Render
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
 

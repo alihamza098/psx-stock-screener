@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Desk — PSX Screener</title>
+<style>
+  :root {
+    --bg: #0b0f19; --panel: #111827; --panel-2: #0f172a; --border: #1f2937;
+    --text: #e5e7eb; --muted: #94a3b8; --accent: #34d399;
+    --pass: #22c55e; --fail: #ef4444; --warn: #f59e0b; --info: #60a5fa;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+  a { color: var(--accent); }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  h3 { font-size: 15px; margin: 0; }
+  .sub { color: var(--muted); margin: 0 0 20px; max-width: 780px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .strat { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .kpi { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .kpi .l { color: var(--muted); font-size: 12px; }
+  .kpi .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  button { background: var(--accent); color: #052e1c; border: 0; border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; }
+  button[disabled] { opacity: .5; cursor: default; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; vertical-align: middle; }
+  .LIVE { background: rgba(34,197,94,.15); color: var(--pass); }
+  .PAPER { background: rgba(96,165,250,.15); color: var(--info); }
+  .DISABLED { background: rgba(148,163,184,.15); color: var(--muted); }
+  .LOCKED { background: rgba(239,68,68,.15); color: var(--fail); }
+  .OPEN { background: rgba(245,158,11,.15); color: var(--warn); }
+  .tbl-wrap { overflow-x: auto; margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; font-size: 13px; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  th:first-child, td:first-child { text-align: left; }
+  td.l, th.l { text-align: left; white-space: normal; min-width: 150px; }
+  .pos { color: var(--pass); } .neg { color: var(--fail); }
+  .order { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: #0a0f1a;
+           border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-top: 6px; white-space: normal; }
+  .paper-note { color: var(--info); font-size: 12px; margin-top: 6px; }
+  .empty { color: var(--muted); padding: 8px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row">
+    <div>
+      <h1>Trade Desk</h1>
+      <p class="sub">Orders you can place on KTrade by hand.
+        <span class="badge LIVE">LIVE</span> strategies have proven themselves (Strategy Lab PASS, or enough profitable
+        forward-test trades) and are sent to Telegram.
+        <span class="badge PAPER">PAPER</span> strategies are being tracked to collect evidence — <b>do not trade them</b>.</p>
+    </div>
+    <div style="text-align:right">
+      <button id="eod-btn" onclick="runEod()">Rebuild order plan</button>
+      <div class="muted" id="eod-status"></div>
+      <div class="muted"><a href="/research">Strategy Lab →</a></div>
+    </div>
+  </div>
+  <div id="content"><div class="card empty">Loading…</div></div>
+  <p class="muted"><a href="/">← Back to screener</a> · Educational tool, not investment advice.</p>
+</div>
+
+<script>
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = (v, d = 2) => (v === null || v === undefined || isNaN(v)) ? "—" : Number(v).toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+const signed = (v, d = 0, suf = "") => (v === null || v === undefined) ? "—" : `<span class="${v > 0 ? "pos" : v < 0 ? "neg" : ""}">${v > 0 ? "+" : ""}${num(v, d)}${suf}</span>`;
+const badge = (s) => `<span class="badge ${esc(s)}">${esc(s)}</span>`;
+const NAMES = { orb: "Opening-range breakout", vwap_reclaim: "VWAP reclaim", breakout_20d: "20-day breakout",
+  pullback_rsi2: "Pullback in uptrend (RSI-2)", momentum_12_1_monthly: "12-1 momentum, monthly (long-term)",
+  live_engine_v2: "Live Trading engine (current)", ema_trend_baseline: "EMA trend (baseline)" };
+const nm = (k) => NAMES[k] || k;
+
+function intradayCard(d) {
+  const r = d.risk, rules = d.rules;
+  const strat = Object.entries(d.strategies || {}).map(([k, s]) => `<tr>
+      <td>${esc(nm(k))}</td><td>${badge(s.status)}</td><td class="l muted">${esc(s.status_reason)}</td>
+      <td>${num(s.forward.trades, 0)}</td><td>${num(s.forward.win_rate_pct, 1)}%</td>
+      <td>${signed(s.forward.expectancy_pkr)}</td><td>${num(s.forward.profit_factor)}</td><td>${signed(s.forward.net_pnl_pkr)}</td></tr>`).join("");
+  const rowT = (t) => `<tr><td>${esc(t.entry_time)}</td><td>${esc(t.symbol)}</td><td>${t.side === "long" ? "BUY" : "SHORT"}</td>
+      <td class="l">${esc(nm(t.strategy))} ${badge(t.status_at_signal)}</td><td>${num(t.qty, 0)}</td><td>${num(t.entry)}</td>
+      <td>${num(t.stop)}</td><td>${num(t.target)}</td>
+      <td>${t.state === "OPEN" ? badge("OPEN") : esc(t.exit_reason) + " @ " + num(t.exit)}</td><td>${signed(t.net_pnl)}</td></tr>`;
+  const today = (d.today || []).slice().reverse();
+  return `<div class="card">
+    <div class="row"><h2>Day trading — today</h2>${r.locked ? badge("LOCKED") : ""}</div>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Trades today</div><div class="v">${num(r.trades_today, 0)} / ${num(rules.max_trades_per_day, 0)}</div></div>
+      <div class="kpi"><div class="l">Open positions</div><div class="v">${num(r.open_positions, 0)} / ${num(rules.max_open_positions, 0)}</div></div>
+      <div class="kpi"><div class="l">Realised P&amp;L (paper)</div><div class="v">${signed(r.realised_pnl_pkr)}</div></div>
+      <div class="kpi"><div class="l">Daily loss lock at</div><div class="v">PKR ${num(r.daily_loss_limit_pkr, 0)}</div></div>
+      <div class="kpi"><div class="l">Risk per trade · min RVOL</div><div class="v">${num(rules.risk_per_trade_pct, 1)}% · ${num(rules.min_rvol, 1)}x</div></div>
+      <div class="kpi"><div class="l">No new entries after</div><div class="v">${esc(rules.no_new_entries_after)}</div></div>
+    </div>
+    ${r.locked ? `<p class="paper-note" style="color:var(--fail)">Trading locked for today: ${esc(r.locked_reason)}</p>` : ""}
+    <div class="tbl-wrap"><table>
+      <tr><th>Strategy</th><th>Status</th><th class="l">Why</th><th>Fwd trades</th><th>Win</th><th>Expectancy</th><th>PF</th><th>Net PKR</th></tr>${strat}
+    </table></div>
+    <div class="tbl-wrap"><table>
+      <tr><th>Time</th><th>Symbol</th><th>Side</th><th class="l">Strategy</th><th>Qty</th><th>Entry</th><th>Stop</th><th>Target</th><th>Result</th><th>Net PKR</th></tr>
+      ${today.length ? today.map(rowT).join("") : `<tr><td colspan="10" class="l empty">No setups yet today. Setups need the opening range (first 15 min), RVOL ≥ ${num(rules.min_rvol, 1)}x and real recorded ticks.</td></tr>`}
+    </table></div>
+  </div>`;
+}
+
+function swingCard(sw) {
+  if (!sw || !sw.success) return `<div class="card"><h2>Swing &amp; long-term — next session</h2><div class="empty">No order plan yet. It is built automatically after each close, or press “Rebuild order plan”.</div></div>`;
+  const blocks = sw.strategies.map(s => {
+    const f = s.forward || {};
+    const live = s.status === "LIVE";
+    const orders = [
+      ...(s.plan_exits || []).map(x => `<div class="order">🔴 SELL ${num(x.qty, 0)} <b>${esc(x.symbol)}</b> at the open — ${esc(x.reason)}</div>`),
+      ...(s.plan_entries || []).map(p => `<div class="order">🟢 ${p.side === "long" ? "BUY" : "SELL SHORT"} ~${num(p.est_qty, 0)} <b>${esc(p.symbol)}</b> at the open,
+          limit ${p.side === "long" ? "≤" : "≥"} ${num(p.limit)} · stop ${num(p.stop)}${p.target ? " · target " + num(p.target) : ""}
+          · ≈ PKR ${num(p.est_value_pkr, 0)} · risk ≈ PKR ${num(p.est_risk_pkr, 0)}</div>`)].join("");
+    const pos = (s.open_positions || []).map(p => `<tr><td>${esc(p.symbol)}</td><td>${esc(p.entry_date)}</td><td>${num(p.qty, 0)}</td>
+        <td>${num(p.entry)}</td><td>${num(p.last)}</td><td>${num(p.stop)}</td><td>${num(p.target)}</td><td>${signed(p.unrealised_pkr)}</td>
+        <td>${p.pending_exit ? "exit at open (" + esc(p.pending_exit) + ")" : ""}</td></tr>`).join("");
+    return `<div class="strat">
+      <div class="row"><h3>${esc(nm(s.name))} ${badge(s.status)}</h3>
+        <span class="muted">forward test since ${esc(s.go_live)} · equity PKR ${num(s.equity, 0)} · ${num(f.trades, 0)} closed trades · net ${signed(f.net_pnl_pkr)}</span></div>
+      <div class="muted">${esc(s.status_reason)}</div>
+      ${s.error ? `<div class="paper-note" style="color:var(--fail)">${esc(s.error)}</div>` : ""}
+      ${orders || `<div class="empty">No orders for the next session.</div>`}
+      ${orders && !live ? `<div class="paper-note">PAPER — tracked for evidence only, not alerted. Don't place these.</div>` : ""}
+      ${pos ? `<div class="tbl-wrap"><table><tr><th>Holding</th><th>Since</th><th>Qty</th><th>Entry</th><th>Last</th><th>Stop</th><th>Target</th><th>Unrealised</th><th></th></tr>${pos}</table></div>` : ""}
+    </div>`;
+  }).join("");
+  return `<div class="card"><h2>Swing &amp; long-term — orders for the next session</h2>
+    <div class="muted">Based on the close of ${esc(sw.as_of)} · each strategy runs its own PKR ${num(sw.capital_pkr, 0)} forward-test book.</div>${blocks}</div>`;
+}
+
+async function load() {
+  try {
+    const d = await (await fetch("/api/desk")).json();
+    const rt = d.round_trip_cost_pct || {};
+    document.getElementById("content").innerHTML = `
+      <div class="card"><div class="kpis">
+        <div class="kpi"><div class="l">Capital</div><div class="v">PKR ${num(d.capital_pkr, 0)}</div></div>
+        <div class="kpi"><div class="l">Round trip cost — swing</div><div class="v">${num(rt.swing)}%</div></div>
+        <div class="kpi"><div class="l">Round trip cost — same day</div><div class="v">${num(rt.day_trade)}%</div></div>
+        <div class="kpi"><div class="l">Short-eligible symbols</div><div class="v">${d.short_eligible_symbols.length ? esc(d.short_eligible_symbols.join(", ")) : "none set"}</div></div>
+      </div></div>
+      ${intradayCard(d.intraday)}${swingCard(d.swing)}`;
+    const btn = document.getElementById("eod-btn");
+    btn.disabled = !!d.eod_running;
+    document.getElementById("eod-status").textContent = d.eod_running ? "Building plan…" : (d.last_eod_error ? "Last build: " + d.last_eod_error : "");
+  } catch (e) {
+    document.getElementById("content").innerHTML = `<div class="card empty">Could not load desk: ${esc(e)}</div>`;
+  }
+}
+
+async function runEod() {
+  let secret = sessionStorage.getItem("psx_admin_secret") || prompt("Admin secret:") || "";
+  if (!secret) return;
+  const res = await fetch("/api/desk/run-eod", { method: "POST", headers: { "X-Admin-Secret": secret } });
+  if (res.status === 401) { sessionStorage.removeItem("psx_admin_secret"); alert("Wrong admin secret."); return; }
+  sessionStorage.setItem("psx_admin_secret", secret);
+  load();
+}
+
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

@@ -324,6 +324,26 @@ STRATEGIES: Dict[str, Callable[[], Strategy]] = {
 # Simulation engine
 # ─────────────────────────────────────────────────────────────────────────────
 
+def size_position(sig: Dict[str, Any], px: float, equity: float, cash: float, avg_vol20: Optional[float],
+                  cfg: Dict[str, Any], costs: CostModel) -> int:
+    """Shares to trade: risk-based (or fixed weight), capped by position %, ADV %, cash, lot size."""
+    risk_ps = (px - sig["stop"]) if sig["side"] == "long" else (sig["stop"] - px)
+    if risk_ps <= 0:
+        return 0
+    if sig.get("weight_pct"):
+        qty = equity * min(sig["weight_pct"], 100.0) / 100.0 / px
+    else:
+        qty = equity * cfg["risk_per_trade_pct"] / 100.0 / risk_ps
+        qty = min(qty, equity * cfg["max_position_pct"] / 100.0 / px)
+    if avg_vol20:
+        qty = min(qty, avg_vol20 * costs.max_adv_pct / 100.0)
+    qty = min(qty, cash / (px * 1.01))
+    qty = costs.round_lot(qty)
+    if qty <= 0 or qty * px < cfg["min_trade_value_pkr"]:
+        return 0
+    return qty
+
+
 def _locked(bar: Dict[str, Any], prev_close: float, costs: CostModel, side: str) -> bool:
     """True when the stock is pinned at a circuit limit all session (no counterparty)."""
     lo, hi = costs.circuit_band(prev_close)
@@ -335,8 +355,13 @@ def _locked(bar: Dict[str, Any], prev_close: float, costs: CostModel, side: str)
 def simulate(strategy: Strategy, data: Dict[str, List[Dict[str, Any]]],
              start: Optional[str] = None, end: Optional[str] = None,
              settings: Optional[Dict[str, Any]] = None,
-             costs: Optional[CostModel] = None) -> Dict[str, Any]:
-    """Run one strategy over a universe. data: symbol -> bars oldest-first (date, open, high, low, close, volume, hlEstimated)."""
+             costs: Optional[CostModel] = None, close_at_end: bool = True) -> Dict[str, Any]:
+    """Run one strategy over a universe. data: symbol -> bars oldest-first (date, open, high, low, close, volume, hlEstimated).
+
+    close_at_end=False leaves positions open and also returns the live book: open positions,
+    entries queued for the next open (with an estimated size) and exits queued for the next open.
+    This is what the Trade Desk uses to forward-test a strategy and to build tomorrow's order plan.
+    """
     cfg = dict(DEFAULT_SETTINGS, **(settings or {}))
     costs = costs or get_cost_model()
 
@@ -427,17 +452,8 @@ def simulate(strategy: Strategy, data: Dict[str, List[Dict[str, Any]]],
             risk_ps = (px - sig["stop"]) if sig["side"] == "long" else (sig["stop"] - px)
             if risk_ps <= 0:
                 continue  # gapped through the stop: skip rather than take a broken setup
-            if sig.get("weight_pct"):
-                qty = eq * min(sig["weight_pct"], 100.0) / 100.0 / px
-            else:
-                qty = eq * cfg["risk_per_trade_pct"] / 100.0 / risk_ps
-                qty = min(qty, eq * cfg["max_position_pct"] / 100.0 / px)
-            v20 = states[sym]["vol20"][j - 1]
-            if v20:
-                qty = min(qty, v20 * costs.max_adv_pct / 100.0)
-            qty = min(qty, cash / (px * 1.01))
-            qty = costs.round_lot(qty)
-            if qty <= 0 or qty * px < cfg["min_trade_value_pkr"]:
+            qty = size_position(sig, px, eq, cash, states[sym]["vol20"][j - 1], cfg, costs)
+            if qty <= 0:
                 continue
             fee = costs.side_cost(px, qty)
             total_costs += fee
@@ -506,6 +522,30 @@ def simulate(strategy: Strategy, data: Dict[str, List[Dict[str, Any]]],
         if positions:
             exposure_days += 1
         equity_curve.append((d, equity_at(d)))
+
+    if not close_at_end:
+        last_d = dates[-1] if dates else None
+        eq = equity_at(last_d) if last_d else cash
+        plan = []
+        for sym, sig in pending_entries:
+            j = idx[sym].get(last_d)
+            if j is None:
+                continue
+            ref = data[sym][j]["close"]
+            px = costs.fill_price(ref, "buy" if sig["side"] == "long" else "sell")
+            qty = size_position(sig, px, eq, cash, states[sym]["vol20"][j], cfg, costs)
+            if qty > 0:
+                plan.append({"symbol": sym, "side": sig["side"], "ref_close": ref, "est_qty": qty,
+                             "stop": round(sig["stop"], 2),
+                             "target": round(sig["target"], 2) if sig.get("target") else None,
+                             "max_hold": sig.get("max_hold"), "score": sig.get("score")})
+        open_book = [{"symbol": s, **{k: v for k, v in p.items()}, "pending_exit": pending_exits.get(s)}
+                     for s, p in positions.items()]
+        return {"strategy": strategy.name, "trades": trades, "equity_curve": equity_curve,
+                "metrics": compute_metrics(trades, equity_curve, cfg, costs, exposure_days, total_costs),
+                "as_of": last_d, "equity": round(eq, 2), "cash": round(cash, 2),
+                "unsettled": round(sum(a for _, a in unsettled), 2),
+                "open_positions": open_book, "planned_entries": plan[: max(0, cfg["max_positions"] - len(positions) + len(pending_exits))]}
 
     # mark open positions to market at the end (no exit costs assumed beyond one side)
     if dates:

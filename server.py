@@ -536,6 +536,55 @@ def start_research_job(symbols=None, strategies=None):
     return True
 
 
+_desk_state = {"last_intraday": 0.0, "eod_running": False, "last_eod_error": None,
+               "last_eod_day": "", "last_eod_attempt": 0.0}
+
+
+def run_trade_desk_eod():
+    """Swing/long-term forward test + tomorrow's order plan (background)."""
+    if _desk_state["eod_running"]:
+        return False
+    _desk_state["eod_running"] = True
+
+    def worker():
+        try:
+            import psx_trade_desk as desk
+            res = desk.run_swing_eod(fetch_url, stock_cache.get("data") or [])
+            today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=5))).strftime("%Y-%m-%d")
+            if res.get("success") and res.get("as_of") == today:
+                _desk_state["last_eod_day"] = today  # today's close is in: done for the day
+                _desk_state["last_eod_error"] = None
+            else:
+                _desk_state["last_eod_error"] = res.get("error") or f"EOD data not published yet (latest {res.get('as_of')})"
+        except Exception as e:
+            _desk_state["last_eod_error"] = str(e)
+            print(f"[TradeDesk] EOD error: {e}")
+        finally:
+            _desk_state["eod_running"] = False
+
+    threading.Thread(target=worker, daemon=True, name="TradeDeskEOD").start()
+    return True
+
+
+def _trade_desk_tick(now_pkt):
+    """Intraday desk once a minute during the session; swing plan once after each close."""
+    try:
+        import psx_trade_desk as desk
+        sess = shared_trading_utils.get_session_schedule()
+        now = time.time()
+        if sess.get("is_in_trading_hours") and now - _desk_state["last_intraday"] >= 60:
+            _desk_state["last_intraday"] = now
+            desk.get_intraday_desk().tick(stock_cache.get("data") or [])
+        mins = now_pkt.hour * 60 + now_pkt.minute
+        if sess.get("is_trading_day") and sess.get("session_close_mins", 930) + 20 <= mins < 19 * 60:
+            key = now_pkt.strftime("%Y-%m-%d")
+            if _desk_state["last_eod_day"] != key and now - _desk_state["last_eod_attempt"] >= 1800:
+                _desk_state["last_eod_attempt"] = now
+                run_trade_desk_eod()
+    except Exception as e:
+        print(f"[TradeDesk] tick error (non-fatal): {e}")
+
+
 _md_state = {"last_mw": 0.0, "last_prune_day": "", "last_price": {}}
 
 
@@ -926,6 +975,7 @@ def _start_continuous_poller():
                 _do_fetch_stocks()
                 _do_fetch_indices()
                 _record_market_data()
+                _trade_desk_tick(now_pkt)
 
                 # Weekly strategy research (Saturday late morning PKT, market closed)
                 if weekday == 5 and 10 <= now_pkt.hour < 12:
@@ -4518,6 +4568,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         "/index.html": "/index.html",
         "/admin.html": "/admin.html",
         "/research.html": "/research.html",
+        "/desk.html": "/desk.html",
         "/app.js": "/app.js",
         "/styles.css": "/styles.css",
         "/sw.js": "/sw.js",
@@ -4841,6 +4892,15 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json({"success": False, "error": "No research report yet. Start a run from /research.html."}, 404)
             else:
                 self._send_json(report)
+        elif parsed_path.path == "/api/desk":
+            import psx_trade_desk as desk
+            snap = desk.desk_snapshot()
+            snap["eod_running"] = _desk_state["eod_running"]
+            snap["last_eod_error"] = _desk_state["last_eod_error"]
+            self._send_json(snap)
+        elif parsed_path.path == "/desk":
+            self.path = "/desk.html"
+            self._serve_static()
         elif parsed_path.path == "/api/research/status":
             self._send_json({"success": True, **_research_job})
         elif parsed_path.path == "/research":
@@ -6038,7 +6098,14 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         content_length = int(self.headers.get('Content-Length', 0))
         post_data = self.rfile.read(content_length)
         
-        if self.path == "/api/research/run":
+        if self.path == "/api/desk/run-eod":
+            if not verify_admin_secret(self.headers.get("X-Admin-Secret", "")):
+                self._send_json({"success": False, "error": "Unauthorized"}, 401)
+                return
+            started = run_trade_desk_eod()
+            self._send_json({"success": started, "error": None if started else "Already running."},
+                            200 if started else 409)
+        elif self.path == "/api/research/run":
             if not verify_admin_secret(self.headers.get("X-Admin-Secret", "")):
                 self._send_json({"success": False, "error": "Unauthorized"}, 401)
                 return
