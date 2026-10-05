@@ -14,6 +14,8 @@ import datetime
 import threading
 import ssl
 import gzip
+import hmac
+import ipaddress
 import zlib
 from concurrent.futures import ThreadPoolExecutor
 import urllib.request
@@ -3507,13 +3509,25 @@ def save_trial_db(db):
     except Exception as e:
         print(f"[PSX] Error saving trial db: {e}")
 
-def check_trial_status(client_ip, device_id, host_header="", email="", user_agent="", orig_start_ts=0, license_key=""):
-    host_lower = (host_header or "").lower()
-    local_patterns = ["localhost", "127.0.0.1", "::1", "0.0.0.0", "192.168.", "10.", ".local"]
-    is_local_host = any(h in host_lower for h in local_patterns) or \
-                   any(ip in (client_ip or "") for ip in ["127.0.0.1", "::1", "192.168.", "10."])
+def is_trusted_local_peer(peer_ip, has_forwarded_header):
+    """True only for a direct (non-proxied) connection from loopback or a private LAN address.
 
-    if is_local_host:
+    The Host and X-Forwarded-For headers are client-controlled, so they are never trusted here.
+    Cloud hosts (Render/Railway) always proxy and add X-Forwarded-For, so those requests are
+    never treated as local. Set PSX_DISABLE_LOCAL_MODE=1 to turn local mode off entirely.
+    """
+    if os.environ.get("PSX_DISABLE_LOCAL_MODE") == "1" or has_forwarded_header:
+        return False
+    try:
+        ip = ipaddress.ip_address((peer_ip or "").strip())
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_private
+
+
+def check_trial_status(client_ip, device_id, host_header="", email="", user_agent="", orig_start_ts=0, license_key="", is_local=False):
+    # host_header is accepted for backwards compatibility but deliberately ignored (spoofable)
+    if is_local:
         return {
             "isLocal": True,
             "trialActive": True,
@@ -3802,14 +3816,7 @@ def fetch_financial_statements(symbol):
 # ─── License Key System (Admin & Payment Activation) ───
 LICENSE_FILE = str(Path(__file__).parent / "licenses.json")
 
-DEFAULT_LICENSES = {
-    "PSX-PRO-7821-9901": {"valid": True, "days": 30, "used": False, "email": None, "name": None},
-    "PSX-PRO-5542-1092": {"valid": True, "days": 30, "used": False, "email": None, "name": None},
-    "PSX-PRO-3391-8843": {"valid": True, "days": 30, "used": False, "email": None, "name": None},
-    "PSX-PRO-6620-4115": {"valid": True, "days": 30, "used": False, "email": None, "name": None},
-    "PSX-PRO-9914-7230": {"valid": True, "days": 365, "used": False, "email": None, "name": None},
-    "PSX-VIP-1000-8888": {"valid": True, "days": 3650, "used": False, "email": "admin@psx.com", "name": "VIP Admin"}
-}
+DEFAULT_LICENSES: Dict[str, Any] = {}  # keys are generated from the admin panel, never hardcoded
 
 def get_license_db():
     if os.path.exists(LICENSE_FILE):
@@ -3823,7 +3830,7 @@ def get_license_db():
             json.dump(DEFAULT_LICENSES, f, indent=2)
     except Exception as e:
         print(f"[PSX] Error creating license db: {e}")
-    return DEFAULT_LICENSES
+    return dict(DEFAULT_LICENSES)
 
 def save_license_db(db):
     try:
@@ -3843,15 +3850,14 @@ def activate_license(key, name, email, device_id, client_ip=""):
 
     licenses = get_license_db()
 
-    # Universal Master Key or stored valid key
-    if key == "PSX-PRO-MASTER-2026" or key in licenses:
-        lic = licenses.get(key, {"valid": True, "days": 30, "used": False})
+    if key in licenses:
+        lic = licenses[key]
 
         if not lic.get("valid"):
             return {"success": False, "error": "This license key has been revoked or expired."}
 
         # Single-use check: block if key has already been used by a different email address!
-        if lic.get("used") and key != "PSX-PRO-MASTER-2026":
+        if lic.get("used"):
             used_by = lic.get("email") or "another account"
             if lic.get("email") != email:
                 return {
@@ -3899,14 +3905,11 @@ def activate_license(key, name, email, device_id, client_ip=""):
         return {"success": False, "error": "Invalid License Key. Please check the code or contact support via WhatsApp 0306 6400721."}
 
 # ─── Admin Dashboard Backend ───
-ADMIN_PASSWORDS = [
-    "PSX#SuperAdmin@2026!kse100",
-    "PsxMaster!9982#Secured"
-]
-
 def verify_admin_secret(secret):
+    """Admin access is enabled only when the ADMIN_SECRET environment variable is set."""
+    expected = os.environ.get("ADMIN_SECRET", "")
     sec = (secret or "").strip()
-    return sec in ADMIN_PASSWORDS or (os.environ.get("ADMIN_SECRET") and sec == os.environ.get("ADMIN_SECRET"))
+    return bool(expected) and bool(sec) and hmac.compare_digest(sec.encode(), expected.encode())
 
 def get_admin_dashboard_data():
     trial_db = get_trial_db()
@@ -4523,6 +4526,35 @@ def set_all_tabs_status(status):
 class PSXHandler(http.server.SimpleHTTPRequestHandler):
     """Custom handler for API routes + static file serving."""
 
+    # Only these files are ever served from disk. Everything else in the repo
+    # (licenses.json, trial_data.json, cache/*.db, *.py, ...) must stay private.
+    STATIC_ALLOWLIST = {
+        "/": "/index.html",
+        "/index.html": "/index.html",
+        "/admin.html": "/admin.html",
+        "/app.js": "/app.js",
+        "/styles.css": "/styles.css",
+        "/sw.js": "/sw.js",
+        "/manifest.json": "/manifest.json",
+        "/lightweight-charts.standalone.production.js": "/lightweight-charts.standalone.production.js",
+    }
+
+    def _serve_static(self, head_only=False):
+        from urllib.parse import urlparse
+        target = self.STATIC_ALLOWLIST.get(urlparse(self.path).path)
+        if not target:
+            self.send_error(404, "Not Found")
+            return
+        self.path = target
+        self.directory = str(Path(__file__).parent)
+        if head_only:
+            super().do_HEAD()
+        else:
+            super().do_GET()
+
+    def do_HEAD(self):
+        self._serve_static(head_only=True)
+
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -4536,12 +4568,16 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             return forwarded.split(",")[0].strip()
         return self.client_address[0] if self.client_address else ""
 
+    def _is_local_request(self):
+        peer = self.client_address[0] if self.client_address else ""
+        return is_trusted_local_peer(peer, bool(self.headers.get("X-Forwarded-For")))
+
     def _check_auth(self, query=None):
         host_header = self.headers.get("Host", "")
         client_ip = self._get_client_ip()
         device_id = query.get("deviceId", [""])[0] if query else ""
         email = query.get("email", [""])[0] if query else ""
-        status = check_trial_status(client_ip, device_id, host_header, email)
+        status = check_trial_status(client_ip, device_id, host_header, email, is_local=self._is_local_request())
         if status.get("isLocal") or status.get("trialActive"):
             return True
         if status.get("needsEmail"):
@@ -4789,7 +4825,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             client_ip = self._get_client_ip()
             user_agent = self.headers.get("User-Agent", "")
             record_visitor_heartbeat(client_ip, device_id, email, "Stock Screener", user_agent)
-            res = check_trial_status(client_ip, device_id, host_header, email, user_agent, orig_start_ts)
+            res = check_trial_status(client_ip, device_id, host_header, email, user_agent, orig_start_ts, is_local=self._is_local_request())
             self._send_json({"success": True, "data": res})
         elif parsed_path.path == "/api/start-trial":
             query = parse_qs(parsed_path.query)
@@ -5727,7 +5763,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
 
         elif parsed_path.path == "/api/telegram/config" and self.command == "GET":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized"}, 401)
                 return
@@ -5888,7 +5924,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({"success": True, "tabs": tabs})
         elif parsed_path.path == "/api/admin/tabs/status":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5896,7 +5932,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({"success": True, "tabs": tabs})
         elif parsed_path.path == "/api/admin/tabs/set-status":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5908,7 +5944,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(res, 200 if res.get("success") else 400)
         elif parsed_path.path == "/api/admin/tabs/set-all":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5919,17 +5955,17 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         # ─── Admin Endpoints ───
         elif parsed_path.path in ["/admin", "/admin/"]:
             self.path = "/admin.html"
-            super().do_GET()
+            self._serve_static()
         elif parsed_path.path == "/api/admin/login":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if verify_admin_secret(secret):
                 self._send_json({"success": True, "message": "Admin authenticated successfully."})
             else:
                 self._send_json({"success": False, "error": "Invalid Admin Secret Password."}, 401)
         elif parsed_path.path == "/api/admin/stats":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5937,7 +5973,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({"success": True, "data": data})
         elif parsed_path.path == "/api/admin/generate-keys":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5948,7 +5984,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({"success": True, "keys": keys, "message": f"Generated {len(keys)} new {days}-day license key(s)!"})
         elif parsed_path.path == "/api/admin/make-pro":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5959,7 +5995,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(res, 200 if res["success"] else 400)
         elif parsed_path.path == "/api/admin/extend-trial":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5969,7 +6005,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(res, 200 if res["success"] else 400)
         elif parsed_path.path == "/api/admin/delete-user":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5978,7 +6014,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(res, 200 if res["success"] else 400)
         elif parsed_path.path == "/api/admin/reply-feedback":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5998,8 +6034,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             res = record_feedback(rating, topic, message, email, client_ip, device_id, user_agent)
             self._send_json(res)
         else:
-            # Serve static files
-            super().do_GET()
+            self._serve_static()
 
     def do_POST(self):
         content_length = int(self.headers.get('Content-Length', 0))
@@ -6056,7 +6091,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         elif self.path == "/api/admin/reply-feedback":
             try:
                 body = json.loads(post_data.decode('utf-8'))
-                secret = body.get('secret', '')
+                secret = self.headers.get("X-Admin-Secret", "") or body.get('secret', '')
                 if not verify_admin_secret(secret):
                     self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                     return
@@ -6070,7 +6105,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             # POST body: {"secret":"...", "bot_token":"...", "chat_id":"...", ...}
             try:
                 body = json.loads(post_data.decode('utf-8'))
-                secret = body.get('secret', '')
+                secret = self.headers.get("X-Admin-Secret", "") or body.get('secret', '')
                 if not verify_admin_secret(secret):
                     self._send_json({"success": False, "error": "Unauthorized"}, 401)
                     return
@@ -6095,7 +6130,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             # POST body: {"secret":"..."}
             try:
                 body = json.loads(post_data.decode('utf-8'))
-                secret = body.get('secret', '')
+                secret = self.headers.get("X-Admin-Secret", "") or body.get('secret', '')
                 if not verify_admin_secret(secret):
                     self._send_json({"success": False, "error": "Unauthorized"}, 401)
                     return
@@ -6122,7 +6157,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         elif self.path == "/api/intraday/trigger":
             try:
                 body = json.loads(post_data.decode('utf-8'))
-                secret = body.get('secret', '')
+                secret = self.headers.get("X-Admin-Secret", "") or body.get('secret', '')
                 if not verify_admin_secret(secret):
                     self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                     return
@@ -6175,7 +6210,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
 
             try:
                 body = json.loads(post_data.decode('utf-8'))
-                secret = body.get('secret', '')
+                secret = self.headers.get("X-Admin-Secret", "") or body.get('secret', '')
                 if not verify_admin_secret(secret):
                     self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                     return
@@ -6190,7 +6225,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         elif self.path == "/api/admin/tabs/set-all":
             try:
                 body = json.loads(post_data.decode('utf-8'))
-                secret = body.get('secret', '')
+                secret = self.headers.get("X-Admin-Secret", "") or body.get('secret', '')
                 if not verify_admin_secret(secret):
                     self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                     return

@@ -9,3 +9,10 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.0
 
+      # Secrets — set these in the Render dashboard (never commit them)
+      - key: ADMIN_SECRET
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false

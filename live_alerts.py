@@ -49,8 +49,8 @@ def send_telegram_notification(message: str, cfg: Optional[Dict[str, Any]] = Non
     if not tg_cfg.get("enabled"):
         return False
 
-    bot_token = tg_cfg.get("bot_token", "").strip()
-    chat_id = tg_cfg.get("chat_id", "").strip()
+    bot_token = (os.environ.get("TELEGRAM_BOT_TOKEN") or tg_cfg.get("bot_token", "")).strip()
+    chat_id = (os.environ.get("TELEGRAM_CHAT_ID") or str(tg_cfg.get("chat_id", ""))).strip()
     if not bot_token or not chat_id:
         return False
 

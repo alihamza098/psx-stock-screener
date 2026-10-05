@@ -23,6 +23,7 @@ Zero pip-dependencies — uses stdlib urllib only.
 """
 
 import json
+import os
 import time
 import threading
 import ssl
@@ -37,8 +38,8 @@ try:
     SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 except Exception:
     SSL_CONTEXT = ssl.create_default_context()
-SSL_CONTEXT.check_hostname = False
-SSL_CONTEXT.verify_mode = ssl.CERT_NONE
+# api.telegram.org has a standard certificate chain: keep verification ON so the
+# bot token is never sent over an unauthenticated connection.
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -62,17 +63,31 @@ _sent_alerts: Dict[str, float] = {}   # dedup key → timestamp
 # ── Config loader ─────────────────────────────────────────────────────────────
 
 def load_config() -> Dict[str, Any]:
-    """Read telegram_config.json. Returns {} if missing or invalid."""
+    """Read telegram_config.json, then overlay TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+    environment variables (env wins). Returns {} if nothing is configured."""
+    cfg: Dict[str, Any] = {}
     try:
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH) as f:
-                return json.load(f)
+                cfg = json.load(f)
     except Exception:
-        pass
-    return {}
+        cfg = {}
+    env_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    env_chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    if env_token:
+        cfg["bot_token"] = env_token
+    if env_chat:
+        cfg["chat_id"] = env_chat
+    if env_token and env_chat and "enabled" not in cfg:
+        cfg["enabled"] = True
+    return cfg
 
 
 def save_config(cfg: Dict[str, Any]) -> None:
+    # Never copy env-provided credentials onto disk
+    cfg = dict(cfg)
+    if os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() == cfg.get("bot_token"):
+        cfg.pop("bot_token", None)
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=2)
