@@ -28,6 +28,10 @@ class TestTlsFallback(unittest.TestCase):
 
     def setUp(self):
         self.calls = []
+        import psx_http
+        patcher = mock.patch.object(psx_http, "get_token", return_value=None)  # TLS only; token tested elsewhere
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def fake(self, req, timeout, context):
         self.calls.append("insecure" if context is server._INSECURE_SSL_CONTEXT else "verified")

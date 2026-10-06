@@ -780,8 +780,15 @@ def run_research(data: Dict[str, List[Dict[str, Any]]], strategy_names: Optional
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_eod_bars(symbol: str, fetch: Callable[..., str]) -> List[Dict[str, Any]]:
-    """Full DPS EOD history for a symbol, oldest first, merged with recorded real high/low."""
+    """Full daily history for a symbol, oldest first.
+
+    Prefers DPS /historical (published open/high/low/close/volume for every session). Falls back
+    to /timeseries/eod (no high/low) merged with any real ranges we recorded live.
+    """
     import psx_market_data as md
+    hist = md.fetch_historical(symbol, fetch)
+    if len(hist) >= 30:
+        return hist
     raw = json.loads(fetch(f"https://dps.psx.com.pk/timeseries/eod/{symbol}", timeout=20, retries=2))
     if raw.get("status") != 1 or not raw.get("data"):
         return []

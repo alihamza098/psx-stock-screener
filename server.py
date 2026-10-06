@@ -42,28 +42,11 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 
-# Setup SSL context that handles PSX custom certificate chains
-try:
-    import certifi
-    SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
-except Exception:
-    SSL_CONTEXT = ssl.create_default_context()
-# Certificates are verified. PSX hosts have at times served an incomplete chain; for those hosts
-# only, a failed verification falls back to an unverified connection with a loud warning
-# (set PSX_STRICT_TLS=1 to disable the fallback entirely). Every other host must verify.
-INSECURE_TLS_FALLBACK_HOSTS = {"dps.psx.com.pk", "www.psx.com.pk", "psx.com.pk"}
-_INSECURE_SSL_CONTEXT = ssl.create_default_context()
-_INSECURE_SSL_CONTEXT.check_hostname = False
-_INSECURE_SSL_CONTEXT.verify_mode = ssl.CERT_NONE
-TLS_STATUS = {"insecure_fallback_used": False, "last_error": None}
-
-
-def _tls_context_for(url, verified_failed=False):
-    from urllib.parse import urlparse
-    host = (urlparse(url).hostname or "").lower()
-    if verified_failed and host in INSECURE_TLS_FALLBACK_HOSTS and os.environ.get("PSX_STRICT_TLS") != "1":
-        return _INSECURE_SSL_CONTEXT
-    return SSL_CONTEXT
+# TLS policy, PSX request token and retries live in psx_http (shared by every PSX scraper).
+import psx_http
+from psx_http import (  # noqa: F401  (re-exported)
+    SSL_CONTEXT, _INSECURE_SSL_CONTEXT, INSECURE_TLS_FALLBACK_HOSTS, TLS_STATUS, _tls_context_for,
+)
 
 
 # ─── PSX AI Trading Engine Modules (Phase 1 to 4) ───
@@ -473,58 +456,10 @@ def parse_index_data(html):
 
 
 
-def fetch_url(url, timeout=FETCH_TIMEOUT, retries=FETCH_RETRIES):
-    """Fetch URL with retries, SSL verification bypass fallback, gzip/deflate support, and realistic browser headers."""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-    }
-    req = urllib.request.Request(url, headers=headers)
-    last_error = None
-
-    verify_failed = False
-    fallback_retry = False
-    attempt = 0
-    while attempt < retries or fallback_retry:
-        if not fallback_retry:
-            attempt += 1
-        fallback_retry = False
-        try:
-            ctx = _tls_context_for(url, verify_failed)
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as response:
-                raw = response.read()
-                enc = response.info().get("Content-Encoding", "").lower()
-                if "gzip" in enc or (len(raw) > 2 and raw[:2] == b"\x1f\x8b"):
-                    try:
-                        raw = gzip.decompress(raw)
-                    except Exception:
-                        pass
-                elif "deflate" in enc:
-                    try:
-                        raw = zlib.decompress(raw)
-                    except Exception:
-                        pass
-                return raw.decode("utf-8", errors="ignore")
-        except Exception as e:
-            last_error = e
-            reason = getattr(e, "reason", e)
-            if isinstance(reason, ssl.SSLCertVerificationError) and not verify_failed:
-                verify_failed = True
-                if _tls_context_for(url, True) is _INSECURE_SSL_CONTEXT:
-                    if not TLS_STATUS["insecure_fallback_used"]:
-                        print(f"[PSX] WARNING: certificate verification failed for {url} ({reason}); "
-                              f"falling back to an unverified connection for PSX hosts. Set PSX_STRICT_TLS=1 to refuse.")
-                    TLS_STATUS.update(insecure_fallback_used=True, last_error=str(reason))
-                    fallback_retry = True  # retry now without verification; not counted as an attempt
-                    continue
-            print(f"[PSX] Fetch error (attempt {attempt}/{retries}) for {url}: {e}")
-            if attempt < retries:
-                time.sleep(1.0 * attempt)
-    raise last_error
+def fetch_url(url, timeout=FETCH_TIMEOUT, retries=FETCH_RETRIES, data=None):
+    """Fetch a URL (POST when ``data`` is given) via psx_http: verified TLS, PSX X-Req-Id token,
+    gzip/deflate, retries. Returns the decoded body; raises after the last failed attempt."""
+    return psx_http.fetch(url, timeout=timeout, retries=retries, data=data)
 
 
 
@@ -2168,6 +2103,32 @@ def fetch_stock_history(symbol):
         except Exception:
             pass
 
+    hist = _historical_bars(symbol)
+    if len(hist) >= 30:
+        rows = list(reversed(hist))[:251]  # newest first
+        days = []
+        for i, b in enumerate(rows[:250]):
+            prev_close = rows[i + 1]["close"] if i + 1 < len(rows) else None
+            ref = prev_close or b["open"]
+            change = b["close"] - ref
+            days.append({
+                'date': b["date"],
+                'day': datetime.datetime.strptime(b["date"], '%Y-%m-%d').strftime('%A'),
+                'open': round(b["open"], 2), 'close': round(b["close"], 2),
+                'high': round(b["high"], 2), 'low': round(b["low"], 2),
+                'volume': b["volume"],
+                'change': round(change, 2),
+                'changePct': round(change / ref * 100, 2) if ref else 0,
+                'hlEstimated': False,
+            })
+        _STOCK_HISTORY_CACHE[symbol] = (now, days)
+        try:
+            with open(h_file, "w") as f:
+                json.dump({"days": days, "_cached_at": now}, f)
+        except Exception:
+            pass
+        return days
+
     url = f"https://dps.psx.com.pk/timeseries/eod/{symbol}"
     try:
         html = fetch_url(url, timeout=12, retries=2)
@@ -2228,6 +2189,20 @@ def fetch_stock_history(symbol):
 
 
 _DPS_TIMESERIES_CACHE = {}  # { symbol: (timestamp, raw_data) }
+_DPS_HISTORICAL_CACHE = {}  # { symbol: (timestamp, bars oldest-first) }
+
+
+def _historical_bars(sym):
+    """Published daily OHLCV (oldest first) from DPS /historical, cached 30 minutes. [] if unavailable."""
+    import psx_market_data as md
+    now = time.time()
+    hit = _DPS_HISTORICAL_CACHE.get(sym)
+    if hit and now - hit[0] < 1800:
+        return hit[1]
+    bars = md.fetch_historical(sym, fetch_url)
+    if bars:
+        _DPS_HISTORICAL_CACHE[sym] = (now, bars)
+    return bars
 
 def fetch_stock_timeframe_series(symbol, timeframe="4H", limit=150):
     """
@@ -2316,12 +2291,16 @@ def fetch_stock_timeframe_series(symbol, timeframe="4H", limit=150):
 
 
 def _real_daily_candles(sym):
-    """Daily candles oldest-first: DPS EOD (close/volume/open) merged with recorded real ranges."""
+    """Daily candles oldest-first: DPS /historical (published OHLCV), else DPS EOD (close/volume/open)
+    merged with recorded real ranges."""
     import psx_market_data as md
     now_ts = time.time()
     raw_data = None
+    published = _historical_bars(sym)
     cached = _DPS_TIMESERIES_CACHE.get(sym)
-    if cached and (now_ts - cached[0] < 60) and cached[1]:
+    if len(published) >= 30:
+        pass  # full published history available; EOD feed not needed
+    elif cached and (now_ts - cached[0] < 60) and cached[1]:
         raw_data = cached[1]
     else:
         try:
@@ -2334,6 +2313,11 @@ def _real_daily_candles(sym):
 
     real = md.get_store().get_daily_bars(sym)
     by_date = {}
+    for b in published:  # published OHLC: treated like a recorded real range
+        d0 = datetime.datetime.strptime(b["date"], "%Y-%m-%d").replace(tzinfo=md.PKT)
+        by_date[b["date"]] = {"timestamp": int(d0.timestamp()), "open": b["open"], "close": b["close"],
+                              "volume": b["volume"]}
+        real.setdefault(b["date"], {"high": b["high"], "low": b["low"], "close": b["close"]})
     for entry in sorted(raw_data or [], key=lambda x: x[0]):
         ts, close, volume, open_price = entry[:4]
         date = md.pkt_date(ts)
@@ -3146,21 +3130,11 @@ def get_corporate_actions_and_dividends():
         except Exception:
             pass
 
-    # Fetch live from DPS PSX POST /payouts
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest"
-    }
-    
+    # Fetch live from DPS PSX POST /payouts (psx_http adds the X-Req-Id token)
     calendar = []
     try:
-        data = urllib.parse.urlencode({"symbol": "", "count": 100, "offset": 0}).encode("utf-8")
-        req = urllib.request.Request("https://dps.psx.com.pk/payouts", data=data, headers=headers)
-        with urllib.request.urlopen(req, timeout=12, context=_tls_context_for(
-                "https://dps.psx.com.pk/payouts", TLS_STATUS["insecure_fallback_used"])) as r:
-            html = r.read().decode("utf-8", errors="ignore")
-
+        html = fetch_url("https://dps.psx.com.pk/payouts", timeout=12, retries=2,
+                         data={"symbol": "", "count": 100, "offset": 0})
 
         rows = re.findall(
             r'<tr>\s*<td><a[^>]*><strong>(.*?)</strong></a></td>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*</tr>',

@@ -685,11 +685,8 @@ class FundamentalsScraper:
         """Fetch and parse a single company page. Returns fundamentals dict or None."""
         url = self.BASE_URL.format(symbol=symbol)
         try:
-            req = urllib.request.Request(
-                url, headers={"User-Agent": "Mozilla/5.0 (PSX-LongTerm/1.0)"}
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                html = resp.read().decode("utf-8", errors="replace")
+            import psx_http
+            html = psx_http.fetch(url, timeout=10, retries=2)
         except Exception as e:
             return None
 

@@ -40,7 +40,10 @@ DB_PATH = DATA_DIR / "market_data.db"
 
 DPS_BASE = "https://dps.psx.com.pk"
 INTRADAY_URL = DPS_BASE + "/timeseries/int/{symbol}"
-MARKET_WATCH_URL = DPS_BASE + "/market-watch"
+HISTORICAL_URL = DPS_BASE + "/historical"            # POST symbol=<ticker> → full daily OHLCV table
+# All-symbol live boards, tried in order (the trading board is what the DPS site itself uses)
+MARKET_WATCH_URLS = (DPS_BASE + "/trading-board/REG/main", DPS_BASE + "/market-watch")
+MARKET_WATCH_URL = MARKET_WATCH_URLS[0]
 
 TICK_RETENTION_DAYS = int(os.environ.get("PSX_TICK_RETENTION_DAYS", "60"))
 
@@ -155,11 +158,12 @@ _MW_COLUMNS = {
 
 
 def parse_market_watch_html(html: str) -> List[Dict[str, Any]]:
-    """Parse a DPS market-watch style table into rows with real session OHLCV.
+    """Parse a DPS trading-board / market-watch table into live rows.
 
-    The table is located by its header row (needs SYMBOL, OPEN, HIGH, LOW, CURRENT, VOLUME),
-    so layout changes elsewhere on the page don't matter. Rows failing sanity checks
-    (low <= price <= high, low <= open <= high) are dropped rather than "repaired".
+    The table is located by its header row: SYMBOL, CURRENT and VOLUME are required; OPEN, HIGH,
+    LOW and LDCP are used when the board has them (otherwise they are None — never estimated).
+    Rows whose published range is inconsistent (low <= price <= high, low <= open <= high) are
+    dropped rather than "repaired".
     """
     if not html:
         return []
@@ -178,25 +182,87 @@ def parse_market_watch_html(html: str) -> List[Dict[str, Any]]:
                 if any(h == n or h.startswith(n) for n in names):
                     idx[key] = i
                     break
-        if not all(k in idx for k in ("symbol", "open", "high", "low", "price", "volume")):
+        if not all(k in idx for k in ("symbol", "price", "volume")):
             continue
         rows = []
         for r in table[1:]:
             if len(r) <= max(idx.values()):
                 continue
             sym = r[idx["symbol"]].split(" ")[0].strip().upper()
-            o, h, l, c = (_to_float(r[idx[k]]) for k in ("open", "high", "low", "price"))
+            c = _to_float(r[idx["price"]])
+            o, h, l = (_to_float(r[idx[k]]) if k in idx else None for k in ("open", "high", "low"))
             v = _to_float(r[idx["volume"]])
             ldcp = _to_float(r[idx["ldcp"]]) if "ldcp" in idx else None
-            if not sym or None in (o, h, l, c) or c <= 0 or l <= 0:
+            if not sym or c is None or c <= 0:
                 continue
-            if not (l <= c <= h and l <= o <= h):
-                continue
+            if h is not None and l is not None:
+                if l <= 0 or not (l <= c <= h) or (o is not None and not (l <= o <= h)):
+                    continue
             rows.append({"symbol": sym, "open": o, "high": h, "low": l, "price": c,
                          "volume": max(0.0, v or 0.0), "ldcp": ldcp})
         if rows:
             return rows
     return []
+
+
+_HIST_DATE_FORMATS = ("%b %d, %Y", "%d-%b-%Y", "%Y-%m-%d", "%d/%m/%Y", "%B %d, %Y")
+
+
+def _parse_date(s: str) -> Optional[str]:
+    s = " ".join((s or "").split())
+    for fmt in _HIST_DATE_FORMATS:
+        try:
+            return datetime.datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+
+def parse_historical_html(html: str) -> List[Dict[str, Any]]:
+    """Parse the DPS /historical table (DATE, OPEN, HIGH, LOW, CLOSE, VOLUME) → bars oldest first.
+
+    These are PSX's published daily ranges, so bars carry hlEstimated=False. Rows with an
+    inconsistent range are dropped.
+    """
+    p = _TableParser()
+    try:
+        p.feed(html or "")
+    except Exception:
+        return []
+    for table in p.tables:
+        if not table:
+            continue
+        header = [c.upper() for c in table[0]]
+        need = ("DATE", "OPEN", "HIGH", "LOW", "CLOSE", "VOLUME")
+        if not all(n in header for n in need):
+            continue
+        ix = {n: header.index(n) for n in need}
+        out: Dict[str, Dict[str, Any]] = {}
+        for r in table[1:]:
+            if len(r) <= max(ix.values()):
+                continue
+            d = _parse_date(r[ix["DATE"]])
+            o, h, l, c = (_to_float(r[ix[k]]) for k in ("OPEN", "HIGH", "LOW", "CLOSE"))
+            v = _to_float(r[ix["VOLUME"]])
+            if not d or None in (o, h, l, c) or c <= 0 or l <= 0 or not (l <= min(o, c) and max(o, c) <= h):
+                continue
+            out[d] = {"date": d, "open": o, "high": h, "low": l, "close": c, "volume": v or 0.0,
+                      "hlEstimated": False}
+        if out:
+            return [out[k] for k in sorted(out)]
+    return []
+
+
+def fetch_historical(symbol: str, fetch: Callable[..., str]) -> List[Dict[str, Any]]:
+    """Full daily OHLCV history for one symbol from DPS (POST /historical). [] on failure."""
+    try:
+        html = fetch(HISTORICAL_URL, timeout=30, retries=2, data={"symbol": symbol.upper()})
+    except TypeError:
+        return []  # fetcher without POST support
+    except Exception as e:
+        print(f"[MarketData] historical fetch failed for {symbol}: {e}")
+        return []
+    return parse_historical_html(html)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -322,6 +388,8 @@ class MarketDataStore:
         day = pkt_date(ts)
         n = self.record_snapshot(rows, ts=ts, source="mw", cumulative_volume=True)
         for r in rows:
+            if r.get("high") is None or r.get("low") is None:
+                continue  # no published session range on this board
             self.upsert_daily_observation(r["symbol"], day, open_=r.get("open"), high=r.get("high"),
                                           low=r.get("low"), close=r.get("price"),
                                           volume=r.get("volume"), ldcp=r.get("ldcp"), source="mw")
@@ -441,14 +509,20 @@ def refresh_intraday(symbol: str, fetch: Callable[..., str], max_age_s: float = 
 
 def poll_market_watch(fetch: Callable[..., str], store: Optional[MarketDataStore] = None) -> List[Dict[str, Any]]:
     """Fetch & record the all-symbol market-watch table. Returns parsed rows ([] on failure)."""
-    try:
-        html = fetch(MARKET_WATCH_URL, timeout=20, retries=1)
-        rows = parse_market_watch_html(html)
-    except Exception as e:
-        _mw_status.update(ok=False, last_error=str(e))
-        return []
+    rows, errors = [], []
+    for url in MARKET_WATCH_URLS:
+        try:
+            rows = parse_market_watch_html(fetch(url, timeout=20, retries=1))
+        except Exception as e:
+            errors.append(f"{url}: {e}")
+            continue
+        if rows:
+            _mw_status["url"] = url
+            break
+        errors.append(f"{url}: no table with SYMBOL/CURRENT/VOLUME")
     if not rows:
-        _mw_status.update(ok=False, last_error="no market-watch table found")
+        _mw_status.update(ok=False, last_error="; ".join(errors))
+        print(f"[MarketData] live board unavailable: {_mw_status['last_error']}")
         return []
     (store or get_store()).record_market_watch(rows)
     _mw_status.update(ok=True, last_success=time.time(), last_error="", rows=len(rows))
