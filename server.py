@@ -5,6 +5,19 @@ Fetches live data from dps.psx.com.pk and serves it as JSON API.
 Uses only Python standard library — no pip install needed!
 """
 
+import sys
+
+# Windows consoles often use a legacy code page that cannot print emoji: without this, the first
+# log line containing one raises UnicodeEncodeError and the server never starts.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+if sys.version_info < (3, 9):
+    sys.exit(f"PSX Screener needs Python 3.9 or newer (found {sys.version.split()[0]}).")
+
 # Must run before any module touches cache/: with PSX_DATA_DIR set, cache/ and the root runtime
 # files are redirected to that persistent directory (see psx_storage.py).
 import psx_storage
@@ -6212,11 +6225,22 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    # Use ThreadingHTTPServer so that multiple requests don't block each other
-    if hasattr(http.server, 'ThreadingHTTPServer'):
-        server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), PSXHandler)
-    else:
-        server = http.server.HTTPServer(("0.0.0.0", PORT), PSXHandler)
+    # Use ThreadingHTTPServer so that multiple requests don't block each other.
+    # If the port is taken (e.g. another local project on 3000), try the next ones.
+    server_cls = getattr(http.server, "ThreadingHTTPServer", http.server.HTTPServer)
+    server = None
+    requested_port = PORT
+    for candidate in range(requested_port, requested_port + 20):
+        try:
+            server = server_cls(("0.0.0.0", candidate), PSXHandler)
+            PORT = candidate
+            break
+        except OSError:
+            continue
+    if server is None:
+        sys.exit(f"  ✖ Ports {requested_port}-{requested_port + 19} are all in use. Set PORT to a free port and retry.")
+    if PORT != requested_port:
+        print(f"\n  ⚠ Port {requested_port} is already used by another program — using {PORT} instead.")
 
     # Start continuous background poller daemon (keeping data fresh every 20s)
     _start_continuous_poller()
@@ -6225,7 +6249,16 @@ if __name__ == "__main__":
     print(f"  💻 Computer Browser: http://localhost:{PORT}")
     for ip in local_ips:
         print(f"  📱 Mobile Phone URL: http://{ip}:{PORT}")
-    print(f"  📡 Live data from dps.psx.com.pk\n")
+    print(f"  📡 Live data from dps.psx.com.pk")
+    if not os.environ.get("ADMIN_SECRET"):
+        print("  🔒 Admin features are off: set ADMIN_SECRET to use Refresh / Run research buttons.")
+    print("  Keep this window open — closing it stops the website.\n")
+    if os.environ.get("PSX_OPEN_BROWSER") == "1":
+        try:
+            import webbrowser
+            threading.Timer(1.5, lambda: webbrowser.open(f"http://localhost:{PORT}")).start()
+        except Exception:
+            pass
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -13,10 +13,14 @@ Live Pakistan Stock Exchange screener with real-time data from [dps.psx.com.pk](
 - 🔄 Refresh button for latest data
 
 ## Run Locally
-```bash
-python3 server.py
-```
-Open http://localhost:3000
+Needs Python 3.9+ (no packages required).
+
+- **Windows:** double-click `start.bat`
+- **macOS / Linux:** `./start.sh`
+
+Both ask for an admin password, start on http://localhost:3100 and open the browser. If that port
+is busy the server picks the next free one and prints the address. Keep the window open — closing
+it stops the website. Manual start: `PORT=3100 ADMIN_SECRET=yourpassword python3 server.py`.
 
 ## Configuration (environment variables)
 | Variable | Purpose |
