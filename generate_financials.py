@@ -33,8 +33,8 @@ async def get_symbols():
                 if tag == "tr" and self.in_row: self.in_row = False
                 if tag == "tbody": self.in_tbody = False
 
-        req = urllib.request.Request("https://dps.psx.com.pk/screener", headers={'User-Agent': 'Mozilla'})
-        html = urllib.request.urlopen(req).read().decode('utf-8')
+        import psx_http
+        html = psx_http.fetch("https://dps.psx.com.pk/screener")
         parser = ScreenerParser()
         parser.feed(html)
         return list(dict.fromkeys(parser.symbols)) # Unique symbols

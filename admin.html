@@ -690,6 +690,12 @@
 
     <script>
         let adminSecret = sessionStorage.getItem("psx_admin_secret") || "";
+
+        // Admin secret travels in a header, never in the URL (URLs end up in logs/history)
+        function adminFetch(url, opts = {}, secret = adminSecret) {
+            const headers = Object.assign({}, opts.headers || {}, { "X-Admin-Secret": secret });
+            return fetch(url, Object.assign({}, opts, { headers }));
+        }
         let adminData = null;
 
         document.addEventListener("DOMContentLoaded", () => {
@@ -711,7 +717,7 @@
                 return;
             }
 
-            fetch(`/api/admin/login?secret=${encodeURIComponent(pass)}`)
+            adminFetch(`/api/admin/login`, {}, pass)
                 .then(r => r.json())
                 .then(res => {
                     if (res.success) {
@@ -756,7 +762,7 @@
         function fetchAdminData() {
             if (!adminSecret) return;
 
-            fetch(`/api/admin/stats?secret=${encodeURIComponent(adminSecret)}`)
+            adminFetch(`/api/admin/stats`)
                 .then(r => {
                     if (r.status === 401) {
                         logoutAdmin();
@@ -1053,13 +1059,12 @@
             const note = document.getElementById("gen-note").value.trim();
 
             const params = new URLSearchParams({
-                secret: adminSecret,
                 count: count,
                 days: days,
                 note: note
             });
 
-            fetch(`/api/admin/generate-keys?${params}`)
+            adminFetch(`/api/admin/generate-keys?${params}`)
                 .then(r => r.json())
                 .then(res => {
                     if (res.success && res.keys) {
@@ -1086,7 +1091,7 @@
 
         function quickMakePro(email) {
             if (!confirm(`Upgrade ${email} to Pro Account (30 Days)?`)) return;
-            fetch(`/api/admin/make-pro?secret=${encodeURIComponent(adminSecret)}&email=${encodeURIComponent(email)}&days=30`)
+            adminFetch(`/api/admin/make-pro?email=${encodeURIComponent(email)}&days=30`)
                 .then(r => r.json())
                 .then(res => {
                     alert(res.message || "Pro upgraded!");
@@ -1095,7 +1100,7 @@
         }
 
         function quickExtendTrial(email) {
-            fetch(`/api/admin/extend-trial?secret=${encodeURIComponent(adminSecret)}&email=${encodeURIComponent(email)}&days=3`)
+            adminFetch(`/api/admin/extend-trial?email=${encodeURIComponent(email)}&days=3`)
                 .then(r => r.json())
                 .then(res => {
                     alert(res.message || "Trial extended by 3 days!");
@@ -1105,7 +1110,7 @@
 
         function quickDeleteUser(email) {
             if (!confirm(`Delete visitor record for ${email}? This will reset their session.`)) return;
-            fetch(`/api/admin/delete-user?secret=${encodeURIComponent(adminSecret)}&email=${encodeURIComponent(email)}`)
+            adminFetch(`/api/admin/delete-user?email=${encodeURIComponent(email)}`)
                 .then(r => r.json())
                 .then(res => {
                     alert(res.message || "User record removed.");
@@ -1128,13 +1133,12 @@
             }
 
             const params = new URLSearchParams({
-                secret: adminSecret,
                 email: email,
                 name: name,
                 days: days
             });
 
-            fetch(`/api/admin/make-pro?${params}`)
+            adminFetch(`/api/admin/make-pro?${params}`)
                 .then(r => r.json())
                 .then(res => {
                     msgEl.style.display = "block";
@@ -1269,12 +1273,11 @@
             }
 
             const payload = {
-                secret: adminSecret,
                 id: activeReplyFeedbackId,
                 reply: msg
             };
 
-            fetch("/api/admin/reply-feedback", {
+            adminFetch("/api/admin/reply-feedback", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
@@ -1330,7 +1333,7 @@
         function fetchTabDeploymentStatus() {
             if (!adminSecret) return;
 
-            fetch(`/api/admin/tabs/status?secret=${encodeURIComponent(adminSecret)}`)
+            adminFetch(`/api/admin/tabs/status`)
                 .then(r => r.json())
                 .then(res => {
                     if (res.success && res.tabs) {
@@ -1431,14 +1434,13 @@
             if (!adminSecret) return;
 
             const payload = {
-                secret: adminSecret,
                 tabId: tabId,
                 status: targetStatus,
                 message: document.getElementById(`tab-msg-${tabId}`)?.value || null,
                 eta: document.getElementById(`tab-eta-${tabId}`)?.value || (targetStatus === 'ONLINE' ? 'Live Now' : 'Coming Soon')
             };
 
-            fetch("/api/admin/tabs/status", {
+            adminFetch("/api/admin/tabs/status", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
@@ -1461,11 +1463,10 @@
             const msg = document.getElementById(`tab-msg-${tabId}`)?.value || "";
             const eta = document.getElementById(`tab-eta-${tabId}`)?.value || "";
 
-            fetch("/api/admin/tabs/status", {
+            adminFetch("/api/admin/tabs/status", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    secret: adminSecret,
                     tabId: tabId,
                     status: currentStatus,
                     message: msg,
@@ -1487,11 +1488,10 @@
                 "Are you sure you want to mark ALL tabs and modules as COMING SOON / OFFLINE?";
             if (!confirm(confirmMsg)) return;
 
-            fetch("/api/admin/tabs/set-all", {
+            adminFetch("/api/admin/tabs/set-all", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    secret: adminSecret,
                     status: targetStatus
                 })
             })

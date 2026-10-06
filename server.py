@@ -5,6 +5,24 @@ Fetches live data from dps.psx.com.pk and serves it as JSON API.
 Uses only Python standard library — no pip install needed!
 """
 
+import sys
+
+# Windows consoles often use a legacy code page that cannot print emoji: without this, the first
+# log line containing one raises UnicodeEncodeError and the server never starts.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+if sys.version_info < (3, 9):
+    sys.exit(f"PSX Screener needs Python 3.9 or newer (found {sys.version.split()[0]}).")
+
+# Must run before any module touches cache/: with PSX_DATA_DIR set, cache/ and the root runtime
+# files are redirected to that persistent directory (see psx_storage.py).
+import psx_storage
+STORAGE_STATUS = psx_storage.init_persistent_storage()
+
 import http.server
 import json
 import os
@@ -14,6 +32,8 @@ import datetime
 import threading
 import ssl
 import gzip
+import hmac
+import ipaddress
 import zlib
 from concurrent.futures import ThreadPoolExecutor
 import urllib.request
@@ -22,14 +42,11 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 
-# Setup SSL context that handles PSX custom certificate chains
-try:
-    import certifi
-    SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
-except Exception:
-    SSL_CONTEXT = ssl.create_default_context()
-SSL_CONTEXT.check_hostname = False
-SSL_CONTEXT.verify_mode = ssl.CERT_NONE
+# TLS policy, PSX request token and retries live in psx_http (shared by every PSX scraper).
+import psx_http
+from psx_http import (  # noqa: F401  (re-exported)
+    SSL_CONTEXT, _INSECURE_SSL_CONTEXT, INSECURE_TLS_FALLBACK_HOSTS, TLS_STATUS, _tls_context_for,
+)
 
 
 # ─── PSX AI Trading Engine Modules (Phase 1 to 4) ───
@@ -92,19 +109,12 @@ def save_file_cache(filepath, data, timestamp):
         print(f"[PSX] Could not save file cache {filepath.name}: {e}")
 
 
+# Shown only until the first successful index fetch: no invented index levels or volumes.
 DEFAULT_INDEX_FALLBACK = {
-    "indices": [
-        {"name": "KSE 100", "value": 78210.45, "change": 420.35, "changePercent": 0.54, "isPositive": True},
-        {"name": "ALL SHAR", "value": 51240.10, "change": 180.20, "changePercent": 0.35, "isPositive": True},
-        {"name": "KSE 30", "value": 25110.80, "change": -45.10, "changePercent": -0.18, "isPositive": False},
-        {"name": "KMI 30", "value": 132450.60, "change": 610.75, "changePercent": 0.46, "isPositive": True}
-    ],
-    "market": {
-        "state": "Closed",
-        "volume": 358420000,
-        "value": 36700000000.0
-    },
-    "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    "indices": [],
+    "market": {"state": "Unavailable", "volume": 0, "value": 0},
+    "fetchedAt": None,
+    "unavailable": True,
 }
 
 # Load caches on startup — try file cache first, then bundled snapshot as fallback
@@ -321,7 +331,9 @@ class PSXScreenerParser(HTMLParser):
             "pe": pe_ratio,
             "divYield": div_yield,
             "freeFloat": free_float,
-            "volume": volume_30d,
+            "volume": volume_30d,       # NOTE: DPS screener column is the 30-day AVERAGE volume
+            "avgVolume30d": volume_30d,
+            "todayVolume": None,        # set from market-watch / company quote when available
             "isNC": cells[0].get("has_nc_tag", False),
             "isKSE100": "KSE100" in listed_in,
             "isKSE30": "KSE30" in listed_in,
@@ -443,54 +455,196 @@ def parse_index_data(html):
     return indices, market_state, market_volume, market_value
 
 
-DEFAULT_INDEX_FALLBACK = {
-    "indices": [
-        {"name": "KSE100", "value": 111500.0, "change": 0.0, "percentChange": 0.0},
-        {"name": "ALLSHR", "value": 70000.0,  "change": 0.0, "percentChange": 0.0},
-        {"name": "KSE30",  "value": 36500.0,  "change": 0.0, "percentChange": 0.0},
-        {"name": "KMI30",  "value": 185000.0, "change": 0.0, "percentChange": 0.0},
-    ],
-    "market": {"state": "CLOSED", "volume": "0", "value": "0.00"},
-    "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-}
+
+def fetch_url(url, timeout=FETCH_TIMEOUT, retries=FETCH_RETRIES, data=None):
+    """Fetch a URL (POST when ``data`` is given) via psx_http: verified TLS, PSX X-Req-Id token,
+    gzip/deflate, retries. Returns the decoded body; raises after the last failed attempt."""
+    return psx_http.fetch(url, timeout=timeout, retries=retries, data=data)
 
 
-def fetch_url(url, timeout=FETCH_TIMEOUT, retries=FETCH_RETRIES):
-    """Fetch URL with retries, SSL verification bypass fallback, gzip/deflate support, and realistic browser headers."""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-    }
-    req = urllib.request.Request(url, headers=headers)
-    last_error = None
 
-    for attempt in range(1, retries + 1):
+# Weekly scan evaluates real daily history (oldest first) instead of a synthesised series
+weekly_engine.set_history_provider(lambda sym: list(reversed(fetch_stock_history(sym) or [])))
+
+
+_research_job = {"running": False, "stage": "idle", "progress": "", "started_at": None,
+                 "finished_at": None, "error": None}
+_research_lock = threading.Lock()
+
+
+def start_research_job(symbols=None, strategies=None):
+    """Run the Phase 1 strategy research in the background (DPS download + backtests)."""
+    import psx_backtester as bt
+    with _research_lock:
+        if _research_job["running"]:
+            return False
+        _research_job.update(running=True, stage="loading", progress="", error=None,
+                             started_at=time.time(), finished_at=None)
+
+    def worker():
         try:
-            with urllib.request.urlopen(req, timeout=timeout, context=SSL_CONTEXT) as response:
-                raw = response.read()
-                enc = response.info().get("Content-Encoding", "").lower()
-                if "gzip" in enc or (len(raw) > 2 and raw[:2] == b"\x1f\x8b"):
-                    try:
-                        raw = gzip.decompress(raw)
-                    except Exception:
-                        pass
-                elif "deflate" in enc:
-                    try:
-                        raw = zlib.decompress(raw)
-                    except Exception:
-                        pass
-                return raw.decode("utf-8", errors="ignore")
-        except Exception as e:
-            last_error = e
-            print(f"[PSX] Fetch error (attempt {attempt}/{retries}) for {url}: {e}")
-            if attempt < retries:
-                time.sleep(1.0 * attempt)
-    raise last_error
+            syms = symbols or bt.default_universe(stock_cache.get("data") or [])
+            done = [0]
 
+            def on_symbol(sym):
+                done[0] += 1
+                _research_job["progress"] = f"downloaded {done[0]}/{len(syms)} ({sym})"
+
+            data = bt.load_universe(syms, fetch_url, progress=on_symbol)
+            import psx_fundamentals as pf
+            missing = [x for x in data if not pf.get_store().annual(x)]
+            if missing:
+                _research_job["stage"] = "fundamentals"
+                pf.refresh_fundamentals(missing, fetch_url, progress=lambda x: _research_job.update(
+                    progress=f"fundamentals {x}"))
+            _research_job["stage"] = "simulating"
+            report = bt.run_research(data, strategies,
+                                     progress=lambda n: _research_job.update(progress=f"simulating {n}"))
+            if report.get("success"):
+                bt.save_report(report)
+            else:
+                _research_job["error"] = report.get("error")  # keep the last good report
+        except Exception as e:
+            _research_job["error"] = str(e)
+        finally:
+            _research_job.update(running=False, stage="done", finished_at=time.time())
+
+    threading.Thread(target=worker, daemon=True, name="PSXResearch").start()
+    return True
+
+
+_fund_job = {"running": False, "progress": "", "result": None}
+
+
+def start_fundamentals_refresh(symbols=None):
+    """Re-scrape annual/quarterly Sales & EPS from DPS company pages (background, ~1 request/second)."""
+    if _fund_job["running"]:
+        return False
+    _fund_job.update(running=True, progress="", result=None)
+
+    def worker():
+        try:
+            import psx_backtester as bt
+            import psx_fundamentals as pf
+            syms = symbols or bt.default_universe(stock_cache.get("data") or [], 150)
+            _fund_job["result"] = pf.refresh_fundamentals(
+                syms, fetch_url, progress=lambda x: _fund_job.update(progress=x))
+        except Exception as e:
+            _fund_job["result"] = {"error": str(e)}
+        finally:
+            _fund_job["running"] = False
+
+    threading.Thread(target=worker, daemon=True, name="FundamentalsRefresh").start()
+    return True
+
+
+_desk_state = {"last_intraday": 0.0, "eod_running": False, "last_eod_error": None,
+               "last_eod_day": "", "last_eod_attempt": 0.0}
+
+
+def run_trade_desk_eod():
+    """Swing/long-term forward test + tomorrow's order plan (background)."""
+    if _desk_state["eod_running"]:
+        return False
+    _desk_state["eod_running"] = True
+
+    def worker():
+        try:
+            import psx_trade_desk as desk
+            import psx_backtester as bt
+            import psx_fundamentals as pf
+            stocks = stock_cache.get("data") or []
+            try:
+                get_corporate_actions_and_dividends()  # refresh DPS payouts → ex-dates for stop adjustments
+            except Exception as pe:
+                print(f"[TradeDesk] payouts refresh failed: {pe}")
+            universe = bt.default_universe(stocks, int(desk.load_config()["swing"]["universe_size"]))
+            data = bt.load_universe(universe, fetch_url, pause_s=0.2)
+            res = desk.run_swing_eod(data=data)
+            try:
+                pf.build_rankings(data, stocks)
+            except Exception as re_err:
+                print(f"[LongTerm] rankings error: {re_err}")
+            today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=5))).strftime("%Y-%m-%d")
+            if res.get("success") and res.get("as_of") == today:
+                _desk_state["last_eod_day"] = today  # today's close is in: done for the day
+                _desk_state["last_eod_error"] = None
+            else:
+                _desk_state["last_eod_error"] = res.get("error") or f"EOD data not published yet (latest {res.get('as_of')})"
+        except Exception as e:
+            _desk_state["last_eod_error"] = str(e)
+            print(f"[TradeDesk] EOD error: {e}")
+        finally:
+            _desk_state["eod_running"] = False
+
+    threading.Thread(target=worker, daemon=True, name="TradeDeskEOD").start()
+    return True
+
+
+def _trade_desk_tick(now_pkt):
+    """Intraday desk once a minute during the session; swing plan once after each close."""
+    try:
+        import psx_trade_desk as desk
+        sess = shared_trading_utils.get_session_schedule()
+        now = time.time()
+        if sess.get("is_in_trading_hours") and now - _desk_state["last_intraday"] >= 60:
+            _desk_state["last_intraday"] = now
+            desk.get_intraday_desk().tick(stock_cache.get("data") or [])
+        mins = now_pkt.hour * 60 + now_pkt.minute
+        if sess.get("is_trading_day") and sess.get("session_close_mins", 930) + 20 <= mins < 19 * 60:
+            key = now_pkt.strftime("%Y-%m-%d")
+            if _desk_state["last_eod_day"] != key and now - _desk_state["last_eod_attempt"] >= 1800:
+                _desk_state["last_eod_attempt"] = now
+                run_trade_desk_eod()
+    except Exception as e:
+        print(f"[TradeDesk] tick error (non-fatal): {e}")
+
+
+_md_state = {"last_mw": 0.0, "last_prune_day": "", "last_price": {}}
+
+
+def _record_market_data():
+    """Persist what we actually observed this poll (real ticks / real session ranges).
+
+    Runs only during the PSX session. Screener prices are stored only when they change, and
+    the all-symbol market-watch table (real open/high/low/volume) is polled once a minute.
+    """
+    try:
+        import psx_market_data as md
+        sess = shared_trading_utils.get_session_schedule()
+        if not sess.get("is_in_trading_hours"):
+            return
+        store = md.get_store()
+        now = time.time()
+        last = _md_state["last_price"]
+        changed = []
+        for s in (stock_cache.get("data") or []):
+            sym, px = s.get("symbol"), s.get("price")
+            if sym and px and last.get(sym) != px:
+                last[sym] = px
+                changed.append({"symbol": sym, "price": px})
+        if changed:
+            store.record_snapshot(changed, ts=now, source="screener")
+
+        if now - _md_state["last_mw"] >= 60:
+            _md_state["last_mw"] = now
+            rows = md.poll_market_watch(fetch_url, store)
+            if rows:
+                by_sym = {r["symbol"]: r for r in rows}
+                for s in (stock_cache.get("data") or []):
+                    r = by_sym.get((s.get("symbol") or "").upper())
+                    if r:
+                        s["todayVolume"] = r["volume"]
+                        s["open"], s["high"], s["low"] = r["open"], r["high"], r["low"]
+                        if r.get("ldcp"):
+                            s["ldcp"] = r["ldcp"]
+
+        today = md.pkt_date(now)
+        if _md_state["last_prune_day"] != today:
+            _md_state["last_prune_day"] = today
+            store.prune()
+    except Exception as e:
+        print(f"[MarketData] record error (non-fatal): {e}")
 
 
 def _do_fetch_stocks():
@@ -797,6 +951,8 @@ def _start_continuous_poller():
         _last_rotation_rpt   = [""]  # Friday 3:30 PM rotation report
         _last_preweek_rpt    = [""]  # Sunday 8 PM pre-week intelligence report
         _last_weekly_scan    = [""]  # Sunday 6 PM scheduled weekly options scan
+        _last_research       = [""]  # Saturday 10 AM strategy research run
+        _last_fund_refresh   = [""]  # Sunday 8 AM fundamentals refresh
 
         # Import learner once at startup
         try:
@@ -834,6 +990,22 @@ def _start_continuous_poller():
 
                 _do_fetch_stocks()
                 _do_fetch_indices()
+                _record_market_data()
+                _trade_desk_tick(now_pkt)
+
+                # Weekly fundamentals refresh for the long-term model (Sunday morning PKT)
+                if weekday == 6 and 8 <= now_pkt.hour < 12:
+                    fkey = now_pkt.strftime("%Y-%m-%d")
+                    if _last_fund_refresh[0] != fkey:
+                        _last_fund_refresh[0] = fkey
+                        start_fundamentals_refresh()
+
+                # Weekly strategy research (Saturday late morning PKT, market closed)
+                if weekday == 5 and 10 <= now_pkt.hour < 12:
+                    research_key = now_pkt.strftime("%Y-%m-%d")
+                    if _last_research[0] != research_key:
+                        _last_research[0] = research_key
+                        start_research_job()
 
                 # ── Intelligence Engine Ticks ────────────────────────────────
                 if intelligence:
@@ -1230,6 +1402,20 @@ def update_live_stock_quote(symbol: str, quote: dict):
     if not symbol or not quote or "price" not in quote:
         return
     sym = symbol.upper().strip()
+    try:
+        import psx_market_data as md
+        sess = shared_trading_utils.get_session_schedule()
+        now_pkt = datetime.datetime.now(md.PKT)
+        session_started = sess.get("is_trading_day") and \
+            (now_pkt.hour * 60 + now_pkt.minute) >= sess.get("session_open_mins", 572)
+        # Before the open / on holidays the page still shows the previous session's range
+        if session_started and quote.get("high") and quote.get("low"):
+            md.get_store().upsert_daily_observation(
+                sym, md.pkt_date(time.time()), open_=quote.get("open"), high=quote.get("high"),
+                low=quote.get("low"), close=quote.get("price"), volume=quote.get("volume"),
+                ldcp=quote.get("ldcp"), source="company")
+    except Exception as e:
+        print(f"[MarketData] quote record error (non-fatal): {e}")
     stocks = stock_cache.get("data") or []
     matched = False
     for s in stocks:
@@ -1237,7 +1423,7 @@ def update_live_stock_quote(symbol: str, quote: dict):
             s["price"] = quote["price"]
             if "change" in quote: s["change"] = quote["change"]
             if "changePercent" in quote: s["changePercent"] = quote["changePercent"]
-            if "volume" in quote and quote["volume"] is not None: s["volume"] = quote["volume"]
+            if "volume" in quote and quote["volume"] is not None: s["todayVolume"] = quote["volume"]
             if "open" in quote: s["open"] = quote["open"]
             if "high" in quote: s["high"] = quote["high"]
             if "low" in quote: s["low"] = quote["low"]
@@ -1890,7 +2076,7 @@ def fetch_cached_stock_history(symbol):
     return []
 
 def fetch_stock_history(symbol):
-    """Fetch historical end-of-day data from PSX timeseries API with memory+disk caching and synthetic fallback."""
+    """Fetch historical end-of-day data from PSX timeseries API with memory+disk caching (newest first)."""
     if not symbol:
         return None
     symbol = symbol.upper()
@@ -1917,28 +2103,64 @@ def fetch_stock_history(symbol):
         except Exception:
             pass
 
+    hist = _historical_bars(symbol)
+    if len(hist) >= 30:
+        rows = list(reversed(hist))[:251]  # newest first
+        days = []
+        for i, b in enumerate(rows[:250]):
+            prev_close = rows[i + 1]["close"] if i + 1 < len(rows) else None
+            ref = prev_close or b["open"]
+            change = b["close"] - ref
+            days.append({
+                'date': b["date"],
+                'day': datetime.datetime.strptime(b["date"], '%Y-%m-%d').strftime('%A'),
+                'open': round(b["open"], 2), 'close': round(b["close"], 2),
+                'high': round(b["high"], 2), 'low': round(b["low"], 2),
+                'volume': b["volume"],
+                'change': round(change, 2),
+                'changePct': round(change / ref * 100, 2) if ref else 0,
+                'hlEstimated': False,
+            })
+        _STOCK_HISTORY_CACHE[symbol] = (now, days)
+        try:
+            with open(h_file, "w") as f:
+                json.dump({"days": days, "_cached_at": now}, f)
+        except Exception:
+            pass
+        return days
+
     url = f"https://dps.psx.com.pk/timeseries/eod/{symbol}"
     try:
         html = fetch_url(url, timeout=12, retries=2)
         raw = json.loads(html)
         if raw.get('status') == 1 and raw.get('data'):
+            import psx_market_data as md
+            real = md.get_store().get_daily_bars(symbol)
+            rows = sorted(raw['data'], key=lambda x: x[0], reverse=True)[:101]  # newest first
             days = []
-            for entry in raw['data'][:100]:
-                ts, close, volume, open_price = entry
-                date_str = time.strftime('%Y-%m-%d', time.localtime(ts))
-                day_name = time.strftime('%A', time.localtime(ts))
-                change = close - open_price
-                change_pct = (change / open_price * 100) if open_price > 0 else 0
+            for i, entry in enumerate(rows[:100]):
+                ts, close, volume, open_price = entry[:4]
+                date_str = md.pkt_date(ts)  # PSX dates are PKT, regardless of server timezone
+                prev_close = rows[i + 1][1] if i + 1 < len(rows) else None
+                ref = prev_close if prev_close else open_price
+                change = close - ref
+                change_pct = (change / ref * 100) if ref and ref > 0 else 0
+                rb = real.get(date_str)
+                if rb and rb.get('high') and rb.get('low'):
+                    hi, lo, est = max(rb['high'], open_price, close), min(rb['low'], open_price, close), False
+                else:
+                    hi, lo, est = max(open_price, close), min(open_price, close), True
                 days.append({
                     'date': date_str,
-                    'day': day_name,
+                    'day': datetime.datetime.strptime(date_str, '%Y-%m-%d').strftime('%A'),
                     'open': round(open_price, 2),
                     'close': round(close, 2),
-                    'high': round(max(open_price, close), 2),
-                    'low': round(min(open_price, close), 2),
+                    'high': round(hi, 2),
+                    'low': round(lo, 2),
                     'volume': volume,
                     'change': round(change, 2),
-                    'changePct': round(change_pct, 2)
+                    'changePct': round(change_pct, 2),
+                    'hlEstimated': est
                 })
             _STOCK_HISTORY_CACHE[symbol] = (now, days)
             try:
@@ -1961,288 +2183,175 @@ def fetch_stock_history(symbol):
         except Exception:
             pass
 
-    # Reliable fallback: synthesize 30-day realistic candlestick history from screener quote
-    try:
-        stocks, _ = fetch_stock_data()
-        stock = next((s for s in stocks if s.get("symbol") == symbol), None)
-        if stock:
-            cur_price = stock.get("price", 10.0)
-            cur_vol = stock.get("volume", 50000)
-            cur_chg = stock.get("change", 0.0)
-            syn_days = []
-            for i in range(25):
-                t_day = now - (i * 86400)
-                d_str = time.strftime('%Y-%m-%d', time.localtime(t_day))
-                d_name = time.strftime('%A', time.localtime(t_day))
-                factor = 1.0 - (i * 0.003 * (1 if cur_chg >= 0 else -1))
-                c_pr = round(max(0.01, cur_price * factor), 2)
-                o_pr = round(max(0.01, c_pr - (cur_chg * 0.5)), 2)
-                syn_days.append({
-                    'date': d_str,
-                    'day': d_name,
-                    'open': o_pr,
-                    'close': c_pr,
-                    'high': round(max(o_pr, c_pr) * 1.01, 2),
-                    'low': round(min(o_pr, c_pr) * 0.99, 2),
-                    'volume': int(cur_vol * (0.8 + (i % 5) * 0.1)),
-                    'change': round(c_pr - o_pr, 2),
-                    'changePct': round(((c_pr - o_pr) / o_pr * 100) if o_pr > 0 else 0, 2)
-                })
-            _STOCK_HISTORY_CACHE[symbol] = (now - 1500, syn_days)
-            return syn_days
-    except Exception as e:
-        print(f"[PSX] Error generating synthetic history for {symbol}: {e}")
-
+    # No data is better than invented data: callers must handle None.
     return None
 
 
 
 _DPS_TIMESERIES_CACHE = {}  # { symbol: (timestamp, raw_data) }
+_DPS_HISTORICAL_CACHE = {}  # { symbol: (timestamp, bars oldest-first) }
+
+
+def _historical_bars(sym):
+    """Published daily OHLCV (oldest first) from DPS /historical, cached 30 minutes. [] if unavailable."""
+    import psx_market_data as md
+    now = time.time()
+    hit = _DPS_HISTORICAL_CACHE.get(sym)
+    if hit and now - hit[0] < 1800:
+        return hit[1]
+    bars = md.fetch_historical(sym, fetch_url)
+    if bars:
+        _DPS_HISTORICAL_CACHE[sym] = (now, bars)
+    return bars
 
 def fetch_stock_timeframe_series(symbol, timeframe="4H", limit=150):
     """
-    Fetch and aggregate PSX OHLCV candle series for a symbol on selected timeframe:
-    '1D', '4H', '1H', '15M', '1W'.
-    Features session-aware 4H bucket aggregation aligned to PSX market open:
-    - Mon-Thu: Bar 1 (09:32 - 13:32), Bar 2 (13:32 - 15:30 close).
-    - Friday: Bar 1 (09:17 - 12:00 morning session), Bar 2 (14:32 - 16:30 afternoon session).
-      Midday Friday gap (12:00 to 14:32 PKT) is strictly excluded and never bridged.
+    PSX OHLCV candles for a symbol: '1D', '1W' (from DPS EOD + recorded real session ranges)
+    and '4H', '1H', '30M', '15M', '5M', '1M' (aggregated from actually observed ticks).
+
+    Nothing is synthesised. The DPS EOD feed has no high/low, so daily candles use the real
+    session range when we recorded it (market-watch / company quote) and otherwise fall back
+    to max/min(open, close) with "hlEstimated": True. Intraday timeframes only contain periods
+    we observed; with no recorded ticks the result is an empty list.
     """
+    import psx_market_data as md
     sym = symbol.upper()
-    now_ts = time.time()
-    raw_data = None
-
-    cached = _DPS_TIMESERIES_CACHE.get(sym)
-    if cached and (now_ts - cached[0] < 60) and cached[1]:
-        raw_data = cached[1]
-    else:
-        url = f"https://dps.psx.com.pk/timeseries/eod/{sym}"
-        try:
-            html = fetch_url(url)
-            raw = json.loads(html)
-            if raw.get('status') == 1 and raw.get('data'):
-                raw_data = raw['data']
-                _DPS_TIMESERIES_CACHE[sym] = (now_ts, raw_data)
-        except Exception as e:
-            print(f"[PSX Chart] Error fetching timeseries for {sym}: {e}")
-
-    if not raw_data:
-        return []
-
+    timeframe = (timeframe or "4H").upper().strip()
     try:
-        # Sort chronologically (oldest to newest)
-        sorted_raw = sorted(raw_data, key=lambda x: x[0])
-        
-        # Build base daily candles with high/low estimations if not present
-        daily_candles = []
-        for entry in sorted_raw:
-            ts, close, volume, open_price = entry
-            dt_pkt = datetime.datetime.fromtimestamp(ts, datetime.timezone(datetime.timedelta(hours=5)))
-            
-            # Intraday fluctuation range estimation
-            body = abs(close - open_price)
-            wick_high = max(open_price, close) + max(body * 0.4, close * 0.006)
-            wick_low = min(open_price, close) - max(body * 0.35, close * 0.005)
-            high_price = round(wick_high, 2)
-            low_price = round(max(0.01, wick_low), 2)
-            
-            daily_candles.append({
-                "timestamp": ts,
-                "datetime": dt_pkt,
-                "date": dt_pkt.strftime("%Y-%m-%d"),
-                "day": dt_pkt.strftime("%A"),
-                "weekday": dt_pkt.weekday(), # 0=Mon, 4=Fri
-                "open": round(open_price, 2),
-                "high": high_price,
-                "low": low_price,
-                "close": round(close, 2),
-                "volume": volume
-            })
-            
-        timeframe = (timeframe or "4H").upper().strip()
-        candles = []
-        
-        if timeframe == "1D":
-            for d in daily_candles:
+        if timeframe in md.TIMEFRAME_MINUTES:
+            md.refresh_intraday(sym, fetch_url)
+            days = max(2, min(60, int((limit or 150) * md.TIMEFRAME_MINUTES[timeframe] / 300) + 2))
+            bars = md.get_store().build_bars(sym, timeframe, days=days)
+            candles = []
+            for b in bars:
+                dt = datetime.datetime.fromtimestamp(b["timestamp"], md.PKT)
                 candles.append({
-                    "timestamp": d["timestamp"],
-                    "timeStr": f"{d['date']} 15:30",
-                    "dateStr": d["date"],
-                    "day": d["day"][:3],
-                    "open": d["open"],
-                    "high": d["high"],
-                    "low": d["low"],
-                    "close": d["close"],
-                    "volume": d["volume"]
+                    "timestamp": b["timestamp"],
+                    "timeStr": f"{b['date']} {b['time']}",
+                    "dateStr": b["date"],
+                    "day": dt.strftime("%a"),
+                    "open": round(b["open"], 2),
+                    "high": round(b["high"], 2),
+                    "low": round(b["low"], 2),
+                    "close": round(b["close"], 2),
+                    "volume": int(b["volume"]),
+                    "ticks": b["ticks"],
+                    "hlEstimated": False,
                 })
-                
-        elif timeframe == "1W":
-            # Group by ISO year and calendar week
-            weekly_groups = {}
-            for d in daily_candles:
-                year, week, _ = d["datetime"].isocalendar()
-                key = f"{year}-W{week:02d}"
-                if key not in weekly_groups:
-                    weekly_groups[key] = []
-                weekly_groups[key].append(d)
-                
-            for k in sorted(weekly_groups.keys()):
-                group = weekly_groups[k]
-                if not group:
-                    continue
-                w_open = group[0]["open"]
-                w_close = group[-1]["close"]
-                w_high = max(g["high"] for g in group)
-                w_low = min(g["low"] for g in group)
-                w_vol = sum(g["volume"] for g in group)
-                w_ts = group[-1]["timestamp"]
-                candles.append({
-                    "timestamp": w_ts,
-                    "timeStr": f"{group[-1]['date']} (Week)",
-                    "dateStr": group[-1]["date"],
-                    "day": "Wk",
-                    "open": w_open,
-                    "high": w_high,
-                    "low": w_low,
-                    "close": w_close,
-                    "volume": w_vol
-                })
-                
-        elif timeframe == "4H":
-            # PSX Session-Aware 4H Aggregation:
-            # Mon-Thu: 09:32 - 13:32 (4H), 13:32 - 15:30 (Session close)
-            # Friday: 09:17 - 12:00 (Morning session), 14:32 - 16:30 (Afternoon session)
-            for d in daily_candles:
-                is_friday = (d["weekday"] == 4)
-                d_date = d["date"]
-                day_short = d["day"][:3]
-                
-                # Bar 1 mid-close estimation
-                b1_weight = 0.52 if not is_friday else 0.48
-                b1_close = round(d["open"] + (d["close"] - d["open"]) * b1_weight, 2)
-                b1_high = round(max(d["open"], b1_close) + abs(d["close"] - d["open"]) * 0.25 + d["close"] * 0.003, 2)
-                b1_low = round(min(d["open"], b1_close) - abs(d["close"] - d["open"]) * 0.2 - d["close"] * 0.002, 2)
-                
-                # Bar 2 completes the day
-                b2_open = b1_close
-                b2_close = d["close"]
-                b2_high = round(max(d["high"], b2_open, b2_close), 2)
-                b2_low = round(min(d["low"], b2_open, b2_close), 2)
-                
-                b1_vol = int(d["volume"] * (0.55 if not is_friday else 0.46))
-                b2_vol = max(0, d["volume"] - b1_vol)
-                
-                if not is_friday:
-                    # Monday - Thursday (09:32 to 15:30 PKT)
-                    # 4H Bar 1: 09:32 - 13:32
+            intraday = True
+        else:
+            daily = _real_daily_candles(sym)
+            intraday = False
+            if timeframe == "1W":
+                groups = {}
+                for d in daily:
+                    y, w, _ = datetime.datetime.strptime(d["dateStr"], "%Y-%m-%d").isocalendar()
+                    groups.setdefault((y, w), []).append(d)
+                candles = []
+                for k in sorted(groups):
+                    g = groups[k]
                     candles.append({
-                        "timestamp": d["timestamp"] - 7200,
-                        "timeStr": f"{d_date} 13:32 (4H-S1)",
-                        "dateStr": d_date,
-                        "day": day_short,
-                        "session": "Mon-Thu Morning (09:32-13:32)",
-                        "open": d["open"],
-                        "high": b1_high,
-                        "low": b1_low,
-                        "close": b1_close,
-                        "volume": b1_vol
+                        "timestamp": g[-1]["timestamp"],
+                        "timeStr": f"{g[-1]['dateStr']} (Week)",
+                        "dateStr": g[-1]["dateStr"],
+                        "day": "Wk",
+                        "open": g[0]["open"],
+                        "high": max(x["high"] for x in g),
+                        "low": min(x["low"] for x in g),
+                        "close": g[-1]["close"],
+                        "volume": sum(x["volume"] for x in g),
+                        "hlEstimated": any(x["hlEstimated"] for x in g),
                     })
-                    # 4H Bar 2: 13:32 - 15:30 (Session Close partial bar)
-                    candles.append({
-                        "timestamp": d["timestamp"],
-                        "timeStr": f"{d_date} 15:30 (4H-S2)",
-                        "dateStr": d_date,
-                        "day": day_short,
-                        "session": "Mon-Thu Afternoon (13:32-15:30)",
-                        "open": b2_open,
-                        "high": b2_high,
-                        "low": b2_low,
-                        "close": b2_close,
-                        "volume": b2_vol
-                    })
-                else:
-                    # Friday: Split into 2 distinct partial 4H session bars without bridging gap
-                    # Friday Morning Bar: 09:17 - 12:00 PKT (2h 43m)
-                    candles.append({
-                        "timestamp": d["timestamp"] - 14400,
-                        "timeStr": f"{d_date} 12:00 (Fri-S1)",
-                        "dateStr": d_date,
-                        "day": "Fri",
-                        "session": "Friday Morning (09:17-12:00)",
-                        "open": d["open"],
-                        "high": b1_high,
-                        "low": b1_low,
-                        "close": b1_close,
-                        "volume": b1_vol
-                    })
-                    # Midday gap (12:00 - 14:32) is unbridged
-                    # Friday Afternoon Bar: 14:32 - 16:30 PKT (1h 58m)
-                    candles.append({
-                        "timestamp": d["timestamp"],
-                        "timeStr": f"{d_date} 16:30 (Fri-S2)",
-                        "dateStr": d_date,
-                        "day": "Fri",
-                        "session": "Friday Afternoon (14:32-16:30)",
-                        "open": b2_open,
-                        "high": b2_high,
-                        "low": b2_low,
-                        "close": b2_close,
-                        "volume": b2_vol
-                    })
-                    
-        elif timeframe in ["1H", "15M"]:
-            # Intraday hourly subdivision
-            for d in daily_candles:
-                is_friday = (d["weekday"] == 4)
-                d_date = d["date"]
-                day_short = d["day"][:3]
-                hours = 4 if is_friday else 6
-                step = (d["close"] - d["open"]) / hours
-                cur_o = d["open"]
-                vol_per_h = max(1, int(d["volume"] / hours))
-                
-                for h_idx in range(hours):
-                    cur_c = round(cur_o + step + ((h_idx % 2 - 0.5) * step * 0.3), 2)
-                    if h_idx == hours - 1:
-                        cur_c = d["close"]
-                    h_high = round(max(cur_o, cur_c) + abs(step) * 0.4 + d["close"] * 0.002, 2)
-                    h_low = round(min(cur_o, cur_c) - abs(step) * 0.3 - d["close"] * 0.002, 2)
-                    time_label = f"{9 + h_idx + 1:02d}:30"
-                    candles.append({
-                        "timestamp": d["timestamp"] - (hours - h_idx) * 3600,
-                        "timeStr": f"{d_date} {time_label}",
-                        "dateStr": d_date,
-                        "day": day_short,
-                        "open": round(cur_o, 2),
-                        "high": h_high,
-                        "low": h_low,
-                        "close": cur_c,
-                        "volume": vol_per_h
-                    })
-                    cur_o = cur_c
-                    
-        # Calculate VWAP and PSX Circuit Bands (+/- 7.5% or min Rs 1.00)
-        cum_vol = 0
-        cum_vol_price = 0.0
+            else:
+                candles = daily
+
+        # VWAP (reset each session for intraday) and PSX circuit bands (+/- 7.5% or min Rs 1.00)
+        cum_vol = 0.0
+        cum_vp = 0.0
         prev_c = None
+        cur_day = None
         for c in candles:
+            if intraday and c["dateStr"] != cur_day:
+                cur_day, cum_vol, cum_vp = c["dateStr"], 0.0, 0.0
             typ_p = (c["high"] + c["low"] + c["close"]) / 3.0
-            vol = max(1, int(c.get("volume", 1) or 1))
+            vol = float(c.get("volume") or 0)
             cum_vol += vol
-            cum_vol_price += typ_p * vol
-            c["vwap"] = round(cum_vol_price / cum_vol, 2)
-            
+            cum_vp += typ_p * vol
+            c["vwap"] = round(cum_vp / cum_vol, 2) if cum_vol > 0 else None
             ref_p = prev_c if prev_c is not None else c["open"]
             band_spread = max(1.00, ref_p * 0.075)
             c["circuit_upper"] = round(ref_p + band_spread, 2)
             c["circuit_lower"] = round(max(0.01, ref_p - band_spread), 2)
             prev_c = c["close"]
 
-        # Return requested limit (latest N candles)
         return candles[-limit:] if limit and len(candles) > limit else candles
     except Exception as e:
         print(f"[PSX] Error fetching timeframe series for {symbol}: {e}")
         return []
+
+
+def _real_daily_candles(sym):
+    """Daily candles oldest-first: DPS /historical (published OHLCV), else DPS EOD (close/volume/open)
+    merged with recorded real ranges."""
+    import psx_market_data as md
+    now_ts = time.time()
+    raw_data = None
+    published = _historical_bars(sym)
+    cached = _DPS_TIMESERIES_CACHE.get(sym)
+    if len(published) >= 30:
+        pass  # full published history available; EOD feed not needed
+    elif cached and (now_ts - cached[0] < 60) and cached[1]:
+        raw_data = cached[1]
+    else:
+        try:
+            raw = json.loads(fetch_url(f"https://dps.psx.com.pk/timeseries/eod/{sym}"))
+            if raw.get("status") == 1 and raw.get("data"):
+                raw_data = raw["data"]
+                _DPS_TIMESERIES_CACHE[sym] = (now_ts, raw_data)
+        except Exception as e:
+            print(f"[PSX Chart] Error fetching timeseries for {sym}: {e}")
+
+    real = md.get_store().get_daily_bars(sym)
+    by_date = {}
+    for b in published:  # published OHLC: treated like a recorded real range
+        d0 = datetime.datetime.strptime(b["date"], "%Y-%m-%d").replace(tzinfo=md.PKT)
+        by_date[b["date"]] = {"timestamp": int(d0.timestamp()), "open": b["open"], "close": b["close"],
+                              "volume": b["volume"]}
+        real.setdefault(b["date"], {"high": b["high"], "low": b["low"], "close": b["close"]})
+    for entry in sorted(raw_data or [], key=lambda x: x[0]):
+        ts, close, volume, open_price = entry[:4]
+        date = md.pkt_date(ts)
+        by_date[date] = {"timestamp": int(ts), "open": float(open_price), "close": float(close),
+                         "volume": float(volume or 0)}
+    # Sessions we recorded live but the EOD feed doesn't have yet (e.g. today)
+    for date, rb in real.items():
+        if date not in by_date and rb.get("close"):
+            d0 = datetime.datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=md.PKT)
+            by_date[date] = {"timestamp": int(d0.timestamp()), "open": rb["open"] or rb["close"],
+                             "close": rb["close"], "volume": rb.get("volume") or 0}
+
+    out = []
+    for date in sorted(by_date):
+        d = by_date[date]
+        rb = real.get(date)
+        o, c = d["open"], d["close"]
+        if rb and rb.get("high") and rb.get("low"):
+            hi, lo, est = max(rb["high"], o, c), min(rb["low"], o, c), False
+        else:
+            hi, lo, est = max(o, c), min(o, c), True
+        out.append({
+            "timestamp": d["timestamp"],
+            "timeStr": f"{date} 15:30",
+            "dateStr": date,
+            "day": datetime.datetime.strptime(date, "%Y-%m-%d").strftime("%a"),
+            "open": round(o, 2),
+            "high": round(hi, 2),
+            "low": round(lo, 2),
+            "close": round(c, 2),
+            "volume": d["volume"],
+            "hlEstimated": est,
+        })
+    return out
 
 
 def get_psx_market_status():
@@ -3021,20 +3130,11 @@ def get_corporate_actions_and_dividends():
         except Exception:
             pass
 
-    # Fetch live from DPS PSX POST /payouts
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest"
-    }
-    
+    # Fetch live from DPS PSX POST /payouts (psx_http adds the X-Req-Id token)
     calendar = []
     try:
-        data = urllib.parse.urlencode({"symbol": "", "count": 100, "offset": 0}).encode("utf-8")
-        req = urllib.request.Request("https://dps.psx.com.pk/payouts", data=data, headers=headers)
-        with urllib.request.urlopen(req, timeout=12, context=SSL_CONTEXT) as r:
-            html = r.read().decode("utf-8", errors="ignore")
-
+        html = fetch_url("https://dps.psx.com.pk/payouts", timeout=12, retries=2,
+                         data={"symbol": "", "count": 100, "offset": 0})
 
         rows = re.findall(
             r'<tr>\s*<td><a[^>]*><strong>(.*?)</strong></a></td>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*</tr>',
@@ -3127,93 +3227,6 @@ def get_corporate_actions_and_dividends():
     return result_data
 
 
-def fetch_financial_statements(symbol):
-    """Fetch/generate complete Balance Sheet, Income Statement, and Cash Flow Statement for a stock."""
-    symbol = symbol.upper()
-    stocks, _ = fetch_stock_data()
-    stock = next((s for s in stocks if s.get("symbol") == symbol), None)
-    if not stock:
-        return None
-
-    price = stock.get("price", 10.0)
-    mcap = stock.get("mcap", 1000000000.0)
-    rev = stock.get("revenue", 50000000.0)
-    pe = stock.get("pe", 10.0)
-    
-    # Financial Statement estimates based on company mcap & revenue
-    cogs = rev * 0.72
-    gross_profit = rev - cogs
-    op_expenses = rev * 0.14
-    ebit = gross_profit - op_expenses
-    interest_exp = max(100000.0, ebit * 0.12)
-    ebt = ebit - interest_exp
-    tax = max(0.0, ebt * 0.29)
-    net_income = ebt - tax
-
-    # Balance Sheet
-    current_assets = mcap * 0.25
-    inventory = current_assets * 0.35
-    cash = current_assets * 0.30
-    receivables = current_assets * 0.35
-    non_current_assets = mcap * 0.65
-    total_assets = current_assets + non_current_assets
-
-    current_liabilities = current_assets * 0.55
-    total_debt = mcap * 0.30
-    non_current_liabilities = max(0.0, total_debt - (current_liabilities * 0.4))
-    total_liabilities = current_liabilities + non_current_liabilities
-    shareholder_equity = total_assets - total_liabilities
-
-    # Cash Flow Statement
-    op_cash_flow = net_income * 1.25
-    capex = mcap * 0.08
-    inv_cash_flow = -capex
-    div_paid = net_income * (stock.get("divYield", 0) / 100.0 if stock.get("divYield") else 0.2)
-    fin_cash_flow = -div_paid
-    net_change_cash = op_cash_flow + inv_cash_flow + fin_cash_flow
-
-    return {
-        "symbol": symbol,
-        "companyName": stock.get("name"),
-        "sector": stock.get("sector"),
-        "incomeStatement": {
-            "period": "Annual (FY2025)",
-            "revenue": round(rev, 2),
-            "cogs": round(cogs, 2),
-            "grossProfit": round(gross_profit, 2),
-            "operatingExpenses": round(op_expenses, 2),
-            "ebit": round(ebit, 2),
-            "interestExpense": round(interest_exp, 2),
-            "ebt": round(ebt, 2),
-            "tax": round(tax, 2),
-            "netIncome": round(net_income, 2)
-        },
-        "balanceSheet": {
-            "period": "As of June 30, 2025",
-            "cash": round(cash, 2),
-            "receivables": round(receivables, 2),
-            "inventory": round(inventory, 2),
-            "currentAssets": round(current_assets, 2),
-            "nonCurrentAssets": round(non_current_assets, 2),
-            "totalAssets": round(total_assets, 2),
-            "currentLiabilities": round(current_liabilities, 2),
-            "totalDebt": round(total_debt, 2),
-            "nonCurrentLiabilities": round(non_current_liabilities, 2),
-            "totalLiabilities": round(total_liabilities, 2),
-            "shareholderEquity": round(shareholder_equity, 2)
-        },
-        "cashFlowStatement": {
-            "period": "Annual (FY2025)",
-            "operatingCashFlow": round(op_cash_flow, 2),
-            "capex": round(capex, 2),
-            "investingCashFlow": round(inv_cash_flow, 2),
-            "dividendsPaid": round(div_paid, 2),
-            "financingCashFlow": round(fin_cash_flow, 2),
-            "netChangeInCash": round(net_change_cash, 2)
-        }
-    }
-
-
 def fetch_dividends_corporate_actions():
     """Fetch live PSX Dividend Calendar and Corporate Actions."""
     stocks, _ = fetch_stock_data()
@@ -3253,1275 +3266,152 @@ def fetch_dividends_corporate_actions():
     }
 
 
-# ─── 3-Day Free Trial Engine (Online Only) ───
-TRIAL_FILE = str(Path(__file__).parent / "trial_data.json")
+# Accounts, trials, licences, admin dashboard, feedback and tab status: see psx_accounts.py
+from psx_accounts import (  # noqa: F401  (re-exported for handlers and tests)
+    COUNTRY_FLAGS,
+    DEFAULT_TAB_STATUSES,
+    DISPOSABLE_DOMAINS,
+    FEEDBACK_FILE,
+    LICENSE_FILE,
+    POPULAR_TRUSTED_DOMAINS,
+    TAB_STATUS_FILE,
+    TRIAL_FILE,
+    activate_license,
+    active_online_visitors,
+    admin_delete_user_record,
+    admin_extend_trial_days,
+    admin_generate_licenses,
+    admin_reply_feedback,
+    admin_upgrade_to_pro,
+    check_trial_status,
+    geo_cache,
+    get_admin_dashboard_data,
+    get_feedback_db,
+    get_ip_location,
+    get_license_db,
+    get_tab_status_db,
+    get_trial_db,
+    is_trusted_local_peer,
+    parse_user_agent_details,
+    record_feedback,
+    record_visitor_heartbeat,
+    save_feedback_db,
+    save_license_db,
+    save_tab_status_db,
+    save_trial_db,
+    set_all_tabs_status,
+    start_trial,
+    update_tab_status,
+    validate_email_strict,
+    verify_admin_secret,
+)
 
-# ─── Strict Email Verification & Anti-Burner Engine ───
-DISPOSABLE_DOMAINS = {
-    "mailinator.com", "guerrillamail.com", "10minutemail.com", "tempmail.com", "temp-mail.org",
-    "yopmail.com", "trashmail.com", "sharklasers.com", "dispostable.com", "getnada.com",
-    "throwawaymail.com", "fakeinbox.com", "mohmal.com", "burnermail.io", "crazymailing.com",
-    "mytemp.email", "tempail.com", "dropmail.me", "emailondeck.com", "generator.email",
-    "inboxbear.com", "trashmail.net", "tempmail.net", "maildrop.cc", "tempinbox.com",
-    "nada.ltd", "nada.email", "inboxkitten.com", "fakemailgenerator.com", "armyspy.com",
-    "cuvox.de", "dayrep.com", "einrot.com", "fleckens.hu", "gustr.com", "jourrapide.com",
-    "rhyta.com", "superrito.com", "teleworm.us", "chacuo.net", "0-mail.com", "10mail.org",
-    "20minutemail.com", "33mail.com", "anonaddy.me", "discard.email", "spambox.us",
-    "mailnull.com", "mytempmail.com", "trash-mail.com", "mohmal.im", "mohmal.in",
-    "trashmail.me", "guerrillamailblock.com", "guerrillamail.net", "guerrillamail.biz",
-    "guerrillamail.org", "grr.la", "pokemail.net", "spam4.me", "bccto.me", "chacuo.net",
-    "brefmail.com", "jetable.org", "kasmail.com", "spamex.com", "uggsrock.com", "mytempemail.com"
-}
-
-POPULAR_TRUSTED_DOMAINS = {
-    "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "live.com",
-    "protonmail.com", "proton.me", "zoho.com", "aol.com", "msn.com", "mail.com", "yandex.com"
-}
-
-def validate_email_strict(email):
-    """Deep verification: syntax, burner domain blacklist, fake user check, and DNS domain existence."""
-    email = (email or "").strip().lower()
-    if not email:
-        return False, "Please enter your email address."
-
-    # 1. Syntax Check
-    pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-    if not re.match(pattern, email):
-        return False, "Invalid email format. Please enter a valid email (e.g. name@gmail.com)."
-
-    parts = email.split("@")
-    if len(parts) != 2:
-        return False, "Invalid email structure."
-
-    username, domain = parts[0].strip(), parts[1].strip()
-
-    # 2. Minimum length
-    if len(username) < 2:
-        return False, "Email username is too short."
-
-    # 3. Block generic fake usernames unconditionally
-    fake_usernames = {"test", "admin", "fake", "asdf", "12345", "user", "demo", "sample", "temp", "noemail", "random", "abc", "qwerty", "none", "xyz", "null"}
-    if username in fake_usernames or username.startswith("test") or username.startswith("fake") or len(set(username)) <= 1:
-        return False, "Please enter your real personal or business email address."
-
-    # 4. Disposable Domain Check
-    if domain in DISPOSABLE_DOMAINS:
-        return False, "✖ Temporary / disposable burner emails are not allowed. Please enter your real email."
-
-    # 5. DNS Host Existence Verification
-    if domain not in POPULAR_TRUSTED_DOMAINS:
-        try:
-            socket.getaddrinfo(domain, 80)
-        except Exception:
-            return False, f"✖ The domain '{domain}' does not exist or cannot receive emails."
-
-    return True, ""
-
-# ─── IP Geolocation & User-Agent Parser Engine ───
-geo_cache = {}
-
-COUNTRY_FLAGS = {
-    "PK": "🇵🇰", "US": "🇺🇸", "GB": "🇬🇧", "AE": "🇦🇪", "SA": "🇸🇦", "CA": "🇨🇦",
-    "AU": "🇦🇺", "DE": "🇩🇪", "FR": "🇫🇷", "IN": "🇮🇳", "CN": "🇨🇳", "SG": "🇸🇬",
-    "MY": "🇲🇾", "TR": "🇹🇷", "QA": "🇶🇦", "OM": "🇴🇲", "KW": "🇰🇼", "BH": "🇧🇭"
-}
-
-def get_ip_location(ip):
-    """Lookup real City, Country, Flag, and ISP from client IP with non-blocking background resolution."""
-    ip = (ip or "").strip()
-    if not ip or ip in ["127.0.0.1", "localhost", "::1"] or ip.startswith("192.168.") or ip.startswith("10."):
-        return {"city": "Local Dev", "country": "Pakistan", "countryCode": "PK", "flag": "🇵🇰", "isp": "Localhost"}
-
-    if ip in geo_cache:
-        return geo_cache[ip]
-
-    fallback = {"city": "Pakistan", "country": "Pakistan", "countryCode": "PK", "flag": "🇵🇰", "isp": "Internet Provider"}
-    geo_cache[ip] = fallback
-
-    def _async_geo():
-        try:
-            url = f"http://ip-api.com/json/{ip}?fields=status,country,countryCode,regionName,city,isp"
-            req = urllib.request.Request(url, headers={"User-Agent": "PSX-Screener/1.0"})
-            with urllib.request.urlopen(req, timeout=2.0) as resp:
-                data = json.load(resp)
-                if data.get("status") == "success":
-                    cc = data.get("countryCode", "")
-                    flag = COUNTRY_FLAGS.get(cc, "🌐")
-                    geo_cache[ip] = {
-                        "city": data.get("city", "Unknown City"),
-                        "country": data.get("country", "Unknown Country"),
-                        "countryCode": cc,
-                        "region": data.get("regionName", ""),
-                        "flag": flag,
-                        "isp": data.get("isp", "")
-                    }
-        except Exception:
-            pass
-
-    threading.Thread(target=_async_geo, daemon=True).start()
-    return fallback
-
-def parse_user_agent_details(ua):
-    """Detect Device Type, OS, and Browser from User-Agent string."""
-    ua = ua or ""
-    ua_lower = ua.lower()
-
-    # Device
-    if "mobile" in ua_lower or "android" in ua_lower or "iphone" in ua_lower:
-        device = "📱 Mobile"
-    elif "tablet" in ua_lower or "ipad" in ua_lower:
-        device = "📱 Tablet"
-    else:
-        device = "💻 Desktop"
-
-    # OS
-    os_name = "Other OS"
-    if "windows" in ua_lower: os_name = "Windows"
-    elif "macintosh" in ua_lower or "mac os" in ua_lower: os_name = "macOS"
-    elif "android" in ua_lower: os_name = "Android"
-    elif "iphone" in ua_lower or "ios" in ua_lower: os_name = "iOS"
-    elif "linux" in ua_lower: os_name = "Linux"
-
-    # Browser
-    browser = "Browser"
-    if "edg" in ua_lower: browser = "Edge"
-    elif "chrome" in ua_lower and "edg" not in ua_lower: browser = "Chrome"
-    elif "safari" in ua_lower and "chrome" not in ua_lower: browser = "Safari"
-    elif "firefox" in ua_lower: browser = "Firefox"
-
-    return f"{device} ({os_name} {browser})"
-
-# ─── Real-Time Live Online Visitor Presence Tracker ───
-active_online_visitors = {}
-
-def record_visitor_heartbeat(client_ip, device_id, email="", tab="Stock Screener", user_agent=""):
-    now_ts = time.time()
-    v_key = device_id or client_ip or "guest"
-    loc = get_ip_location(client_ip)
-    device_info = parse_user_agent_details(user_agent)
-    email_clean = (email or "").strip().lower()
-
-    active_online_visitors[v_key] = {
-        "key": v_key,
-        "email": email_clean or "Guest Visitor",
-        "clientIp": client_ip or "—",
-        "deviceId": device_id or "—",
-        "location": loc,
-        "flag": loc.get("flag", "🌐"),
-        "city": loc.get("city", "Unknown"),
-        "country": loc.get("country", "Pakistan"),
-        "locationStr": f"{loc.get('flag', '🌐')} {loc.get('city', '')}, {loc.get('country', '')}",
-        "deviceInfo": device_info,
-        "currentTab": tab or "Stock Screener",
-        "lastPing": now_ts,
-        "lastPingStr": time.strftime("%I:%M:%S %p PKT", time.localtime(now_ts + 5*3600))
-    }
-
-    # Check if this user is a Pro member in licenses.json or trial_db
-    is_pro = False
-    lic_db = get_license_db()
-    assigned_lic_key = None
-    for lk, ldata in lic_db.items():
-        if (ldata.get("used") or ldata.get("valid")) and email_clean and (ldata.get("email") or "").strip().lower() == email_clean:
-            is_pro = True
-            assigned_lic_key = lk
-            break
-
-    # Also check trial_db with last_active, visit_count, and location
-    try:
-        trial_db = get_trial_db()
-        existing_email_entry = trial_db.get(f"email_{email_clean}") if email_clean else None
-        if existing_email_entry and existing_email_entry.get("is_paid"):
-            is_pro = True
-            if existing_email_entry.get("license_key"): assigned_lic_key = existing_email_entry.get("license_key")
-
-        existing_dev_entry = trial_db.get(v_key)
-        if existing_dev_entry and existing_dev_entry.get("is_paid"):
-            is_pro = True
-            if existing_dev_entry.get("license_key"): assigned_lic_key = existing_dev_entry.get("license_key")
-
-        if v_key not in trial_db:
-            trial_db[v_key] = {
-                "email": email_clean or "",
-                "client_ip": client_ip,
-                "device_id": device_id,
-                "created_at": now_ts,
-                "first_seen": now_ts,
-                "last_active": now_ts,
-                "visit_count": 1,
-                "trial_end": (now_ts + 365*86400) if is_pro else (now_ts + 3*86400),
-                "is_paid": is_pro,
-                "license_key": assigned_lic_key or ("PSX-PRO-ACTIVE" if is_pro else "—"),
-                "location": loc,
-                "device_info": device_info,
-                "user_agent": user_agent
-            }
-        else:
-            trial_db[v_key]["last_active"] = now_ts
-            trial_db[v_key]["location"] = loc
-            trial_db[v_key]["device_info"] = device_info
-            trial_db[v_key]["visit_count"] = trial_db[v_key].get("visit_count", 1) + 1
-            if is_pro:
-                trial_db[v_key]["is_paid"] = True
-                if assigned_lic_key: trial_db[v_key]["license_key"] = assigned_lic_key
-            if email_clean:
-                trial_db[v_key]["email"] = email_clean
-
-        if email_clean:
-            if f"email_{email_clean}" not in trial_db:
-                trial_db[f"email_{email_clean}"] = dict(trial_db[v_key])
-                trial_db[f"email_{email_clean}"]["email"] = email_clean
-                if is_pro:
-                    trial_db[f"email_{email_clean}"]["is_paid"] = True
-                    if assigned_lic_key: trial_db[f"email_{email_clean}"]["license_key"] = assigned_lic_key
-            else:
-                trial_db[f"email_{email_clean}"]["last_active"] = now_ts
-                trial_db[f"email_{email_clean}"]["visit_count"] = trial_db[f"email_{email_clean}"].get("visit_count", 1) + 1
-                trial_db[f"email_{email_clean}"]["client_ip"] = client_ip
-                trial_db[f"email_{email_clean}"]["device_id"] = device_id
-                if is_pro:
-                    trial_db[f"email_{email_clean}"]["is_paid"] = True
-                    if assigned_lic_key: trial_db[f"email_{email_clean}"]["license_key"] = assigned_lic_key
-
-        save_trial_db(trial_db)
-    except Exception:
-        pass
-
-def get_trial_db():
-    if os.path.exists(TRIAL_FILE):
-        try:
-            with open(TRIAL_FILE, "r") as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    return data
-        except Exception:
-            return {}
-    return {}
-
-def save_trial_db(db):
-    if not db or not isinstance(db, dict) or len(db) == 0:
-        return
-    try:
-        with open(TRIAL_FILE, "w") as f:
-            json.dump(db, f, indent=2)
-    except Exception as e:
-        print(f"[PSX] Error saving trial db: {e}")
-
-def check_trial_status(client_ip, device_id, host_header="", email="", user_agent="", orig_start_ts=0, license_key=""):
-    host_lower = (host_header or "").lower()
-    local_patterns = ["localhost", "127.0.0.1", "::1", "0.0.0.0", "192.168.", "10.", ".local"]
-    is_local_host = any(h in host_lower for h in local_patterns) or \
-                   any(ip in (client_ip or "") for ip in ["127.0.0.1", "::1", "192.168.", "10."])
-
-    if is_local_host:
-        return {
-            "isLocal": True,
-            "trialActive": True,
-            "unlimited": True,
-            "secondsLeft": 99999999,
-            "message": "Local Mode — Unlimited Access (No Trial Needed)"
-        }
-
-    now_ts = time.time()
-    email_clean = (email or "").strip().lower()
-    dev_clean = (device_id or "").strip()
-    key_clean = (license_key or "").strip().upper()
-    ip_clean = (client_ip or "").strip()
-
-    # ── CHECK 1: License Database Verification ──
-    lic_db = get_license_db()
-    for lk, ldata in lic_db.items():
-        if ldata.get("used") or ldata.get("valid"):
-            l_email = (ldata.get("email") or "").strip().lower()
-            l_dev = (ldata.get("device_id") or "").strip()
-            if (key_clean and lk == key_clean) or (email_clean and l_email == email_clean) or (dev_clean and l_dev and l_dev == dev_clean):
-                return {
-                    "isLocal": False,
-                    "trialActive": True,
-                    "isPaid": True,
-                    "email": l_email or email_clean,
-                    "name": ldata.get("name") or "Pro Member",
-                    "licenseKey": lk,
-                    "secondsLeft": 99999999,
-                    "message": "🌟 Pro Membership Active"
-                }
-
-    # ── CHECK 2: Trial Database Pro Check ──
-    trial_db = get_trial_db()
-    for k, v in trial_db.items():
-        if isinstance(v, dict) and v.get("is_paid"):
-            v_email = (v.get("email") or v.get("paid_email") or "").strip().lower()
-            v_dev = (v.get("device_id") or "").strip()
-            v_ip = (v.get("client_ip") or "").strip()
-            if (email_clean and v_email == email_clean) or (dev_clean and v_dev == dev_clean) or (ip_clean and v_ip == ip_clean) or k == f"email_{email_clean}" or k == dev_clean:
-                paid_until = v.get("paid_until", now_ts + 86400)
-                if paid_until >= now_ts:
-                    return {
-                        "isLocal": False,
-                        "trialActive": True,
-                        "isPaid": True,
-                        "email": v_email or email_clean,
-                        "name": v.get("paid_name") or "Pro Member",
-                        "licenseKey": v.get("license_key") or "PSX-PRO-ACTIVE",
-                        "secondsLeft": 99999999,
-                        "message": "🌟 Pro Membership Active"
-                    }
-
-    # ── CHECK 3: Active or Expired Trial ──
-    user_info = trial_db.get(f"email_{email_clean}") if email_clean else None
-    if not user_info and dev_clean:
-        user_info = trial_db.get(dev_clean)
-    if not user_info and ip_clean:
-        user_info = trial_db.get(f"ip_{ip_clean}")
-
-    # Auto-activate device/user so online system is never locked or frozen
-    if not user_info:
-        user_info = {
-            "email": email_clean or "ali@psx.app",
-            "client_ip": ip_clean,
-            "device_id": dev_clean or f"dev_{int(now_ts)}",
-            "created_at": now_ts,
-            "first_seen": now_ts,
-            "last_active": now_ts,
-            "visit_count": 1,
-            "trial_end": now_ts + (365 * 86400),
-            "is_paid": True,
-            "license_key": "PSX-PRO-UNLIMITED"
-        }
-        trial_db[dev_clean or f"ip_{ip_clean}"] = user_info
-        save_trial_db(trial_db)
-
-    trial_end = user_info.get("trial_end", now_ts + (365 * 86400))
-    time_left = trial_end - now_ts
-    if time_left <= 0:
-        time_left = 365 * 86400
-        user_info["trial_end"] = now_ts + time_left
-        user_info["is_paid"] = True
-        save_trial_db(trial_db)
-
-    user_info["last_active"] = now_ts
-
-    return {
-        "isLocal": False,
-        "trialActive": True,
-        "isPaid": True,
-        "unlimited": True,
-        "email": user_info.get("email") or email_clean or "ali@psx.app",
-        "name": user_info.get("paid_name") or "Pro Member",
-        "licenseKey": user_info.get("license_key") or "PSX-PRO-UNLIMITED",
-        "secondsLeft": 99999999,
-        "message": "🌟 Pro Membership Active (Unlimited Access)"
-    }
-
-
-def start_trial(client_ip, device_id, email, host_header="", user_agent=""):
-    email = (email or "").strip().lower()
-    
-    # 1. Strict Anti-Fake Email Validation
-    is_valid, err_msg = validate_email_strict(email)
-    if not is_valid:
-        return {"success": False, "error": err_msg}
-
-    db = get_trial_db()
-    lic_db = get_license_db()
-    now_ts = time.time()
-    key = device_id or client_ip or "online_guest"
-    ip_key = f"ip_{client_ip}" if client_ip else key
-    dev_clean = (device_id or "").strip()
-    client_ip_clean = (client_ip or "").strip()
-
-    # Check if PRO already in licenses
-    for lk, ldata in lic_db.items():
-        if ldata.get("used") and (ldata.get("email") or "").strip().lower() == email:
-            return {"success": True, "message": "Pro Account Active", "isPaid": True, "licenseKey": lk}
-
-    # Anti-Abuse Check 1: Has this exact EMAIL already had a trial?
-    existing_email_record = db.get(f"email_{email}")
-    if existing_email_record:
-        if existing_email_record.get("is_paid"):
-            return {"success": True, "message": "Pro Account Active", "isPaid": True}
-        time_left = existing_email_record.get("trial_end", 0) - now_ts
-        if time_left > 0:
-            return {
-                "success": True,
-                "message": f"Welcome back! {max(1, int(time_left // 86400) + 1)} Days remaining in your trial.",
-                "createdAt": existing_email_record.get("created_at"),
-                "trialEnd": existing_email_record.get("trial_end"),
-                "daysLeft": max(1, int(time_left // 86400) + 1),
-                "hoursLeft": round(time_left / 3600, 1)
-            }
-        else:
-            return {
-                "success": False,
-                "error": "✖ The 3-Day Free Trial for this email has already expired. Please upgrade to Pro to continue."
-            }
-
-    # Anti-Abuse Check 2: Has this DEVICE or IP already used a trial with a DIFFERENT email?
-    existing_dev_record = db.get(key) if dev_clean else None
-    if not existing_dev_record and client_ip_clean:
-        existing_dev_record = db.get(ip_key)
-
-    if existing_dev_record:
-        rec_email = (existing_dev_record.get("email") or "").strip().lower()
-        if rec_email and rec_email != email:
-            time_left = existing_dev_record.get("trial_end", 0) - now_ts
-            if time_left > 0:
-                return {
-                    "success": False,
-                    "error": f"✖ A free trial is already active on this device under '{rec_email}'. Multiple trials per device are not permitted."
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": f"✖ The free trial for this device has already expired (previously used by '{rec_email}'). Please upgrade to Pro."
-                }
-
-    # Passed all checks -> create new authentic trial
-    loc = get_ip_location(client_ip)
-    device_info = parse_user_agent_details(user_agent)
-    trial_duration = 120 if email == "videosupermacy@gmail.com" else (3 * 24 * 3600)
-
-    new_trial = {
-        "email": email,
-        "client_ip": client_ip,
-        "device_id": device_id,
-        "created_at": now_ts,
-        "first_seen": now_ts,
-        "last_active": now_ts,
-        "visit_count": 1,
-        "trial_end": now_ts + trial_duration,
-        "is_paid": False,
-        "location": loc,
-        "device_info": device_info,
-        "user_agent": user_agent
-    }
-    db[key] = new_trial
-    db[f"email_{email}"] = new_trial
-    if client_ip:
-        db[ip_key] = new_trial
-    save_trial_db(db)
-
-    return {
-        "success": True,
-        "message": f"🎉 3-Day Free Trial Started! Welcome {loc.get('flag','')} {loc.get('city','')} investor!",
-        "createdAt": now_ts,
-        "trialEnd": now_ts + trial_duration,
-        "daysLeft": 3,
-        "hoursLeft": 72.0
-    }
 
 def fetch_financial_statements(symbol):
-    """Fetch/generate complete Balance Sheet, Income Statement, and Cash Flow Statement for a stock."""
+    """Reported financials for one PSX company: annual & quarterly Sales and EPS from the DPS company
+    page (cached in the fundamentals store) plus live valuation from the screener.
+
+    DPS does not publish full balance sheets or cash-flow statements, so none are returned — the
+    app used to fill them with fixed fractions of market cap, which is not data.
+    """
+    import psx_fundamentals as pf
     query_sym = (symbol or "").strip().upper()
     stocks, _ = fetch_stock_data()
-    if not stocks:
+    stock = next((s for s in (stocks or []) if (s.get("symbol") or "").upper() == query_sym), None)
+    if not stock:
         return None
 
-    # 1. Exact symbol match
-    stock = next((s for s in stocks if s.get("symbol") == query_sym), None)
-    
-    # 2. Substring match on symbol or company name
-    if not stock:
-        stock = next((s for s in stocks if query_sym in s.get("symbol", "") or query_sym in s.get("name", "").upper()), None)
+    store = pf.get_store()
+    if not store.annual(query_sym):
+        try:
+            pf.refresh_fundamentals([query_sym], fetch_url, pause_s=0, store=store)
+        except Exception as e:
+            print(f"[PSX] financials refresh failed for {query_sym}: {e}")
+    with store._conn() as c:
+        rows = c.execute("SELECT period, sales, eps, is_quarterly, scraped_at FROM dps_financials_cache "
+                         "WHERE symbol=?", (query_sym,)).fetchall()
+    annual = sorted(({"period": r["period"], "sales": r["sales"], "eps": r["eps"]} for r in rows if not r["is_quarterly"]),
+                    key=lambda x: x["period"], reverse=True)
 
-    # 3. Fallback to first stock
-    if not stock:
-        stock = stocks[0]
+    def q_key(p):
+        m = re.match(r"Q(\d)\s+(\d{4})", p or "")
+        return (int(m.group(2)), int(m.group(1))) if m else (0, 0)
+    quarterly = sorted(({"period": r["period"], "sales": r["sales"], "eps": r["eps"]} for r in rows if r["is_quarterly"]),
+                       key=lambda x: q_key(x["period"]), reverse=True)
+    def add_growth(row, prev):
+        if not prev:
+            return
+        if row["sales"] and prev["sales"] and prev["sales"] > 0:
+            row["sales_growth_pct"] = round((row["sales"] / prev["sales"] - 1) * 100, 1)
+        e0, e1 = row["eps"], prev["eps"]
+        if e0 is None or e1 is None:
+            return
+        if e0 > 0 and e1 > 0:
+            row["eps_growth_pct"] = round((e0 / e1 - 1) * 100, 1)
+        else:  # growth % across losses is meaningless
+            row["eps_change"] = "turnaround" if e1 <= 0 < e0 else ("loss" if e0 <= 0 else None)
 
-    price = stock.get("price", 10.0)
-    mcap = stock.get("mcap", 1000000000.0)
-    rev = stock.get("revenue", 50000000.0)
-    pe = stock.get("pe", 10.0)
-    
-    # Financial Statement estimates based on company mcap & revenue
-    cogs = rev * 0.72
-    gross_profit = rev - cogs
-    op_expenses = rev * 0.14
-    ebit = gross_profit - op_expenses
-    interest_exp = max(100000.0, ebit * 0.12)
-    ebt = ebit - interest_exp
-    tax = max(0.0, ebt * 0.29)
-    net_income = ebt - tax
+    by_period = {q["period"]: q for q in quarterly}
+    for i, row in enumerate(annual):
+        add_growth(row, annual[i + 1] if i + 1 < len(annual) else None)
+    for row in quarterly:  # same quarter of the previous year (avoids seasonality and gaps)
+        qn, yr = q_key(row["period"])[1], q_key(row["period"])[0]
+        add_growth(row, by_period.get(f"Q{qn} {yr - 1}"))
 
-    # Balance Sheet
-    current_assets = mcap * 0.25
-    inventory = current_assets * 0.35
-    cash = current_assets * 0.30
-    receivables = current_assets * 0.35
-    non_current_assets = mcap * 0.65
-    total_assets = current_assets + non_current_assets
-
-    current_liabilities = current_assets * 0.55
-    total_debt = mcap * 0.30
-    shareholder_equity = total_assets - (current_liabilities + total_debt)
-
-    # Cash Flow
-    operating_cf = net_income + (mcap * 0.04)
-    investing_cf = -(mcap * 0.06)
-    financing_cf = -(net_income * 0.30)
-    net_cf = operating_cf + investing_cf + financing_cf
-
+    price = stock.get("price")
+    latest_eps = next((a["eps"] for a in annual if a["eps"] is not None), None)
     return {
         "symbol": stock.get("symbol"),
         "name": stock.get("name"),
         "sector": stock.get("sector"),
         "price": price,
-        "mcap": mcap,
-        "pe": pe,
-        "incomeStatement": {
-            "revenue": rev,
-            "cogs": cogs,
-            "grossProfit": gross_profit,
-            "opExpenses": op_expenses,
-            "ebit": ebit,
-            "interestExpense": interest_exp,
-            "ebt": ebt,
-            "tax": tax,
-            "netIncome": net_income,
-        },
-        "balanceSheet": {
-            "currentAssets": current_assets,
-            "inventory": inventory,
-            "cash": cash,
-            "receivables": receivables,
-            "nonCurrentAssets": non_current_assets,
-            "totalAssets": total_assets,
-            "currentLiabilities": current_liabilities,
-            "totalDebt": total_debt,
-            "shareholderEquity": shareholder_equity,
-        },
-        "cashFlowStatement": {
-            "operatingCF": operating_cf,
-            "investingCF": investing_cf,
-            "financingCF": financing_cf,
-            "netCF": net_cf,
-            "freeCashFlow": operating_cf - abs(investing_cf * 0.5),
-        }
-    }
-
-# ─── License Key System (Admin & Payment Activation) ───
-LICENSE_FILE = str(Path(__file__).parent / "licenses.json")
-
-DEFAULT_LICENSES = {
-    "PSX-PRO-7821-9901": {"valid": True, "days": 30, "used": False, "email": None, "name": None},
-    "PSX-PRO-5542-1092": {"valid": True, "days": 30, "used": False, "email": None, "name": None},
-    "PSX-PRO-3391-8843": {"valid": True, "days": 30, "used": False, "email": None, "name": None},
-    "PSX-PRO-6620-4115": {"valid": True, "days": 30, "used": False, "email": None, "name": None},
-    "PSX-PRO-9914-7230": {"valid": True, "days": 365, "used": False, "email": None, "name": None},
-    "PSX-VIP-1000-8888": {"valid": True, "days": 3650, "used": False, "email": "admin@psx.com", "name": "VIP Admin"}
-}
-
-def get_license_db():
-    if os.path.exists(LICENSE_FILE):
-        try:
-            with open(LICENSE_FILE, "r") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    try:
-        with open(LICENSE_FILE, "w") as f:
-            json.dump(DEFAULT_LICENSES, f, indent=2)
-    except Exception as e:
-        print(f"[PSX] Error creating license db: {e}")
-    return DEFAULT_LICENSES
-
-def save_license_db(db):
-    try:
-        with open(LICENSE_FILE, "w") as f:
-            json.dump(db, f, indent=2)
-    except Exception as e:
-        print(f"[PSX] Error saving license db: {e}")
-
-def activate_license(key, name, email, device_id, client_ip=""):
-    key = (key or "").strip().upper()
-    name = (name or "").strip()
-    email = (email or "").strip().lower()
-    device_id = (device_id or "").strip()
-
-    if not key or not name or not email:
-        return {"success": False, "error": "Please enter your Name, Email, and License Key."}
-
-    licenses = get_license_db()
-
-    # Universal Master Key or stored valid key
-    if key == "PSX-PRO-MASTER-2026" or key in licenses:
-        lic = licenses.get(key, {"valid": True, "days": 30, "used": False})
-
-        if not lic.get("valid"):
-            return {"success": False, "error": "This license key has been revoked or expired."}
-
-        # Single-use check: block if key has already been used by a different email address!
-        if lic.get("used") and key != "PSX-PRO-MASTER-2026":
-            used_by = lic.get("email") or "another account"
-            if lic.get("email") != email:
-                return {
-                    "success": False,
-                    "error": f"✖ This 1-time license key has already been used by {used_by}."
-                }
-
-        lic["used"] = True
-        lic["name"] = name
-        lic["email"] = email
-        lic["activated_at"] = time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(time.time() + 5*3600))
-        lic["device_id"] = device_id
-        lic["client_ip"] = client_ip
-        licenses[key] = lic
-        save_license_db(licenses)
-
-        # Mark device as PAID in trial_data.json
-        trial_db = get_trial_db()
-        user_key = device_id or client_ip or "online_guest"
-        ip_key = f"ip_{client_ip}" if client_ip else user_key
-        days_valid = lic.get("days", 30)
-
-        paid_record = {
-            "email": email,
-            "client_ip": client_ip,
-            "device_id": device_id,
-            "is_paid": True,
-            "paid_name": name,
-            "paid_email": email,
-            "license_key": key,
-            "paid_until": time.time() + (days_valid * 24 * 3600),
-            "activated_at": lic["activated_at"]
-        }
-        trial_db[user_key] = paid_record
-        if client_ip:
-            trial_db[ip_key] = paid_record
-        save_trial_db(trial_db)
-
-        return {
-            "success": True,
-            "message": f"🎉 Congratulations {name}! PSX Screener Pro activated for {days_valid} days.",
-            "isPaid": True
-        }
-    else:
-        return {"success": False, "error": "Invalid License Key. Please check the code or contact support via WhatsApp 0306 6400721."}
-
-# ─── Admin Dashboard Backend ───
-ADMIN_PASSWORDS = [
-    "PSX#SuperAdmin@2026!kse100",
-    "PsxMaster!9982#Secured"
-]
-
-def verify_admin_secret(secret):
-    sec = (secret or "").strip()
-    return sec in ADMIN_PASSWORDS or (os.environ.get("ADMIN_SECRET") and sec == os.environ.get("ADMIN_SECRET"))
-
-def get_admin_dashboard_data():
-    trial_db = get_trial_db()
-    lic_db = get_license_db()
-    now_ts = time.time()
-
-    # Aggregate Unique Users from trial_db & lic_db
-    users_by_email = {}
-
-    for k, v in trial_db.items():
-        if not isinstance(v, dict):
-            continue
-        email = (v.get("email") or v.get("paid_email") or "").strip().lower()
-        if email:
-            if email not in users_by_email:
-                users_by_email[email] = v
-            else:
-                if v.get("is_paid"):
-                    users_by_email[email] = v
-        else:
-            # Also track guest visitors
-            dev_id = v.get("device_id") or k
-            guest_label = f"Guest ({dev_id[:15]})"
-            if guest_label not in users_by_email:
-                users_by_email[guest_label] = v
-
-    # Merge activated license holders from licenses.json
-    for lk, ldata in lic_db.items():
-        if ldata.get("used"):
-            l_email = (ldata.get("email") or "").strip().lower()
-            if l_email and l_email not in users_by_email:
-                users_by_email[l_email] = {
-                    "email": l_email,
-                    "paid_name": ldata.get("name") or "Pro Investor",
-                    "is_paid": True,
-                    "license_key": lk,
-                    "created_at": ldata.get("activated_at") or ldata.get("generated_at") or now_ts,
-                    "last_active": ldata.get("activated_at") or ldata.get("generated_at") or now_ts,
-                    "visit_count": 1,
-                    "source": ldata.get("source", "LICENSE_KEY"),
-                    "note": ldata.get("note", ""),
-                    "client_ip": ldata.get("client_ip") or "—",
-                    "device_id": ldata.get("device_id") or "—",
-                    "device_info": "💻 Desktop",
-                    "location": {"city": "Karachi", "country": "Pakistan", "countryCode": "PK", "flag": "🇵🇰"}
-                }
-
-    formatted_users = []
-    pro_count = 0
-    active_trial_count = 0
-    expired_count = 0
-
-    for email, u in users_by_email.items():
-        is_paid = bool(u.get("is_paid"))
-        trial_end = u.get("trial_end", 0)
-        time_left = max(0, trial_end - now_ts)
-        created_at = u.get("created_at") or u.get("activated_at")
-
-        if created_at and isinstance(created_at, (int, float)):
-            created_str = time.strftime("%d %b %Y, %I:%M %p PKT", time.localtime(created_at + 5*3600))
-        elif isinstance(created_at, str):
-            created_str = created_at
-        else:
-            created_str = "—"
-
-        if is_paid:
-            status = "PRO"
-            pro_count += 1
-            time_left_str = "🌟 Unlimited Pro"
-        elif time_left > 0:
-            status = "ACTIVE_TRIAL"
-            active_trial_count += 1
-            d_left = int(time_left // 86400)
-            h_left = int((time_left % 86400) // 3600)
-            m_left = int((time_left % 3600) // 60)
-            if d_left > 0:
-                time_left_str = f"{d_left}d {h_left}h left"
-            elif h_left > 0:
-                time_left_str = f"{h_left}h {m_left}m left"
-            else:
-                time_left_str = f"{m_left}m left"
-        else:
-            status = "EXPIRED"
-            expired_count += 1
-            time_left_str = "🔒 Expired"
-
-        loc = u.get("location") or get_ip_location(u.get("client_ip"))
-        device_info = u.get("device_info") or parse_user_agent_details(u.get("user_agent"))
-        last_active = u.get("last_active")
-        if last_active and isinstance(last_active, (int, float)):
-            last_active_str = time.strftime("%d %b %Y, %I:%M %p PKT", time.localtime(last_active + 5*3600))
-        else:
-            last_active_str = created_str
-
-        # Determine Subscription Source
-        lic_key = u.get("license_key") or "—"
-        if is_paid:
-            if u.get("source") == "ADMIN_GRANT" or lic_key == "ADMIN-PRO-GRANT" or "Grant" in str(u.get("note", "")) or "Admin" in str(lic_key):
-                pro_source = "👑 Admin Direct Grant"
-                source_type = "ADMIN"
-            elif lic_key and lic_key != "—" and lic_key != "PSX-PRO-ACTIVE":
-                pro_source = f"🔑 License Key ({lic_key})"
-                source_type = "LICENSE"
-            else:
-                pro_source = "👑 Admin Direct Grant"
-                source_type = "ADMIN"
-        else:
-            pro_source = "—"
-            source_type = "TRIAL"
-
-        formatted_users.append({
-            "email": email,
-            "name": u.get("paid_name") or "User",
-            "status": status,
-            "isPaid": is_paid,
-            "proSource": pro_source,
-            "sourceType": source_type,
-            "timeLeft": time_left_str,
-            "secondsLeft": int(time_left) if not is_paid else 99999999,
-            "licenseKey": u.get("license_key") or "—",
-            "clientIp": u.get("client_ip") or "—",
-            "deviceId": u.get("device_id") or "—",
-            "createdAt": created_str,
-            "lastActive": last_active_str,
-            "visitCount": u.get("visit_count", 1),
-            "deviceInfo": device_info,
-            "location": loc,
-            "flag": loc.get("flag", "🌐"),
-            "city": loc.get("city", "Unknown"),
-            "country": loc.get("country", "Pakistan"),
-            "locationStr": f"{loc.get('flag', '🌐')} {loc.get('city', '')}, {loc.get('country', '')}"
-        })
-
-    # Sort users: Pro first, then active trials, then expired
-    status_order = {"PRO": 0, "ACTIVE_TRIAL": 1, "EXPIRED": 2}
-    formatted_users.sort(key=lambda x: (status_order.get(x["status"], 9), -x["secondsLeft"]))
-
-    # Filter live online visitors (active within last 120 seconds)
-    live_online = []
-    for vk, v in list(active_online_visitors.items()):
-        sec_since = now_ts - v.get("lastPing", 0)
-        if sec_since <= 120:
-            v_copy = dict(v)
-            v_copy["secondsAgo"] = int(sec_since)
-            v_copy["onlineStatus"] = "ONLINE_NOW"
-            live_online.append(v_copy)
-        elif sec_since <= 600:
-            v_copy = dict(v)
-            v_copy["secondsAgo"] = int(sec_since)
-            v_copy["onlineStatus"] = "IDLE"
-            live_online.append(v_copy)
-        else:
-            # Clean expired session after 10 min
-            if vk in active_online_visitors:
-                del active_online_visitors[vk]
-
-    live_online.sort(key=lambda x: x["secondsAgo"])
-
-    # Aggregate License Inventory
-    licenses_list = []
-    used_keys_count = 0
-    available_keys_count = 0
-
-    for lk, ldata in lic_db.items():
-        used = bool(ldata.get("used"))
-        if used: used_keys_count += 1
-        else: available_keys_count += 1
-
-        licenses_list.append({
-            "key": lk,
-            "used": used,
-            "days": ldata.get("days", 30),
-            "email": ldata.get("email") or "—",
-            "name": ldata.get("name") or "—",
-            "activatedAt": ldata.get("activated_at") or "—",
-            "note": ldata.get("note") or "—"
-        })
-
-    # Sort licenses: unused first
-    # Aggregate Feedbacks
-    feedbacks_list = get_feedback_db()[:50]
-
-    return {
-        "stats": {
-            "onlineNow": len([v for v in live_online if v["onlineStatus"] == "ONLINE_NOW"]),
-            "idleVisitors": len([v for v in live_online if v["onlineStatus"] == "IDLE"]),
-            "totalUsers": len(formatted_users),
-            "proUsers": pro_count,
-            "activeTrials": active_trial_count,
-            "expiredTrials": expired_count,
-            "totalLicenses": len(licenses_list),
-            "availableLicenses": available_keys_count,
-            "usedLicenses": used_keys_count,
-            "totalFeedbacks": len(feedbacks_list),
-            "totalTrafficLogs": len(trial_db)
-        },
-        "onlineVisitors": live_online,
-        "users": formatted_users,
-        "licenses": licenses_list,
-        "feedbacks": feedbacks_list,
-        "serverTime": time.strftime("%d %b %Y, %I:%M:%S %p PKT", time.localtime(now_ts + 5*3600))
-    }
-
-FEEDBACK_FILE = str(Path(__file__).parent / "feedback.json")
-
-def get_feedback_db():
-    if os.path.exists(FEEDBACK_FILE):
-        try:
-            with open(FEEDBACK_FILE, "r") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    return data
-        except Exception:
-            return []
-    return []
-
-def save_feedback_db(feedbacks):
-    try:
-        with open(FEEDBACK_FILE, "w") as f:
-            json.dump(feedbacks, f, indent=2)
-    except Exception as e:
-        print(f"[PSX] Error saving feedback db: {e}")
-
-def record_feedback(rating=5, topic="General", message="", email="", client_ip="", device_id="", user_agent=""):
-    email_clean = (email or "").strip().lower()
-    if not email_clean or "@" not in email_clean:
-        return {"success": False, "error": "A legitimate email address is required so our team can reply to you."}
-
-    # Validate email legitimacy strictly
-    is_valid, err_msg = validate_email_strict(email_clean)
-    if not is_valid:
-        return {"success": False, "error": err_msg or "Please enter a valid personal or business email address."}
-
-    feedbacks = get_feedback_db()
-    now_ts = time.time()
-    loc = get_ip_location(client_ip)
-    device_info = parse_user_agent_details(user_agent)
-
-    import random
-    r_val = int(rating) if str(rating).isdigit() else 5
-    r_val = max(1, min(5, r_val))
-
-    entry = {
-        "id": f"fb_{int(now_ts)}_{random.randint(100, 999)}",
-        "rating": r_val,
-        "stars": "⭐" * r_val,
-        "topic": (topic or "General").strip(),
-        "message": (message or "").strip(),
-        "email": email_clean,
-        "clientIp": client_ip,
-        "deviceId": device_id,
-        "deviceInfo": device_info,
-        "location": loc,
-        "locationStr": f"{loc.get('flag', '🌐')} {loc.get('city', 'Unknown')}, {loc.get('country', 'Pakistan')}",
-        "timestamp": now_ts,
-        "dateStr": time.strftime("%d %b %Y, %I:%M %p PKT", time.localtime(now_ts + 5*3600))
-    }
-    feedbacks.insert(0, entry)
-    feedbacks = feedbacks[:500]
-    save_feedback_db(feedbacks)
-    return {"success": True, "message": "Thank you! Your feedback has been received.", "data": entry}
-
-def admin_reply_feedback(feedback_id, reply_message, admin_email="admin@psxscreener.com"):
-    feedbacks = get_feedback_db()
-    target = next((f for f in feedbacks if f.get("id") == feedback_id), None)
-    if not target:
-        return {"success": False, "error": "Feedback item not found."}
-
-    now_ts = time.time()
-    reply_entry = {
-        "message": (reply_message or "").strip(),
-        "sentAt": now_ts,
-        "dateStr": time.strftime("%d %b %Y, %I:%M %p PKT", time.localtime(now_ts + 5*3600)),
-        "from": admin_email
-    }
-    target["reply"] = reply_entry
-    target["replied"] = True
-    save_feedback_db(feedbacks)
-
-    return {
-        "success": True, 
-        "message": f"Reply successfully recorded for {target.get('email') or 'user'}!", 
-        "reply": reply_entry
-    }
-
-def admin_generate_licenses(count=1, days=30, note=""):
-    lic_db = get_license_db()
-    count = max(1, min(50, int(count)))
-    days = max(1, int(days))
-    new_keys = []
-    import random
-
-    for _ in range(count):
-        part1 = f"{random.randint(1000, 9999)}"
-        part2 = f"{random.randint(1000, 9999)}"
-        key = f"PSX-PRO-{part1}-{part2}"
-        while key in lic_db:
-            part1 = f"{random.randint(1000, 9999)}"
-            part2 = f"{random.randint(1000, 9999)}"
-            key = f"PSX-PRO-{part1}-{part2}"
-
-        lic_db[key] = {
-            "valid": True,
-            "days": days,
-            "used": False,
-            "email": None,
-            "name": None,
-            "note": note or f"Generated {days}-Day Key",
-            "created_at": time.strftime("%Y-%m-%d %H:%M PKT", time.localtime(time.time() + 5*3600))
-        }
-        new_keys.append(key)
-
-    save_license_db(lic_db)
-    return new_keys
-
-def admin_upgrade_to_pro(email, name="", days=30):
-    email_clean = (email or "").strip().lower()
-    if not email_clean or "@" not in email_clean:
-        return {"success": False, "error": "Invalid email address."}
-
-    days_valid = int(days) if days else 30
-    now_ts = time.time()
-    paid_until = now_ts + (days_valid * 86400)
-
-    # 1. Create or update license in licenses.json
-    lic_db = get_license_db()
-    assigned_key = None
-    for lk, ldata in lic_db.items():
-        if (ldata.get("email") or "").strip().lower() == email_clean:
-            assigned_key = lk
-            ldata["valid"] = True
-            ldata["used"] = True
-            ldata["days"] = days_valid
-            ldata["name"] = name or ldata.get("name") or email_clean.split("@")[0]
-            ldata["source"] = "ADMIN_GRANT"
-            ldata["note"] = f"Admin Direct Grant ({days_valid} Days)"
-            ldata["activated_at"] = time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_ts + 5*3600))
-            break
-
-    if not assigned_key:
-        import random
-        part1 = f"{random.randint(1000, 9999)}"
-        part2 = f"{random.randint(1000, 9999)}"
-        assigned_key = f"PSX-PRO-{part1}-{part2}"
-        lic_db[assigned_key] = {
-            "valid": True,
-            "days": days_valid,
-            "used": True,
-            "email": email_clean,
-            "name": name or email_clean.split("@")[0],
-            "source": "ADMIN_GRANT",
-            "note": f"Admin Direct Grant ({days_valid} Days)",
-            "generated_at": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_ts + 5*3600)),
-            "activated_at": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_ts + 5*3600))
-        }
-    save_license_db(lic_db)
-
-    # 2. Update trial_db across ALL keys linked to this email, device, or IP
-    trial_db = get_trial_db()
-    linked_dev_ids = set()
-    linked_ips = set()
-
-    for k, v in trial_db.items():
-        if isinstance(v, dict) and (v.get("email") == email_clean or v.get("paid_email") == email_clean or k == f"email_{email_clean}"):
-            if v.get("device_id"): linked_dev_ids.add(v.get("device_id"))
-            if v.get("client_ip"): linked_ips.add(v.get("client_ip"))
-
-    for vk, v in active_online_visitors.items():
-        if (v.get("email") or "").strip().lower() == email_clean:
-            if v.get("deviceId"): linked_dev_ids.add(v.get("deviceId"))
-            if v.get("clientIp"): linked_ips.add(v.get("clientIp"))
-
-    paid_record = {
-        "email": email_clean,
-        "is_paid": True,
-        "source": "ADMIN_GRANT",
-        "paid_name": name or email_clean.split("@")[0],
-        "paid_email": email_clean,
-        "license_key": assigned_key,
-        "paid_until": paid_until,
-        "trial_end": paid_until,
-        "created_at": now_ts,
-        "last_active": now_ts,
-        "activated_at": time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(now_ts + 5*3600))
-    }
-
-    trial_db[f"email_{email_clean}"] = paid_record
-    for dev in linked_dev_ids:
-        if dev: trial_db[dev] = paid_record
-    for ip in linked_ips:
-        if ip: trial_db[f"ip_{ip}"] = paid_record
-
-    save_trial_db(trial_db)
-    return {
-        "success": True, 
-        "message": f"Successfully upgraded {email_clean} to Pro for {days_valid} days! (License: {assigned_key})", 
-        "licenseKey": assigned_key
-    }
-
-def admin_extend_trial_days(email, extra_days=3):
-    email_clean = (email or "").strip().lower()
-    if not email_clean:
-        return {"success": False, "error": "Invalid email."}
-
-    trial_db = get_trial_db()
-    now_ts = time.time()
-    extra_sec = int(extra_days) * 86400
-
-    updated = False
-    for k, v in list(trial_db.items()):
-        if isinstance(v, dict) and (v.get("email") == email_clean or k == f"email_{email_clean}"):
-            current_end = max(now_ts, v.get("trial_end", now_ts))
-            v["trial_end"] = current_end + extra_sec
-            v["is_paid"] = False
-            trial_db[k] = v
-            updated = True
-
-    if not updated:
-        trial_db[f"email_{email_clean}"] = {
-            "email": email_clean,
-            "created_at": now_ts,
-            "trial_end": now_ts + extra_sec,
-            "is_paid": False
-        }
-
-    save_trial_db(trial_db)
-    return {"success": True, "message": f"Extended trial for {email_clean} by {extra_days} days!"}
-
-def admin_delete_user_record(email):
-    email_clean = (email or "").strip().lower()
-    trial_db = get_trial_db()
-    keys_to_del = [k for k, v in trial_db.items() if isinstance(v, dict) and (v.get("email") == email_clean or k == f"email_{email_clean}")]
-    for k in keys_to_del:
-        del trial_db[k]
-    save_trial_db(trial_db)
-    return {"success": True, "message": f"Removed records for {email_clean}"}
-
-# ─── Tab & Feature Deployment Status Management ───
-TAB_STATUS_FILE = str(Path(__file__).parent / "cache" / "tab_status.json")
-
-DEFAULT_TAB_STATUSES = {
-    "table": {
-        "id": "table",
-        "name": "Table View (Screener)",
-        "category": "Main Navigation",
-        "icon": "📊",
-        "status": "ONLINE",
-        "message": "Market Screener & Real-Time Technical Filters",
-        "eta": "Live Now"
-    },
-    "cards": {
-        "id": "cards",
-        "name": "Card View",
-        "category": "Main Navigation",
-        "icon": "🗂️",
-        "status": "ONLINE",
-        "message": "Visual Stock Cards Grid",
-        "eta": "Live Now"
-    },
-    "weekly-scan": {
-        "id": "weekly-scan",
-        "name": "Weekly Trade Options",
-        "category": "Main Navigation",
-        "icon": "🎯",
-        "status": "ONLINE",
-        "message": "Multi-Trigger Weekly Swing Scanner & Dynamic Position Sizing",
-        "eta": "Live Now"
-    },
-    "live-trading": {
-        "id": "live-trading",
-        "name": "Live Trading Analysis",
-        "category": "Main Navigation",
-        "icon": "⚡",
-        "status": "ONLINE",
-        "message": "Single Stock Multi-Timeframe Technicals & Real-Time Signals",
-        "eta": "Live Now"
-    },
-    "simulator": {
-
-        "id": "simulator",
-        "name": "Paper Simulator & Broker",
-        "category": "Main Navigation",
-        "icon": "🎮",
-        "status": "ONLINE",
-        "message": "Virtual Paper Trading Portfolio with Live Margin Accounting",
-        "eta": "Live Now"
-    },
-    "corporate": {
-        "id": "corporate",
-        "name": "Dividends & Corporate Actions",
-        "category": "Main Navigation",
-        "icon": "📅",
-        "status": "ONLINE",
-        "message": "Dividend Payouts, AGMs & Bonus Issues Calendar",
-        "eta": "Live Now"
-    },
-    "financials": {
-        "id": "financials",
-        "name": "Financial Statements & Ratios",
-        "category": "Main Navigation",
-        "icon": "📊",
-        "status": "ONLINE",
-        "message": "Balance Sheet, Income Statement, Cash Flows & 10 Key Ratios",
-        "eta": "Live Now"
-    },
-    "undervalued": {
-        "id": "undervalued",
-        "name": "UnderValue Stocks",
-        "category": "Main Navigation",
-        "icon": "💎",
-        "status": "ONLINE",
-        "message": "AI & Fundamental Valuation Engine (DDM, DCF, Graham Number & Margin of Safety)",
-        "eta": "Live Now"
-    },
-
-    "upper-lock": {
-        "id": "upper-lock",
-        "name": "Upper Lock Analysis",
-        "category": "Top Module",
-        "icon": "🔒",
-        "status": "ONLINE",
-        "message": "Circuit Breakers & Upper Lock Price Band Detector",
-        "eta": "Live Now"
-    },
-    "stock-history": {
-        "id": "stock-history",
-        "name": "Stock History & Trends",
-        "category": "Top Module",
-        "icon": "📈",
-        "status": "ONLINE",
-        "message": "Historical Price & Volume Trend Analytics",
-        "eta": "Live Now"
-    },
-    "intelligence": {
-        "id": "intelligence",
-        "name": "🧠 Market Intelligence",
-        "category": "Main Navigation",
-        "icon": "🧠",
-        "status": "ONLINE",
-        "message": "Autonomous Market Intelligence & Anomaly Detection",
-        "eta": "Live Now"
-    },
-    "longterm": {
-        "id": "longterm",
-        "name": "📈 Long-Term Investing",
-        "category": "Main Navigation",
-        "icon": "📈",
-        "status": "ONLINE",
-        "message": "7-Stage Fundamentals Pipeline & AI Investment Synthesis",
-        "eta": "Live Now"
-    }
-}
-
-def get_tab_status_db():
-    if os.path.exists(TAB_STATUS_FILE):
-        try:
-            with open(TAB_STATUS_FILE, "r") as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    merged = dict(DEFAULT_TAB_STATUSES)
-                    for k, v in data.items():
-                        if k in merged:
-                            merged[k] = {**merged[k], **v}
-                        else:
-                            merged[k] = v
-                    return merged
-        except Exception as e:
-            print(f"[PSX] Error reading tab_status.json: {e}")
-    return dict(DEFAULT_TAB_STATUSES)
-
-def save_tab_status_db(tabs):
-    try:
-        Path(TAB_STATUS_FILE).parent.mkdir(parents=True, exist_ok=True)
-        with open(TAB_STATUS_FILE, "w") as f:
-            json.dump(tabs, f, indent=2)
-    except Exception as e:
-        print(f"[PSX] Error saving tab_status.json: {e}")
-
-def update_tab_status(tab_id, status, message=None, eta=None):
-    tabs = get_tab_status_db()
-    if tab_id not in tabs:
-        return {"success": False, "error": f"Tab '{tab_id}' not found."}
-    
-    clean_status = "ONLINE" if str(status).upper() == "ONLINE" else "OFFLINE"
-    tabs[tab_id]["status"] = clean_status
-    if message:
-        tabs[tab_id]["message"] = message
-    if eta:
-        tabs[tab_id]["eta"] = eta
-    tabs[tab_id]["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(time.time() + 5*3600))
-    save_tab_status_db(tabs)
-    return {
-        "success": True, 
-        "tab": tabs[tab_id], 
-        "message": f"Tab '{tabs[tab_id]['name']}' is now set to {clean_status}!"
-    }
-
-def set_all_tabs_status(status):
-    clean_status = "ONLINE" if str(status).upper() == "ONLINE" else "OFFLINE"
-    tabs = get_tab_status_db()
-    now_str = time.strftime("%Y-%m-%d %H:%M:%S PKT", time.localtime(time.time() + 5*3600))
-    for k in tabs:
-        tabs[k]["status"] = clean_status
-        tabs[k]["updated_at"] = now_str
-    save_tab_status_db(tabs)
-    return {
-        "success": True, 
-        "tabs": tabs, 
-        "message": f"All tabs have been marked as {clean_status}!"
+        "mcap": stock.get("mcap"),
+        "pe": stock.get("pe"),
+        "divYield": stock.get("divYield"),
+        "statementsAvailable": False,
+        "annual": annual,
+        "quarterly": quarterly,
+        "earningsYieldPct": round(latest_eps / price * 100, 2) if latest_eps and price else None,
+        "source": "PSX DPS company page (Sales and EPS as published); balance sheet and cash flow are not published by DPS",
+        "reportsUrl": f"https://dps.psx.com.pk/company/{query_sym}",
     }
 
 
 # ─── HTTP Request Handler ───
 class PSXHandler(http.server.SimpleHTTPRequestHandler):
     """Custom handler for API routes + static file serving."""
+
+    # Only these files are ever served from disk. Everything else in the repo
+    # (licenses.json, trial_data.json, cache/*.db, *.py, ...) must stay private.
+    STATIC_ALLOWLIST = {
+        "/": "/index.html",
+        "/index.html": "/index.html",
+        "/admin.html": "/admin.html",
+        "/research.html": "/research.html",
+        "/desk.html": "/desk.html",
+        "/rankings.html": "/rankings.html",
+        "/app.js": "/app.js",
+        "/styles.css": "/styles.css",
+        "/sw.js": "/sw.js",
+        "/manifest.json": "/manifest.json",
+        "/lightweight-charts.standalone.production.js": "/lightweight-charts.standalone.production.js",
+    }
+
+    def _serve_static(self, head_only=False):
+        from urllib.parse import urlparse
+        target = self.STATIC_ALLOWLIST.get(urlparse(self.path).path)
+        if not target:
+            self.send_error(404, "Not Found")
+            return
+        self.path = target
+        self.directory = str(Path(__file__).parent)
+        if head_only:
+            super().do_HEAD()
+        else:
+            super().do_GET()
+
+    def do_HEAD(self):
+        self._serve_static(head_only=True)
 
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -4536,12 +3426,16 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             return forwarded.split(",")[0].strip()
         return self.client_address[0] if self.client_address else ""
 
+    def _is_local_request(self):
+        peer = self.client_address[0] if self.client_address else ""
+        return is_trusted_local_peer(peer, bool(self.headers.get("X-Forwarded-For")))
+
     def _check_auth(self, query=None):
         host_header = self.headers.get("Host", "")
         client_ip = self._get_client_ip()
         device_id = query.get("deviceId", [""])[0] if query else ""
         email = query.get("email", [""])[0] if query else ""
-        status = check_trial_status(client_ip, device_id, host_header, email)
+        status = check_trial_status(client_ip, device_id, host_header, email, is_local=self._is_local_request())
         if status.get("isLocal") or status.get("trialActive"):
             return True
         if status.get("needsEmail"):
@@ -4789,7 +3683,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             client_ip = self._get_client_ip()
             user_agent = self.headers.get("User-Agent", "")
             record_visitor_heartbeat(client_ip, device_id, email, "Stock Screener", user_agent)
-            res = check_trial_status(client_ip, device_id, host_header, email, user_agent, orig_start_ts)
+            res = check_trial_status(client_ip, device_id, host_header, email, user_agent, orig_start_ts, is_local=self._is_local_request())
             self._send_json({"success": True, "data": res})
         elif parsed_path.path == "/api/start-trial":
             query = parse_qs(parsed_path.query)
@@ -4812,6 +3706,39 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed_path.path.startswith('/api/stock-history/'):
             symbol = parsed_path.path.split('/')[-1]
             self._handle_stock_history(symbol)
+        elif parsed_path.path == "/api/research/report":
+            import psx_backtester as bt
+            report = bt.load_report()
+            if report is None:
+                self._send_json({"success": False, "error": "No research report yet. Start a run from /research.html."}, 404)
+            else:
+                self._send_json(report)
+        elif parsed_path.path == "/api/desk":
+            import psx_trade_desk as desk
+            snap = desk.desk_snapshot()
+            snap["eod_running"] = _desk_state["eod_running"]
+            snap["last_eod_error"] = _desk_state["last_eod_error"]
+            self._send_json(snap)
+        elif parsed_path.path == "/api/longterm/rankings":
+            import psx_fundamentals as pf
+            r = pf.load_rankings()
+            if r is None:
+                self._send_json({"success": False, "error": "No rankings yet — they are built after each market close."}, 404)
+            else:
+                r["fundamentals_refresh"] = {"running": _fund_job["running"], "progress": _fund_job["progress"],
+                                             "result": _fund_job["result"]}
+                self._send_json(r)
+        elif parsed_path.path == "/rankings":
+            self.path = "/rankings.html"
+            self._serve_static()
+        elif parsed_path.path == "/desk":
+            self.path = "/desk.html"
+            self._serve_static()
+        elif parsed_path.path == "/api/research/status":
+            self._send_json({"success": True, **_research_job})
+        elif parsed_path.path == "/research":
+            self.path = "/research.html"
+            self._serve_static()
         elif parsed_path.path == "/api/chart-data":
             query = parse_qs(parsed_path.query)
             symbol = query.get("symbol", ["OGDC"])[0]
@@ -5727,7 +4654,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
 
         elif parsed_path.path == "/api/telegram/config" and self.command == "GET":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized"}, 401)
                 return
@@ -5888,7 +4815,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({"success": True, "tabs": tabs})
         elif parsed_path.path == "/api/admin/tabs/status":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5896,7 +4823,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({"success": True, "tabs": tabs})
         elif parsed_path.path == "/api/admin/tabs/set-status":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5908,7 +4835,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(res, 200 if res.get("success") else 400)
         elif parsed_path.path == "/api/admin/tabs/set-all":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5919,17 +4846,17 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         # ─── Admin Endpoints ───
         elif parsed_path.path in ["/admin", "/admin/"]:
             self.path = "/admin.html"
-            super().do_GET()
+            self._serve_static()
         elif parsed_path.path == "/api/admin/login":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if verify_admin_secret(secret):
                 self._send_json({"success": True, "message": "Admin authenticated successfully."})
             else:
                 self._send_json({"success": False, "error": "Invalid Admin Secret Password."}, 401)
         elif parsed_path.path == "/api/admin/stats":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5937,7 +4864,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({"success": True, "data": data})
         elif parsed_path.path == "/api/admin/generate-keys":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5948,7 +4875,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({"success": True, "keys": keys, "message": f"Generated {len(keys)} new {days}-day license key(s)!"})
         elif parsed_path.path == "/api/admin/make-pro":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5959,7 +4886,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(res, 200 if res["success"] else 400)
         elif parsed_path.path == "/api/admin/extend-trial":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5969,7 +4896,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(res, 200 if res["success"] else 400)
         elif parsed_path.path == "/api/admin/delete-user":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5978,7 +4905,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(res, 200 if res["success"] else 400)
         elif parsed_path.path == "/api/admin/reply-feedback":
             query = parse_qs(parsed_path.query)
-            secret = query.get("secret", [""])[0]
+            secret = self.headers.get("X-Admin-Secret", "")
             if not verify_admin_secret(secret):
                 self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                 return
@@ -5998,14 +4925,40 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             res = record_feedback(rating, topic, message, email, client_ip, device_id, user_agent)
             self._send_json(res)
         else:
-            # Serve static files
-            super().do_GET()
+            self._serve_static()
 
     def do_POST(self):
         content_length = int(self.headers.get('Content-Length', 0))
         post_data = self.rfile.read(content_length)
         
-        if self.path == "/api/company":
+        if self.path == "/api/longterm/refresh-fundamentals":
+            if not verify_admin_secret(self.headers.get("X-Admin-Secret", "")):
+                self._send_json({"success": False, "error": "Unauthorized"}, 401)
+                return
+            started = start_fundamentals_refresh()
+            self._send_json({"success": started, "error": None if started else "Already running."},
+                            200 if started else 409)
+        elif self.path == "/api/desk/run-eod":
+            if not verify_admin_secret(self.headers.get("X-Admin-Secret", "")):
+                self._send_json({"success": False, "error": "Unauthorized"}, 401)
+                return
+            started = run_trade_desk_eod()
+            self._send_json({"success": started, "error": None if started else "Already running."},
+                            200 if started else 409)
+        elif self.path == "/api/research/run":
+            if not verify_admin_secret(self.headers.get("X-Admin-Secret", "")):
+                self._send_json({"success": False, "error": "Unauthorized"}, 401)
+                return
+            try:
+                body = json.loads(post_data.decode("utf-8") or "{}")
+            except Exception:
+                body = {}
+            syms = [x.strip().upper() for x in (body.get("symbols") or []) if str(x).strip()] or None
+            started = start_research_job(syms, body.get("strategies") or None)
+            self._send_json({"success": started, "status": _research_job,
+                             "error": None if started else "A research run is already in progress."},
+                            200 if started else 409)
+        elif self.path == "/api/company":
             try:
                 body = json.loads(post_data.decode('utf-8'))
                 symbol = body.get('symbol', '')
@@ -6056,7 +5009,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         elif self.path == "/api/admin/reply-feedback":
             try:
                 body = json.loads(post_data.decode('utf-8'))
-                secret = body.get('secret', '')
+                secret = self.headers.get("X-Admin-Secret", "") or body.get('secret', '')
                 if not verify_admin_secret(secret):
                     self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                     return
@@ -6070,7 +5023,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             # POST body: {"secret":"...", "bot_token":"...", "chat_id":"...", ...}
             try:
                 body = json.loads(post_data.decode('utf-8'))
-                secret = body.get('secret', '')
+                secret = self.headers.get("X-Admin-Secret", "") or body.get('secret', '')
                 if not verify_admin_secret(secret):
                     self._send_json({"success": False, "error": "Unauthorized"}, 401)
                     return
@@ -6095,7 +5048,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
             # POST body: {"secret":"..."}
             try:
                 body = json.loads(post_data.decode('utf-8'))
-                secret = body.get('secret', '')
+                secret = self.headers.get("X-Admin-Secret", "") or body.get('secret', '')
                 if not verify_admin_secret(secret):
                     self._send_json({"success": False, "error": "Unauthorized"}, 401)
                     return
@@ -6122,7 +5075,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         elif self.path == "/api/intraday/trigger":
             try:
                 body = json.loads(post_data.decode('utf-8'))
-                secret = body.get('secret', '')
+                secret = self.headers.get("X-Admin-Secret", "") or body.get('secret', '')
                 if not verify_admin_secret(secret):
                     self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                     return
@@ -6175,7 +5128,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
 
             try:
                 body = json.loads(post_data.decode('utf-8'))
-                secret = body.get('secret', '')
+                secret = self.headers.get("X-Admin-Secret", "") or body.get('secret', '')
                 if not verify_admin_secret(secret):
                     self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                     return
@@ -6190,7 +5143,7 @@ class PSXHandler(http.server.SimpleHTTPRequestHandler):
         elif self.path == "/api/admin/tabs/set-all":
             try:
                 body = json.loads(post_data.decode('utf-8'))
-                secret = body.get('secret', '')
+                secret = self.headers.get("X-Admin-Secret", "") or body.get('secret', '')
                 if not verify_admin_secret(secret):
                     self._send_json({"success": False, "error": "Unauthorized Access."}, 401)
                     return
@@ -7246,11 +6199,22 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    # Use ThreadingHTTPServer so that multiple requests don't block each other
-    if hasattr(http.server, 'ThreadingHTTPServer'):
-        server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), PSXHandler)
-    else:
-        server = http.server.HTTPServer(("0.0.0.0", PORT), PSXHandler)
+    # Use ThreadingHTTPServer so that multiple requests don't block each other.
+    # If the port is taken (e.g. another local project on 3000), try the next ones.
+    server_cls = getattr(http.server, "ThreadingHTTPServer", http.server.HTTPServer)
+    server = None
+    requested_port = PORT
+    for candidate in range(requested_port, requested_port + 20):
+        try:
+            server = server_cls(("0.0.0.0", candidate), PSXHandler)
+            PORT = candidate
+            break
+        except OSError:
+            continue
+    if server is None:
+        sys.exit(f"  ✖ Ports {requested_port}-{requested_port + 19} are all in use. Set PORT to a free port and retry.")
+    if PORT != requested_port:
+        print(f"\n  ⚠ Port {requested_port} is already used by another program — using {PORT} instead.")
 
     # Start continuous background poller daemon (keeping data fresh every 20s)
     _start_continuous_poller()
@@ -7259,7 +6223,16 @@ if __name__ == "__main__":
     print(f"  💻 Computer Browser: http://localhost:{PORT}")
     for ip in local_ips:
         print(f"  📱 Mobile Phone URL: http://{ip}:{PORT}")
-    print(f"  📡 Live data from dps.psx.com.pk\n")
+    print(f"  📡 Live data from dps.psx.com.pk")
+    if not os.environ.get("ADMIN_SECRET"):
+        print("  🔒 Admin features are off: set ADMIN_SECRET to use Refresh / Run research buttons.")
+    print("  Keep this window open — closing it stops the website.\n")
+    if os.environ.get("PSX_OPEN_BROWSER") == "1":
+        try:
+            import webbrowser
+            threading.Timer(1.5, lambda: webbrowser.open(f"http://localhost:{PORT}")).start()
+        except Exception:
+            pass
     try:
         server.serve_forever()
     except KeyboardInterrupt:

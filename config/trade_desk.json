@@ -1,0 +1,43 @@
+{
+  "_comment": "Trade Desk (Phase 2). Signals from strategies that are not validated are tracked as PAPER and never alerted. Swing strategies go LIVE only with a PASS verdict in the Strategy Lab; intraday strategies go LIVE only after enough profitable forward-test trades.",
+  "capital_pkr": 500000,
+  "legacy_signal_alerts": false,
+  "alerts": {
+    "telegram": true,
+    "force_live": [],
+    "disabled": []
+  },
+  "swing": {
+    "strategies": ["qvm_monthly", "momentum_12_1_monthly", "breakout_20d", "pullback_rsi2", "live_engine_v2"],
+    "risk_per_trade_pct": 1.0,
+    "max_position_pct": 20.0,
+    "max_positions": 5,
+    "limit_buffer_pct": 1.0,
+    "universe_size": 100
+  },
+  "intraday": {
+    "enabled": true,
+    "strategies": ["orb", "vwap_reclaim"],
+    "universe_size": 30,
+    "risk_per_trade_pct": 0.5,
+    "max_position_pct": 25.0,
+    "max_open_positions": 2,
+    "max_trades_per_day": 3,
+    "max_daily_loss_pct": 1.5,
+    "opening_range_minutes": 15,
+    "min_opening_range_ticks": 3,
+    "max_stop_pct": 2.5,
+    "max_chase_pct": 1.0,
+    "min_reward_risk": 1.5,
+    "target_r_multiple": 2.0,
+    "min_rvol": 1.5,
+    "require_volume": true,
+    "no_new_entries_after": "14:30",
+    "friday_no_new_entries_after": "15:45",
+    "min_trade_value_pkr": 10000,
+    "promotion": {
+      "min_forward_trades": 40,
+      "min_profit_factor": 1.1
+    }
+  }
+}

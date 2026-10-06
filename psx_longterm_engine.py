@@ -685,11 +685,8 @@ class FundamentalsScraper:
         """Fetch and parse a single company page. Returns fundamentals dict or None."""
         url = self.BASE_URL.format(symbol=symbol)
         try:
-            req = urllib.request.Request(
-                url, headers={"User-Agent": "Mozilla/5.0 (PSX-LongTerm/1.0)"}
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                html = resp.read().decode("utf-8", errors="replace")
+            import psx_http
+            html = psx_http.fetch(url, timeout=10, retries=2)
         except Exception as e:
             return None
 
@@ -875,8 +872,8 @@ class Stage2_FinancialHealth:
         else:
             de = _safe_float((fundamentals or {}).get("debt_equity_ratio"), -1)
             if de < 0:
-                de_pts = 4  # no data
-                breakdown["debt_equity"] = {"pts": de_pts, "note": "No data", "value": None}
+                de_pts = 0  # missing data earns nothing
+                breakdown["debt_equity"] = {"pts": de_pts, "note": "No data (0 pts)", "value": None}
             elif de < 0.5:
                 de_pts = 10; breakdown["debt_equity"] = {"pts": 10, "note": f"Low DE={de:.2f} — strong balance sheet", "value": de}
             elif de < 1.0:
@@ -894,7 +891,7 @@ class Stage2_FinancialHealth:
         else:
             cr = _safe_float((fundamentals or {}).get("current_ratio"), -1)
             if cr < 0:
-                cr_pts = 3; breakdown["current_ratio"] = {"pts": 3, "note": "No data", "value": None}
+                cr_pts = 0; breakdown["current_ratio"] = {"pts": 0, "note": "No data (0 pts)", "value": None}
             elif cr >= 2.0:
                 cr_pts = 8; breakdown["current_ratio"] = {"pts": 8, "note": f"Strong liquidity CR={cr:.2f}", "value": cr}
             elif cr >= 1.5:
@@ -995,7 +992,7 @@ class Stage3_Profitability:
                 eps_pts = 5 if eps0 > eps1 else 2
                 note = "Growing" if eps0 > eps1 else "EPS declining"
             else:
-                eps_pts = 4; note = f"EPS available but no trend data"
+                eps_pts = 0; note = "EPS available but no trend data (0 pts)"
         else:
             eps_pts = 2; note = "Negative or no EPS data"
         breakdown["eps_growth"] = {"pts": eps_pts, "note": note, "value": round(eps0, 2) if eps0 else None}
@@ -1024,7 +1021,8 @@ class Stage3_Profitability:
             else:
                 margin_pts = 0; note = f"Loss-making (margin {margin_val:.1%})"
         else:
-            note = "No margin data"
+            margin_pts = 0
+            note = "No margin data (0 pts)"
         breakdown["net_margin"] = {"pts": margin_pts, "note": note, "value": round(margin_val * 100, 1) if margin_val > -99 else None}
 
         # ── Momentum proxy: 1-year price return (4 pts) ───────────────────
@@ -1127,7 +1125,8 @@ class Stage4_Valuation:
             else:
                 pb_pts = 0; pb_note = f"P/B {pb_val:.2f} — expensive vs book"
         else:
-            pb_note = "Book value not available"
+            pb_pts = 0
+            pb_note = "Book value not available (0 pts)"
         breakdown["price_to_book"] = {"pts": pb_pts, "note": pb_note, "value": round(pb_val, 2) if pb_val else None}
 
         total = min(pe_pts + div_pts + pb_pts, self.MAX)
@@ -1196,11 +1195,11 @@ class Stage5_MacroRisk:
             elif de >= 0:
                 rate_pts = 5; rate_note = f"Low leverage — rate resilient"
             else:
-                rate_pts = 4; rate_note = "Rate sensitivity unknown"
+                rate_pts = 0; rate_note = "Rate sensitivity unknown (0 pts)"
         elif is_bank:
             rate_pts = 5; rate_note = "Bank — benefits from higher rates"
         else:
-            rate_pts = 4; rate_note = "Rate sensitivity — no balance sheet data"
+            rate_pts = 0; rate_note = "Rate sensitivity — no balance sheet data (0 pts)"
         breakdown["rate_sensitivity"] = {"pts": rate_pts, "note": rate_note}
         total += rate_pts
 
@@ -1215,7 +1214,7 @@ class Stage5_MacroRisk:
         elif sponsor_pct == 0:
             sp_pts = 0; sp_note = "No sponsor holding data"
         else:
-            sp_pts = 2; sp_note = "Sponsor holding unknown — neutral"
+            sp_pts = 0; sp_note = "Sponsor holding unknown (0 pts)"
         # KSE-100 membership as governance bonus
         if stock.get("isKSE100"):
             sp_pts = min(sp_pts + 1, 6)

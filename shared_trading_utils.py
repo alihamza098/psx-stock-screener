@@ -397,6 +397,20 @@ def get_time_of_day_volume_fraction(
     return 1.0
 
 
+def today_volume_of(stock: Dict[str, Any]) -> Optional[float]:
+    """Today's traded volume for a stock dict, or None when unknown.
+
+    Live stock dicts carry "todayVolume" (None until a real same-day source reports it) and
+    "volume" = the DPS screener's 30-day AVERAGE. Dicts without a "todayVolume" key (e.g. a
+    historical bar in a backtest) use "volume" as that day's volume.
+    """
+    if "todayVolume" in stock:
+        v = stock.get("todayVolume")
+        return float(v) if v is not None else None
+    v = stock.get("volume")
+    return float(v) if v is not None else None
+
+
 def compute_rvol_today(
     today_volume: float,
     avg_volume_21d: float,

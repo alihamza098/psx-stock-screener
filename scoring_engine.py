@@ -510,7 +510,9 @@ def compute_v2_recommendation(
 
     price = float(stock.get("price", 0.0))
     change = float(stock.get("change", 0.0))
-    volume = float(stock.get("volume", 0.0))
+    from shared_trading_utils import today_volume_of
+    today_vol = today_volume_of(stock)
+    volume = today_vol if today_vol is not None else 0.0
 
     # Closes series from history (history is newest first)
     closes = [b.get("close", price) for b in history] if history else [price]
@@ -588,12 +590,12 @@ def compute_v2_recommendation(
             avg_21d = float(w1m["avg_daily_volume"])
         if w1w.get("status") == "ok" and w1w.get("avg_daily_volume"):
             avg_5d = float(w1w["avg_daily_volume"])
-    elif stock.get("avgVolume"):
-        avg_21d = float(stock["avgVolume"])
+    elif stock.get("avgVolume") or stock.get("avgVolume30d"):
+        avg_21d = float(stock.get("avgVolume") or stock["avgVolume30d"])
         avg_5d = avg_21d
 
-    # Volume ratio
-    vol_ratio = volume / max(1.0, avg_21d)
+    # Volume ratio (neutral 1.0 when today's volume is unknown — never inferred from the average)
+    vol_ratio = volume / max(1.0, avg_21d) if today_vol is not None else 1.0
 
     # 3. Regime Detection
     regime, trend_direction = evaluate_regime(adx_res["adx"], ema20, ema50, adx_thresh, ema_thresh)

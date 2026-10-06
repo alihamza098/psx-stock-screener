@@ -74,15 +74,11 @@ def fetch_historical_candles(symbol: str) -> List[List[float]]:
     """Fetch raw timeseries from DPS: [[ts, close, volume, open], ...]."""
     symbol = symbol.upper()
     url = f"https://dps.psx.com.pk/timeseries/eod/{symbol}"
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
-    )
-    with urllib.request.urlopen(req, timeout=12) as resp:
-        raw = json.loads(resp.read().decode("utf-8"))
-        if raw.get("status") == 1 and raw.get("data"):
-            # Sort chronological: oldest candle first
-            return sorted(raw["data"], key=lambda c: c[0])
+    import psx_http
+    raw = json.loads(psx_http.fetch(url, timeout=12, retries=2))
+    if raw.get("status") == 1 and raw.get("data"):
+        # Sort chronological: oldest candle first
+        return sorted(raw["data"], key=lambda c: c[0])
     return []
 
 

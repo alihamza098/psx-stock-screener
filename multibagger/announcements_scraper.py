@@ -103,18 +103,10 @@ def fetch_dps_company_page(symbol: str, timeout: int = 5) -> str:
             return cached_html
 
     url = f"https://dps.psx.com.pk/company/{symbol}"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-        }
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        content = resp.read().decode("utf-8", errors="ignore")
-        _PAGE_CACHE[symbol] = (now, content)
-        return content
+    import psx_http
+    content = psx_http.fetch(url, timeout=timeout, retries=1)
+    _PAGE_CACHE[symbol] = (now, content)
+    return content
 
 
 def parse_company_profile(html: str, symbol: str) -> Dict[str, Any]:

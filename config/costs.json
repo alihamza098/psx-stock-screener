@@ -1,0 +1,28 @@
+{
+  "_comment": "PSX trading costs. Defaults follow KTrade's published schedule (Oct 2026); confirm against your own contract note and edit here. Every module (backtester, paper broker) reads this file.",
+  "broker": "KTrade",
+  "commission": {
+    "pct_of_value": 0.0015,
+    "min_per_share_pkr": 0.03,
+    "sales_tax_on_commission_pct": 0.15,
+    "day_trade_one_side_only": true
+  },
+  "regulatory": {
+    "secp_levy_pct_of_value": 0.0000065,
+    "cdc_nccpl_pct_of_value": 0.0
+  },
+  "slippage": {
+    "base_bps_per_side": 10,
+    "max_pct_of_avg_daily_volume": 5.0
+  },
+  "tax": {
+    "capital_gains_tax_pct": 15.0
+  },
+  "market_rules": {
+    "circuit_limit_pct": 7.5,
+    "circuit_limit_min_pkr": 1.0,
+    "lot_size": 1,
+    "settlement_days": 2,
+    "short_selling_eligible_symbols": []
+  }
+}

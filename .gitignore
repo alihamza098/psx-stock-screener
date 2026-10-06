@@ -19,3 +19,16 @@ cache/companies/*.json
 server.log
 
 
+
+# Runtime user data & secrets — never commit (created automatically at runtime)
+licenses.json
+trial_data.json
+feedback.json
+cache/telegram_config.json
+cache/paper_account.json
+.env
+cache/market_data.db
+cache/research_report.json
+cache/trade_desk.db
+cache/trade_desk_swing.json
+cache/longterm_rankings.json

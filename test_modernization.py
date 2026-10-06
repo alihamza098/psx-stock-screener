@@ -15,8 +15,15 @@ from pathlib import Path
 class TestModernizationFeatures(unittest.TestCase):
 
     def test_chart_data_enrichment_and_circuit_bands(self):
+        import json, time
+        from unittest import mock
+        import server
         from server import fetch_stock_timeframe_series
-        candles = fetch_stock_timeframe_series('OGDC', '1D', 10)
+        now = int(time.time())
+        eod = [[now - i * 86400, 320.0 + i, 1_000_000 + i, 318.0 + i] for i in range(10)]
+        server._DPS_TIMESERIES_CACHE.pop('OGDC', None)
+        with mock.patch.object(server, "fetch_url", return_value=json.dumps({"status": 1, "data": eod})):
+            candles = fetch_stock_timeframe_series('OGDC', '1D', 10)
         self.assertIsInstance(candles, list)
         self.assertGreater(len(candles), 0, "Should return at least 1 candle for OGDC")
         

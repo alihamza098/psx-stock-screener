@@ -456,7 +456,16 @@ def derive_grade(raw_score, volume_confirmed):
     return None  # Below threshold
 
 
-def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
+_history_provider = None
+
+
+def set_history_provider(fn):
+    """fn(symbol) -> daily bars oldest first (date, open, high, low, close, volume). Set by server.py."""
+    global _history_provider
+    _history_provider = fn
+
+
+def evaluate_stock_candidate(stock, index_trend="LONG", config=None, history=None):
     """
     Evaluates a single stock against the Weekly Trade Options rules.
     Returns (ScanCandidate dict, TriggerDetail list) or (None, exclusion_reason).
@@ -484,21 +493,19 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
     if not passed_liquidity:
         return None, "failedLiquidity"
 
-    # Approximate synthetic historical series for indicator evaluation
-    # In live system, uses DPS historical data / 30-day snapshot
-    base_price = price
-    sim_closes = [
-        base_price * (1 - (change_pct / 100.0) * (0.8 ** i))
-        for i in range(25, -1, -1)
-    ]
-    sim_closes[-1] = price
-    sim_highs = [c * 1.025 for c in sim_closes]
-    sim_lows = [c * 0.975 for c in sim_closes]
-    sim_vols = [vol_20d * (1.0 + 0.1 * (i % 5)) for i in range(len(sim_closes))]
+    # Real daily history only (oldest first). No history → no evaluation (never synthesised).
+    hist = history if history is not None else (_history_provider(symbol) if _history_provider else None)
+    bars = [b for b in (hist or []) if b.get("close")]
+    if len(bars) < 60:
+        return None, "insufficientHistory"
+    closes = [float(b["close"]) for b in bars]
+    highs = [float(b.get("high") or b["close"]) for b in bars]
+    lows = [float(b.get("low") or b["close"]) for b in bars]
+    vols = [float(b.get("volume") or 0.0) for b in bars]
 
     # Trend Context
-    ema20 = compute_ema(sim_closes, 20)
-    ema50 = compute_ema(sim_closes, 50)
+    ema20 = compute_ema(closes, 20)
+    ema50 = compute_ema(closes, 50)
     stock_above_ema20 = price >= ema20
     stock_above_ema50 = price >= ema50
 
@@ -529,8 +536,8 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
 
     # Detect Breakout
     lookback = config["trigger"]["breakoutLookbackDays"]
-    recent_high = max(sim_highs[-lookback:-1]) if len(sim_highs) > lookback else price * 0.98
-    recent_low = min(sim_lows[-lookback:-1]) if len(sim_lows) > lookback else price * 1.02
+    recent_high = max(highs[-lookback:-1]) if len(highs) > lookback else price * 0.98
+    recent_low = min(lows[-lookback:-1]) if len(lows) > lookback else price * 1.02
 
     vol_mult = config["volumeConfirmation"]["minVolumeMultiple"]
     current_vol_ratio = 1.6 if abs(change_pct) >= 2.0 else 1.1
@@ -557,8 +564,8 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
         })
 
     # MACD Crossover detection
-    ema12 = compute_ema(sim_closes, 12)
-    ema26 = compute_ema(sim_closes, 26)
+    ema12 = compute_ema(closes, 12)
+    ema26 = compute_ema(closes, 26)
     macd_val = ema12 - ema26
     if macd_val > 0 and change_pct > 0:
         triggers.append({
@@ -620,13 +627,13 @@ def evaluate_stock_candidate(stock, index_trend="LONG", config=None):
         return None, "noTriggerDetected"
 
     # 3. Risk Structure
-    atr = compute_atr(sim_highs, sim_lows, sim_closes, 14)
+    atr = compute_atr(highs, lows, closes, 14)
     direction = "LONG" if change_pct >= 0 else "SHORT"
     entry = round(price, 2)
 
     atr_mult = config["risk"]["atrMultipleForStop"]
     stop_atr = round(entry - (atr * atr_mult) if direction == "LONG" else entry + (atr * atr_mult), 2)
-    swing_support = round(min(sim_lows[-10:]), 2)
+    swing_support = round(min(lows[-10:]), 2)
     
     # Tighter stop wins
     if direction == "LONG":

@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test tools
+        run: pip install pytest pyflakes
+      - name: Check for undefined names
+        run: |
+          python -m pyflakes $(git ls-files '*.py') | grep -E "undefined name|may be undefined" && exit 1 || true
+      - name: Run tests (offline)
+        run: python -m pytest -q

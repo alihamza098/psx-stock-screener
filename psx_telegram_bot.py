@@ -23,6 +23,7 @@ Zero pip-dependencies — uses stdlib urllib only.
 """
 
 import json
+import os
 import time
 import threading
 import ssl
@@ -37,8 +38,8 @@ try:
     SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 except Exception:
     SSL_CONTEXT = ssl.create_default_context()
-SSL_CONTEXT.check_hostname = False
-SSL_CONTEXT.verify_mode = ssl.CERT_NONE
+# api.telegram.org has a standard certificate chain: keep verification ON so the
+# bot token is never sent over an unauthenticated connection.
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -62,20 +63,48 @@ _sent_alerts: Dict[str, float] = {}   # dedup key → timestamp
 # ── Config loader ─────────────────────────────────────────────────────────────
 
 def load_config() -> Dict[str, Any]:
-    """Read telegram_config.json. Returns {} if missing or invalid."""
+    """Read telegram_config.json, then overlay TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+    environment variables (env wins). Returns {} if nothing is configured."""
+    cfg: Dict[str, Any] = {}
     try:
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH) as f:
-                return json.load(f)
+                cfg = json.load(f)
     except Exception:
-        pass
-    return {}
+        cfg = {}
+    env_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    env_chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    if env_token:
+        cfg["bot_token"] = env_token
+    if env_chat:
+        cfg["chat_id"] = env_chat
+    if env_token and env_chat and "enabled" not in cfg:
+        cfg["enabled"] = True
+    return cfg
 
 
 def save_config(cfg: Dict[str, Any]) -> None:
+    # Never copy env-provided credentials onto disk
+    cfg = dict(cfg)
+    if os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() == cfg.get("bot_token"):
+        cfg.pop("bot_token", None)
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=2)
+
+
+def legacy_signals_enabled() -> bool:
+    """Unvalidated signal alerts (old intraday picks, weekly scan, intelligence, pattern matches).
+
+    Off by default: these engines failed or were never validated in the Strategy Lab. Turn them
+    back on with "legacy_signal_alerts": true in config/trade_desk.json. Trade Desk alerts for
+    validated strategies are unaffected.
+    """
+    try:
+        with open(Path(__file__).parent / "config" / "trade_desk.json") as f:
+            return bool(json.load(f).get("legacy_signal_alerts", False))
+    except Exception:
+        return False
 
 
 def is_enabled() -> bool:
@@ -168,6 +197,8 @@ def alert_intraday_setup(candidate: Dict[str, Any], mode: str = "INSTANT",
     learning_mode: if True, adds a caution banner to the alert.
     Returns True if alert dispatched.
     """
+    if not force and not legacy_signals_enabled():
+        return False
     if not is_enabled():
         return False
 
@@ -273,6 +304,8 @@ def alert_intraday_close(symbol: str, entry: float, live_price: float,
     Send "Close Trade Now" alert when intraday target or stop is reached.
     Returns True if alert dispatched.
     """
+    if not legacy_signals_enabled():
+        return False
     if not is_enabled():
         return False
 
@@ -319,6 +352,8 @@ def alert_weekly_scan_candidate(candidate: Dict[str, Any]) -> bool:
     Call this for every Grade A / A+ candidate from execute_weekly_scan().
     Returns True if an alert was dispatched.
     """
+    if not legacy_signals_enabled():
+        return False
     if not is_enabled():
         return False
 
@@ -392,6 +427,8 @@ def alert_intelligence_signal(pred: Dict[str, Any],
     Call this right after generate_prediction() when confidence is high enough.
     Returns True if an alert was dispatched.
     """
+    if not legacy_signals_enabled():
+        return False
     if not is_enabled():
         return False
 
@@ -472,6 +509,8 @@ def alert_pattern_match(symbol: str, pattern_name: str, pattern_id: str,
     Call when a high-value pattern (P001 Breakout+Volume, P003 Upper Lock+Accum)
     is matched for the first time on this symbol today.
     """
+    if not legacy_signals_enabled():
+        return False
     if not is_enabled():
         return False
 
